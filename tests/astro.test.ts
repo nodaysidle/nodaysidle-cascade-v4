@@ -55,7 +55,8 @@ describe("Astro packets for a site with several record types", () => {
     expect(readme).toContain("Behavior to keep")
     expect(readme).toContain("src/pages/events.astro")
     expect(packet.documents["TASKS.md"]).toContain("Keep every behavior kit/README.md lists")
-    expect(packet.graph.foundationFiles).toContain("README.md")
+    expect(packet.graph.foundationFiles).not.toContain("README.md")
+    expect(packet.documents["TASKS.md"]).not.toMatch(/copy these kit files[^.]*README\.md/)
   })
 
   it("never lists a file under both Files to create and Files to modify", async () => {
@@ -327,17 +328,27 @@ describe("Astro packets for a site with several record types", () => {
     expect(packet.documents["TASKS.md"]).toContain("Then run npm install once")
   })
 
-  it("enforces HH:MM in the kit schema, lists README.md among the copied kit files, and starts feature pages from their kit shell", async () => {
+  it("enforces HH:MM in the kit schema, keeps the kit README out of the copied files, and starts feature pages from their kit shell", async () => {
     const base = fixtureCases.find(item => item.presetId === "astro-web")!.blueprint
     const stalls = { name: "Stalls", purpose: "The market stalls.", sensitivity: "public" as const, retentionIntent: "Kept in the repository.", storage: "records" as const, writeMode: "direct" as const, singleRecord: false, entryCount: null, fields: [{ name: "Name", valueType: "text" as const, optional: false }, { name: "Opens at", valueType: "time" as const, optional: false }] }
     const packet = await compilePacket({ ...base, dataObjects: [stalls], features: base.features.map(feature => ({ ...feature, usesData: ["Stalls"], dataOperations: [{ data: "Stalls", operations: ["read" as const] }] })) }, "astro-web")
     expect(kitFile(packet, "src/content.config.ts")).toContain("opensAt: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/)")
     expect(kitFile(packet, "src/content/stalls/01-sample-entry.md")).toContain('opensAt: "09:00"')
     expect(packet.documents["TRD.md"]).toContain("HH:MM, 24-hour")
-    expect(kitFile(packet, "README.md")).toMatch(/- README\.md\n/)
+    expect(kitFile(packet, "README.md")).not.toMatch(/- README\.md\n/)
     const lantern = (await compilePacket(lanternBooksBlueprint, "astro-web")).graph.phases.flatMap(phase => phase.tasks)
     const about = lantern.find(task => task.ownerIds.includes("OWN-ABOUT-PAGE"))!
     expect(about.prompt).toContain("Start from kit/src/pages/about.astro, a shell with the layout and one h1")
-    expect(about.prompt).toContain("through listOpeningHoursEntries() from src/lib/contentcatalog.ts")
+    expect(about.prompt).toContain("add the read of Opening hours through listOpeningHoursEntries() from src/lib/contentcatalog.ts")
+    expect(about.prompt).not.toContain("it reads Opening hours only through")
+    const data = lantern.find(task => task.ownerIds.includes("OWN-DATA-STORE") || task.ownerIds.includes("OWN-CONTENT-CATALOG"))
+    expect(data?.prompt).toContain("Start from kit/src/lib/contentcatalog.ts.")
+    const trd = (await compilePacket(lanternBooksBlueprint, "astro-web")).documents
+    expect(trd["TRD.md"]).toContain("Vitest structural checks over dist/; browser accessibility review is manual")
+    expect(trd["TRD.md"]).toContain("mentions document.cookie")
+    expect(trd["TRD.md"]).toContain("one li containing one a")
+    expect(trd["TRD.md"]).toContain("single-line key: value pairs")
+    expect(trd["TRD.md"]).toContain("canonical URLs are absolute and the sitemap integration is enabled only when SITE_URL is set")
+    expect(trd["PRD.md"]).toContain("The site collects no visitor data and has no forms")
   })
 })

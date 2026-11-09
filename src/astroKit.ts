@@ -415,9 +415,9 @@ describe("contract", () => {
   ]
   files.push(file("README.md", `# ${blueprint.projectName} starter kit
 
-Tested starting code for the static Astro site in TRD.md. Before TASK-01, copy every file in the first list below from kit/ to the same path in the project root and keep every behavior listed here. Do not copy the second list early: the task that owns each page lists it under Files to create and starts from this content.
+Tested starting code for the static Astro site in TRD.md. Before TASK-01, copy every file in the first list below (not this README) from kit/ to the same path in the project root and keep every behavior listed here. Do not copy the second list early: the task that owns each page lists it under Files to create and starts from this content.
 
-${[...files.filter(item => !ownedFiles.includes(item.path)).map(item => `- ${item.path}`), "- README.md"].join("\n")}
+${files.filter(item => !ownedFiles.includes(item.path)).map(item => `- ${item.path}`).join("\n")}
 ${ownedFiles.length ? `\nStart from these in the owning task (not copied before it):\n\n${ownedFiles.map(path => `- ${path}`).join("\n")}\n` : ""}
 ## Behavior to keep
 
