@@ -137,9 +137,13 @@ export function refineGtkPhases(phases: readonly GraphPhase[], blueprint: Normal
   const operations = new Set(blueprint.features.flatMap(feature => feature.dataOperations))
   const featureIds = allocateStableIds("FEAT", blueprint.features.map(feature => feature.name))
   const byId = new Map(blueprint.features.map((feature, index) => [featureIds[index]!, feature]))
-  // A bound that depends on today's date (only a stored date or date-time can have one) needs the date as an argument, so the validator is testable at its limit.
+  // A bound that depends on today's date needs the date as an argument, so the validator is testable at its limit. Only a user-entered date or
+  // date-time, or a four-digit year (declared min 1000 and max 9999), can carry one; a fixed numeric range (name length, a count of at least 1) cannot.
+  const dateDependent = (field: NormalizedBlueprint["domainData"][number]["fields"][number]): boolean =>
+    ((field.valueType === "date" || field.valueType === "date-time") && !clockInitial(field))
+    || (field.valueType === "whole-number" && field.min != null && field.max != null && field.min >= 1000 && field.max <= 9999)
   const writesNumeric = (feature: NormalizedBlueprint["features"][number]) => blueprint.domainData.some(item =>
-    item.fields.some(field => field.valueType === "number" || field.valueType === "whole-number" || field.valueType === "date" || field.valueType === "date-time")
+    item.fields.some(dateDependent)
     && (feature.operationsByData[referenceKey(item.name)] ?? []).some(operation => operation === "create" || operation === "update"))
   // The slots follow the first main-surface prompt, which the compiler built from the declared operations: a slot it does not expose is not described here.
   const narrowKinds = [...new Set(blueprint.features.map(feature => feature.narrowsListBy).filter(kind => kind !== "none"))]
@@ -158,9 +162,9 @@ export function refineGtkPhases(phases: readonly GraphPhase[], blueprint: Normal
     ].join("; ")
   }
   // A text or number the user types is the &str of one GtkEntry (never a GtkSpinButton, which clamps out-of-range input before validate sees it).
-  const validateNote = (owned: readonly NormalizedBlueprint["features"][number][]): string[] => {
+  const formShape = (owned: readonly NormalizedBlueprint["features"][number][]) => {
     const item = blueprint.domainData.find(entry => owned.some(feature => (feature.operationsByData[referenceKey(entry.name)] ?? []).includes("create")))
-    if (!item) return []
+    if (!item) return undefined
     const flags = item.fields.filter(field => field.valueType === "flag")
     const itemKey = referenceKey(item.name)
     const marked = blueprint.features.some(feature => (feature.operationsByData[itemKey] ?? []).includes("update") && !feature.editsRecords)
@@ -170,21 +174,52 @@ export function refineGtkPhases(phases: readonly GraphPhase[], blueprint: Normal
     const legacyFlag = flags.length === 1 && marked ? flags[0]! : undefined
     // A field with a declared initial value is set by the app at creation, so it is no input and no argument.
     const appSet = item.fields.filter(field => field === legacyFlag || clockInitial(field) || (field.initial ?? "") !== "")
-    const names = item.fields.filter(field => !appSet.includes(field)).map(field => field.name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value")
-    const setNote = (field: typeof appSet[number]): string => clockInitial(field) ? `the add function stamps ${field.name.toLowerCase()} from the Clock trait when the record is created (today's date, or the current moment, from the clock it is given; tests pass a fixed clock)` : `the app sets ${field.name.toLowerCase()} to ${(field.initial ?? "") !== "" ? `"${field.initial}"` : "false"} itself inside validate`
+    const inputs = item.fields.filter(field => !appSet.includes(field))
+    return { item, appSet, inputs, edited }
+  }
+  const validateNote = (owned: readonly NormalizedBlueprint["features"][number][]): string[] => {
+    const shape = formShape(owned)
+    if (!shape) return []
+    const { item, appSet, inputs, edited } = shape
+    const names = inputs.map(field => field.name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value")
+    const setNote = (field: typeof appSet[number]): string => clockInitial(field) ? `the add function stamps ${field.name.toLowerCase()} from the Clock trait when the record is created (${field.valueType === "date" ? "today_string(clock), the local YYYY-MM-DD day" : "the current moment"}, from the clock it is given; tests pass a fixed clock)` : `the app sets ${field.name.toLowerCase()} to ${(field.initial ?? "") !== "" ? `"${field.initial}"` : "false"} itself inside validate`
     const numeric = item.fields.some(field => field.valueType === "number" || field.valueType === "whole-number")
-    return [`The validate function is validate_${slug(item.name).replaceAll("-", "_")}(${names.map(name => `${name}: &str`).join(", ")}) returning Ok with New${pascal(item.name)} or Err(ValidationError), where ValidationError is an enum in your file with one variant per rejected rule; it trims a text argument only to check it for emptiness and length, and returns a short text field trimmed and a long text field exactly as entered${numeric ? "; a number is typed in a GtkEntry and parsed by validate, never set through a GtkSpinButton range, so an out-of-range value reaches validate and disables Save; a parsed number must be finite (f64 parsing accepts NaN and inf, which validate rejects)" : ""}${edited ? "; an edit task calls the same function" : ""}.${appSet.length ? ` ${appSet.map(setNote).join("; ")}; ${appSet.length === 1 ? "it is" : "they are"} not ${appSet.length === 1 ? "a parameter" : "parameters"} of validate or form_state and the form has no input for ${appSet.length === 1 ? "it" : "them"}${edited ? "; an edit leaves it unchanged" : ""}.`.replace(/^ the/, " The") : ""}`]
+    const dates = inputs.filter(field => field.valueType === "date")
+    const optionalDates = dates.filter(field => field.optional)
+    const dateNote = dates.length || appSet.some(field => field.valueType === "date" && clockInitial(field))
+      ? ` Dates: the local day of a Clock is computed once, by the kit's display-free today_string(&dyn Clock) -> String in src/platform/clock.rs (YYYY-MM-DD from glib::DateTime, no extra crate); no other code converts time to a day.${dates.length ? ` A date the user types is the &str of one GtkEntry in YYYY-MM-DD (no GtkCalendar), and validate rejects it when it is empty${optionalDates.length ? ` (except the optional ${optionalDates.map(field => field.name.toLowerCase()).join(", ")}, which is then stored as absent)` : ""} or when the kit's is_calendar_date(text) is false (a real calendar day only: 2024-02-30 is rejected); it has no future or past bound unless an acceptance criterion states one, and a ValidationError variant names each rejected date rule.` : ""}`
+      : ""
+    return [`The validate function is validate_${slug(item.name).replaceAll("-", "_")}(${names.map(name => `${name}: &str`).join(", ")}) returning Ok with New${pascal(item.name)} or Err(ValidationError), where ValidationError is an enum in your file with one variant per rejected rule; it trims a text argument only to check it for emptiness and length, and returns a short text field trimmed and a long text field exactly as entered${numeric ? "; a number is typed in a GtkEntry and parsed by validate, never set through a GtkSpinButton range, so an out-of-range value reaches validate and disables Save; a parsed number must be finite (f64 parsing accepts NaN and inf, which validate rejects)" : ""}${edited ? "; an edit task calls the same function" : ""}.${appSet.length ? ` ${appSet.map(setNote).join("; ")}; ${appSet.length === 1 ? "it is" : "they are"} not ${appSet.length === 1 ? "a parameter" : "parameters"} of validate or form_state and the form has no input for ${appSet.length === 1 ? "it" : "them"}${edited ? "; an edit leaves it unchanged" : ""}.`.replace(/^ the/, " The") : ""}${dateNote}`]
   }
   // The dialog's Save button label is the first double-quoted text of an acceptance signal that mentions a button, else "Add".
   const formFacts = (creators: readonly NormalizedBlueprint["features"][number][]): string[] => {
+    const shape = formShape(creators)
+    const dateInput = shape?.inputs.some(field => field.valueType === "date") ?? false
+    const choices = creators.some(feature => (feature.choiceLists ?? []).length > 0)
+    const reset = `Reset rule, one per input kind: a text or number input resets to empty${dateInput ? "; a date input resets to empty, except one that an acceptance criterion says opens prefilled with today, which resets to today_string(clock)" : ""}${choices ? "; a choice input resets to its initial option" : ""}; this happens after a successful save and every time the add dialog opens, so a dialog reopened after a Cancel starts from the same values${shape?.edited ? ". The edit dialog is not reset: it opens prefilled from the record being edited" : ""}.`
     const label = creators.flatMap(feature => feature.acceptanceOutcomes).filter(signal => /\bbutton\b/i.test(signal)).map(signal => /["“]([^"”]{1,40})["”]/.exec(signal)?.[1]).find(Boolean) ?? "Add"
-    return [`Form facts: the dialog's Save slot button is labelled "${label}" (the Add button in the header bar is not that button and is always enabled). The Save button's enabled state is the display-free function form_state(values) -> {save_enabled, errors}, where values holds the typed text of each input in validate's argument order, save_enabled is true exactly when validate returns Ok, and errors lists the rejected rules; your tests assert it for an empty, a valid and an invalid input. Form values reset to empty after a successful save and every time the dialog opens, so a dialog reopened after a Cancel starts empty.`]
+    return [`Form facts: the dialog's Save slot button is labelled "${label}" (the Add button in the header bar is not that button and is always enabled). The Save button's enabled state is the display-free function form_state(values) -> {save_enabled, errors}, where values holds the typed text of each input in validate's argument order, save_enabled is true exactly when validate returns Ok, and errors lists the rejected rules; your tests assert it for an empty, a valid and an invalid input. ${reset}`]
   }
   const LOAD_ERROR = "Load error: the store's list returns a Result and you own what an Err renders; no later task re-claims it. Show the exact load-error text when an acceptance criterion of yours gives one; otherwise render an empty list with the empty-state text and no error message, and the status area then shows no separate error."
   const hasFlag = blueprint.domainData.some(item => item.fields.some(field => field.valueType === "flag"))
   const flagFiltered = blueprint.features.some(feature => feature.narrowsListBy === "flag")
   const longText = blueprint.domainData.some(item => item.fields.some(field => field.valueType === "long-text"))
-  const ROW_DISPLAY = `Rows: each row shows its stored fields as read-only text${hasFlag ? (flagFiltered ? ", except a flag field that the list is filtered by, which is left out of the row text because the filter control and the mark control carry it" : ", including a flag field as the row subtitle or a label") : ""}. You build no edit, mark or delete control even when an acceptance criterion mentions one: the task that owns the operation builds it and mounts it in the slot you expose, which stays empty in your task.`
+  // The first main-surface feature builds the controls of the operations it declares itself (it owns them); another feature's task builds the rest.
+  const controlKinds = (features: readonly NormalizedBlueprint["features"][number][]): string[] => [
+    ...(features.some(feature => feature.dataOperations.includes("update") && !feature.editsRecords) ? ["mark"] : []),
+    ...(features.some(feature => feature.editsRecords) ? ["Edit"] : []),
+    ...(features.some(feature => feature.dataOperations.includes("delete")) ? ["delete"] : []),
+  ]
+  const rowDisplay = (owned: readonly NormalizedBlueprint["features"][number][]): string => {
+    const mine = controlKinds(owned)
+    const others = controlKinds(blueprint.features.filter(feature => !owned.includes(feature))).filter(kind => !mine.includes(kind))
+    const place = blueprint.features.some(feature => feature.surface === "item-page") ? "per-row action area or the detail page's buttons" : "per-row action area"
+    const controls = mine.length
+      ? `You build the ${mine.join(", ")} control${mine.length > 1 ? "s" : ""} that your own feature declares and mount ${mine.length > 1 ? "them" : "it"} in the ${place}.${others.length ? ` You build no ${others.join(" or ")} control even when an acceptance criterion mentions one: the task that owns that operation builds it and mounts it in the slot you expose.` : ""}`
+      : "You build no edit, mark or delete control even when an acceptance criterion mentions one: the task that owns the operation builds it and mounts it in the slot you expose, which stays empty in your task."
+    return `Rows: each row shows its stored fields as read-only text${hasFlag ? (flagFiltered ? ", except a flag field that the list is filtered by, which is left out of the row text because the filter control and the mark control carry it" : ", including a flag field as the row subtitle or a label") : ""}. ${controls}`
+  }
+  const FLAG_SELECTION = "When your acceptance criteria show only the records with one flag value, that selection is one display-free function over the loaded records, named after its rule, that your tests assert on; the store's list still returns every record."
   const SHARED_HELPERS = "The shared view state exposes two display-free entry points that later tasks call and never re-implement: reload() re-reads the store's list into the loaded records, and show_toast(message) adds an AdwToast to the window's ToastOverlay (build_window stores the overlay in the shared view state)."
   const PREVIEW = "Long text: a row shows a long text field through the display-free function row_preview(text) -> String, which keeps the first 3 lines and appends \"…\" to the last kept line when anything was cut (fixed convention); your tests assert it, and the full text is the row's tooltip."
   const LIST_TEST = "Your tests insert records through the store trait, never through the add form (a later task builds it); an ordering check inserts two records and asserts on the display-free list function."
@@ -194,9 +229,9 @@ export function refineGtkPhases(phases: readonly GraphPhase[], blueprint: Normal
     flag: `Narrow the list with a GtkToggleButton (or AdwSwitchRow) mounted in the filter area, off initially and labelled with the wording of your acceptance criterion; turning it off restores the full list and needs no clear control. ${NO_MATCH}`,
     sort: "Reorder the list with a GtkDropDown mounted in the filter area, listing each sort order your acceptance criteria name; the list task's order is the initial choice. A reorder never hides rows, so it has no no-match message and no clear control.",
   } as const
-  const EDIT_CONTROL = "You build the per-row Edit control (a button) that opens the form for that record, and mount it in the slot named above; the list task builds no edit control."
+  const EDIT_CONTROL = "You build the per-row Edit control (a button) that opens the form for that record, and mount it in the slot named above; the list task builds no edit control. The edit dialog's title is \"Edit\" and the record's singular name, its Save button is labelled \"Save\" (the add dialog's label belongs to the add dialog only), and it opens prefilled from the record."
   const MARK_CONTROL = `You build the mark control (a GtkCheckButton or GtkToggleButton) in the per-row action area; it changes the stored flag and then calls the shared view state's reload entry point${flagFiltered ? ", so a row that no longer matches the active filter leaves the list" : ""}. Add no second state indicator.`
-  const CONFIRM_DIALOG = "A removal confirmation is a custom AdwDialog, not an AdwAlertDialog (which closes on every response): Remove calls the store and closes the dialog only after it returns Ok; on StoreError show the toast and leave the dialog open."
+  const CONFIRM_DIALOG = "A removal confirmation is a custom AdwDialog, not an AdwAlertDialog (which closes on every response): Remove calls the store and closes the dialog only after it returns Ok; on StoreError show the toast and leave the dialog open. The confirmation is built from a display-free function request_delete(id: i64) returning the loaded record to confirm, or None when the id is not in the loaded list; your tests assert it, and the dialog is shown only for Some."
   const editForm = " If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them; a single mark or toggle action needs no form."
   return phases.map(phase => ({
     ...phase,
@@ -207,16 +242,17 @@ export function refineGtkPhases(phases: readonly GraphPhase[], blueprint: Normal
       const notes = [
         ...(records && task.ownerIds[0] === "OWN-DATA-STORE" ? ["The kit's Database::migrate already sets user_version to 1 and creates no table: run the table migration through Database::connection() inside one transaction (unchecked_transaction on the shared connection) when user_version is below 2 and set it to 2. Do not edit src/platform/sqlite.rs.", "Services holds the store as a std::sync::Arc around DataStore, so the lifecycle coordinator can close the same handle; build_services tolerates a failed DataStore::open (the store is then absent, see CON-RUNTIME-WIRING) and never panics."] : []),
         ...(firstMain && records ? [LOAD_ERROR] : []),
-        ...(firstMain && (operations.has("update") || operations.has("delete")) ? [ROW_DISPLAY] : []),
+        ...(firstMain && (operations.has("update") || operations.has("delete")) ? [rowDisplay(owned)] : []),
+        ...(firstMain && hasFlag ? [FLAG_SELECTION] : []),
         ...(firstMain && records && operations.has("create") ? [LIST_TEST] : []),
         ...(firstMain ? [SHARED_HELPERS] : []),
         ...(firstMain && longText ? [PREVIEW] : []),
-        ...(firstMain ? [`GTK shape of the slots: ${slotNote(task.prompt)}.`, `Empty state: you own the empty-list message of the main screen. Show it in the status area whenever the loaded list has no records, chosen by a display-free function that your tests assert on. Its text is the exact empty-list text that an acceptance criterion gives; when none does, it is one sentence that ${operations.has("create") ? "names the Add button and never says where it sits" : "says how the list gets its records"}.`] : []),
+        ...(firstMain ? [`GTK shape of the slots: ${slotNote(task.prompt)}.`, `Empty state: you own the empty-list message of the main screen. Show it in the status area whenever the loaded list has no records, chosen by a display-free function that your tests assert on. Its text is the exact empty-list text that an acceptance criterion gives; when none does, it is one sentence that ${operations.has("create") ? "names the Add button and never says where it sits" : "says how the list gets its records"}.${narrowKinds.length ? " The function reads the unfiltered loaded list, never the filtered rows, so a search or filter with no match shows the no-match message and not this text." : ""}`] : []),
         ...(!firstMain && owned.some(feature => feature.dataOperations.includes("create")) ? ["Build the entry form (one input per field the user supplies; a field the app sets itself, such as a flag with a fixed starting value, is not an input) and its display-free validate function in your own file and export both; the dialog shell from the first main-surface task only hosts the form" + (blueprint.features.some(feature => feature.editsRecords) ? ", and an edit task reuses them" : "") + ".", ...formFacts(owned.filter(feature => feature.dataOperations.includes("create"))), ...validateNote(owned.filter(feature => feature.dataOperations.includes("create")))] : []),
         ...(owned.some(writesNumeric) ? [`Only when an acceptance criterion states a bound that depends on today's date or year, that bound is a parameter of the validate function (for example current_year: i32), never read inside it; a fixed range written as literals stays a constant in validate and adds no parameter; src/app.rs supplies it from ${clock ? "the Clock trait" : "glib::DateTime::now_local()"} and tests pass fixed values at and beyond the bound.`] : []),
         ...(!firstMain ? owned.filter(feature => feature.narrowsListBy !== "none" && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read")).slice(0, 1).map(feature => NARROW[feature.narrowsListBy as "text" | "flag" | "sort"]) : []),
         ...(!firstMain && owned.some(feature => feature.editsRecords) ? [EDIT_CONTROL] : []),
-        ...(!firstMain && owned.some(feature => feature.dataOperations.includes("update") && !feature.editsRecords) ? [MARK_CONTROL] : []),
+        ...(owned.some(feature => feature.dataOperations.includes("update") && !feature.editsRecords) ? [MARK_CONTROL] : []),
         ...(writes.includes("delete") ? [CONFIRM_DIALOG] : []),
         ...(writes.length ? [`Write failure: when the store returns StoreError, show an AdwToast on the window's ToastOverlay reading "${writes.every(operation => operation === "delete") ? REMOVE_TOAST : SAVE_TOAST}"; ${[...(writes.includes("create") ? ["a failed add keeps its dialog open with the entered values"] : []), ...(writes.includes("update") ? [owned.some(feature => feature.editsRecords) ? "a failed edit keeps its form open" : "a failed mark leaves the row unchanged"] : []), ...(writes.includes("delete") ? ["a failed removal leaves the row in the list"] : [])].join(", ")}.`] : []),
       ]

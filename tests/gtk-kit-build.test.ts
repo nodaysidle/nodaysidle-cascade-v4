@@ -18,10 +18,12 @@ const target = join(cache, "target")
 const temporary = join(cache, "tmp")
 
 describeBuild("GTK4 kit without settings, credentials, network or background", () => {
-  it("builds and passes its own tests with the clock and SQLite helpers only", async () => {
+  it.each([["with the clock and SQLite helpers only", false], ["with the date helpers when a date field is declared", true]] as const)("builds and passes its own tests %s", async (_label, dated) => {
     mkdirSync(target, { recursive: true })
     mkdirSync(temporary, { recursive: true })
-    const packet = await compilePacket(snippetLibraryBlueprint, "linux-wayland-gtk4-desktop")
+    const blueprint = structuredClone(snippetLibraryBlueprint)
+    if (dated) blueprint.dataObjects[0]!.fields.push({ name: "Given on", valueType: "date", optional: false })
+    const packet = await compilePacket(blueprint, "linux-wayland-gtk4-desktop")
     const root = mkdtempSync(join(tmpdir(), "cascade-v4-kit-"))
     for (const file of packet.kit) {
       const path = join(root, file.name.replace(/^kit\//, ""))
