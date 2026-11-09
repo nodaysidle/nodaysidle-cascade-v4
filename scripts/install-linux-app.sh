@@ -13,8 +13,8 @@ for arg in "$@"; do
 done
 
 if [ "$build" = true ]; then
-  npm run build
-  cargo build --release --manifest-path src-tauri/Cargo.toml
+  # The Tauri CLI embeds the frontend; a plain cargo build loads the dev URL (localhost:1420) instead.
+  npm run tauri -- build --no-bundle
 fi
 
 binary="src-tauri/target/release/nodaysidle-cascade-v4"
