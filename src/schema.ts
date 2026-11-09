@@ -428,6 +428,11 @@ export function redactSecretMaterial(text: string): string {
   return secretPatterns.reduce((value, pattern) => value.replace(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`), "[removed secret]"), text)
 }
 
+// Two names are one name when their letters and digits match (case, accents, spaces and punctuation ignored); normalization keys on this.
+export function nameKey(name: string): string {
+  return name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, "")
+}
+
 export function referenceKey(name: string): string {
   return name.normalize("NFKC").trim().replace(/\s+/g, " ").replace(/[.]+$/, "").toLocaleLowerCase("en-US")
 }
@@ -517,7 +522,7 @@ function duplicateNameIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
   const check = (label: string, values: readonly string[]) => {
     const seen = new Set<string>()
     values.forEach((name, index) => {
-      const key = referenceKey(name)
+      const key = nameKey(name) || referenceKey(name)
       if (seen.has(key)) issues.push({ path: `${label}[${index}]`, rule: "semantic.duplicate-name", message: `${label} contains '${name}' more than once; names must be unique after case and punctuation normalization.` })
       seen.add(key)
     })

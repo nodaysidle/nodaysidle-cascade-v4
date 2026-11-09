@@ -6,7 +6,7 @@ import { androidKitNeeds } from "./androidKit"
 import { ANDROID_DELETE_PROMPT, androidChoiceMatchesPicker, androidFormRules } from "./androidForms"
 import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
-import { clockInitial, featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
+import { clockInitial, featureDataUses, featureReferenceIssues, nameKey, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { gtkStoreInterface, refineGtkContracts, refineGtkPhases } from "./gtkContracts"
 import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarRoles, waybarTaskNotes } from "./kits"
 import { waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarResponseDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarSourceDetail } from "./waybarContracts"
@@ -353,7 +353,7 @@ function fnv1a(value: string): number {
 }
 
 function semanticKey(value: string): string {
-  const key = value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, "")
+  const key = nameKey(value)
   const trimmed = value.trim()
   return key || (trimmed ? `u${fnv1a(trimmed).toString(16)}` : "")
 }
@@ -411,14 +411,18 @@ function cleanList(values: readonly string[]): string[] {
   return uniqueStrings(values.map(cleanMeaning).filter(Boolean))
 }
 
-function uniqueByName<T extends { readonly name: string }>(values: readonly T[]): T[] {
-  const seen = new Set<string>()
-  return values.filter(value => {
+// Names that clean to the same key would merge two provider entries into one: refuse instead of dropping one.
+function requireUniqueNames<T extends { readonly name: string }>(values: readonly T[], label: string): T[] {
+  const seen = new Map<string, number>()
+  values.forEach((value, index) => {
     const key = semanticKey(value.name)
-    if (!key || seen.has(key)) return false
-    seen.add(key)
-    return true
+    const first = seen.get(key)
+    if (first !== undefined) {
+      throw new NormalizationError([{ path: `${label}[${index}].name`, rule: "normalization.duplicate-name", message: `'${value.name}' becomes the same name as ${label}[${first}] after normalization; give each a distinct name.` }])
+    }
+    seen.set(key, index)
   })
+  return [...values]
 }
 
 const permissionByNeed: Partial<Record<PlatformNeed, PermissionCapability>> = {
@@ -563,7 +567,7 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
   const dataNameByKey = new Map(source.dataObjects.map(item => [referenceKey(item.name), cleanMeaning(item.name)]))
   const serviceNameByKey = new Map(source.externalServices.map(item => [referenceKey(item.name), cleanMeaning(item.name)]))
 
-  const baseFeatures = uniqueByName(source.features.map((feature, index) => {
+  const baseFeatures = requireUniqueNames(source.features.map((feature, index) => {
     const name = cleanMeaning(feature.name)
     const behavior = cleanMeaning(feature.behavior)
     const userOutcome = cleanMeaning(feature.userOutcome)
@@ -612,28 +616,35 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       choiceLists: feature.choiceLists.map(list => ({ name: cleanMeaning(list.name), options: cleanList(list.options), initial: cleanMeaning(list.initial) })),
       surface: feature.surface,
     }
-  }))
+  }), "features")
   if (!baseFeatures.length) normalizationIssue("features")
 
-  const dataObjects = uniqueByName(source.dataObjects.map(item => {
+  const dataObjects = requireUniqueNames(source.dataObjects.map((item, index) => {
     const name = cleanMeaning(item.name)
     const purpose = cleanMeaning(item.purpose)
+    const retentionIntent = cleanMeaning(item.retentionIntent)
+    if (!name) normalizationIssue(`dataObjects[${index}].name`)
+    if (!purpose) normalizationIssue(`dataObjects[${index}].purpose`)
+    if (!retentionIntent) normalizationIssue(`dataObjects[${index}].retentionIntent`)
     return {
       name,
       purpose,
       sensitivity: item.sensitivity,
-      retentionIntent: cleanMeaning(item.retentionIntent),
+      retentionIntent,
       storage: item.storage,
       writeMode: item.writeMode,
-      fields: item.fields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional, min: field.min ?? null, max: field.max ?? null, initial: field.initial ?? null, appStamped: field.appStamped ?? false })).filter(field => field.name),
+      fields: requireUniqueNames(item.fields.map((field, fieldIndex) => ({ name: cleanMeaning(field.name) || normalizationIssue(`dataObjects[${index}].fields[${fieldIndex}].name`), valueType: field.valueType, optional: field.optional, min: field.min ?? null, max: field.max ?? null, initial: field.initial ?? null, appStamped: field.appStamped ?? false })), `dataObjects[${index}].fields`),
       singleRecord: item.singleRecord,
       entryCount: item.entryCount ?? null,
     }
-  }).filter(item => item.name && item.purpose && item.retentionIntent))
-  const externalServices = uniqueByName(source.externalServices.map(item => {
+  }), "dataObjects")
+  const externalServices = requireUniqueNames(source.externalServices.map((item, index) => {
+    const name = cleanMeaning(item.name)
     const purpose = cleanMeaning(item.purpose)
+    if (!name) normalizationIssue(`externalServices[${index}].name`)
+    if (!purpose) normalizationIssue(`externalServices[${index}].purpose`)
     return {
-      name: cleanMeaning(item.name),
+      name,
       purpose,
       dataSent: cleanList(item.dataSent),
       credentialRequirement: item.credentialRequired ? "api-key" as const : "none" as const,
@@ -641,11 +652,11 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       webPage: item.webPage.trim(),
       requestValueFrom: cleanMeaning(item.requestValueFrom),
       requestValueType: item.requestValueType ?? "text",
-      responseFields: item.responseFields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional, path: (field.path ?? "").trim() })).filter(field => field.name),
+      responseFields: item.responseFields.map((field, fieldIndex) => ({ name: cleanMeaning(field.name) || normalizationIssue(`externalServices[${index}].responseFields[${fieldIndex}].name`), valueType: field.valueType, optional: field.optional, path: (field.path ?? "").trim() })),
       failureBehavior: "Return a privacy-safe authentication, rate, transport, timeout, filtered, or provider failure without raw response content.",
       recovery: "Preserve recoverable local input and allow only an explicit retry or explicit service change.",
     }
-  }).filter(item => item.name && item.purpose))
+  }), "externalServices")
   // File access is declared per feature by userFileAccess (the feature shows an Open or Save panel or
   // accepts drops); a feature that reopens a declared document by saved path gets it too.
   const documentNames = new Set(dataObjects.filter(item => item.storage === "document").map(item => item.name))
