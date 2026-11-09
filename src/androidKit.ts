@@ -14,12 +14,15 @@ function file(path: string, content: string): AndroidKitFile {
 export const ANDROID_SDK = { compileSdk: 37, targetSdk: 37, minSdk: 26, buildTools: "37.0.0" } as const
 
 // A declared schedule or notification need decides which kit files ship.
-export function androidKitNeeds(blueprint: NormalizedBlueprint): { schedule: boolean; notifications: boolean; settingsData: boolean; settings: boolean } {
-  const schedule = blueprint.features.some(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null)
+export function androidKitNeeds(blueprint: NormalizedBlueprint): { schedule: boolean; reminders: boolean; runState: boolean; notifications: boolean; settingsData: boolean; settings: boolean } {
+  const reminders = blueprint.features.some(feature => feature.runsAtField !== null)
+  const schedule = reminders || blueprint.features.some(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null)
+  // The once-per-day run state serves the schedules that are not per-record reminders; a reminder's state is the kit's ReminderLog.
+  const runState = blueprint.features.some(feature => feature.runsAtField === null && (feature.runsDailyAt !== null || feature.runsEverySeconds !== null))
   const notifications = blueprint.permissionNeeds.some(item => item.capability === "notifications")
   const settingsData = blueprint.domainData.some(item => item.storage === "settings")
   // SettingsRepository ships only when something stores in it: a declared setting, the notification state, or a schedule's last-run day.
-  return { schedule, notifications, settingsData, settings: schedule || notifications || settingsData }
+  return { schedule, reminders, runState, notifications, settingsData, settings: schedule || notifications || settingsData }
 }
 
 export function androidKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint): AndroidKitFile[] {
@@ -71,9 +74,7 @@ activityCompose = "1.13.0"
 lifecycle = "2.11.0"
 navigation3 = "1.2.1"
 room = "2.8.5"
-datastore = "1.3.0"
-work = "2.12.0"
-serialization = "1.9.0"
+${needs.settings ? `datastore = "1.3.0"\n` : ""}${needs.schedule ? `work = "2.12.0"\n` : ""}serialization = "1.9.0"
 coroutines = "1.10.2"
 robolectric = "4.16"
 testCore = "1.7.0"
@@ -91,10 +92,7 @@ androidx-navigation3-ui = { group = "androidx.navigation3", name = "navigation3-
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
-androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
-androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
-androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "work" }
-androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+${needs.settings ? `androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }\n` : ""}${needs.schedule ? `androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }\nandroidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "work" }\n` : ""}androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
@@ -182,8 +180,7 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
-    implementation(libs.androidx.datastore.preferences)
-${needs.schedule ? "    implementation(libs.androidx.work.runtime.ktx)\n" : ""}    implementation(libs.kotlinx.serialization.json)
+${needs.settings ? "    implementation(libs.androidx.datastore.preferences)\n" : ""}${needs.schedule ? "    implementation(libs.androidx.work.runtime.ktx)\n" : ""}    implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
@@ -201,7 +198,7 @@ ${needs.schedule ? "    testImplementation(libs.androidx.work.testing)\n" : ""} 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
         android:name=".${identity.pascalName}Application"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:label="${appName}"
         android:supportsRtl="true"
         android:theme="@style/Theme.${identity.pascalName}">
@@ -243,8 +240,7 @@ class MainActivity : ComponentActivity() {
 
 import android.app.Application
 
-// open so the JVM test Application can extend it and start a test WorkManager first.
-open class ${identity.pascalName}Application : Application() {
+${needs.schedule ? "// open so the JVM test Application can extend it and start a test WorkManager first.\n" : ""}open class ${identity.pascalName}Application : Application() {
     lateinit var container: AppContainer
 
     override fun onCreate() {
@@ -256,16 +252,17 @@ open class ${identity.pascalName}Application : Application() {
     file(`app/src/main/java/${path}/AppContainer.kt`, `package ${pkg}
 
 import android.content.Context
-${needs.schedule ? "import androidx.work.WorkManager\n" : ""}${needs.settings ? `import ${pkg}.data.SettingsRepository\n` : ""}import java.time.Clock
+${needs.schedule ? "import androidx.work.WorkManager\n" : ""}${needs.reminders ? `import ${pkg}.platform.reminders.ReminderLogDatabase\nimport ${pkg}.platform.reminders.ReminderLogRepository\n` : ""}${needs.settings ? `import ${pkg}.data.SettingsRepository\n` : ""}import java.time.Clock
 
 // Feature and data tasks add their repositories here and nowhere else. Code that compares a stored
 // date or time with the present moment reads \`clock\`; tests pass a fixed Clock instead.
 class AppContainer(${needs.schedule ? "private val " : ""}context: Context, val clock: Clock = Clock.systemDefaultZone()) {
-${needs.settings ? "    val settings = SettingsRepository(context)\n" : ""}${needs.schedule ? "    val workManager: WorkManager by lazy { WorkManager.getInstance(context) }\n" : ""}}
+${needs.settings ? "    val settings = SettingsRepository(context)\n" : ""}${needs.schedule ? "    val workManager: WorkManager by lazy { WorkManager.getInstance(context) }\n" : ""}${needs.reminders ? "    // The (record id, local day) log that keeps a per-record reminder from being sent twice; its own small database.\n    val reminderLog: ReminderLogRepository by lazy { ReminderLogRepository(ReminderLogDatabase.open(context).dao()) }\n" : ""}}
 `),
     ...(needs.settings ? settingsKitFiles(identity, needs) : []),
     file("app/src/test/resources/robolectric.properties", `sdk=35\n${needs.schedule ? `application=${pkg}.Test${identity.pascalName}Application\n` : ""}`),
     ...(needs.schedule ? scheduleKitFiles(identity) : []),
+    ...(needs.reminders ? reminderKitFiles(identity) : []),
     file(`app/src/main/java/${path}/App.kt`, `package ${pkg}
 
 import androidx.compose.foundation.layout.padding
@@ -419,7 +416,7 @@ function settingsKitFiles(identity: ProjectIdentity, needs: ReturnType<typeof an
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
-${needs.schedule ? "import androidx.datastore.preferences.core.longPreferencesKey\n" : ""}${needs.notifications ? "import androidx.datastore.preferences.core.stringPreferencesKey\n" : ""}import androidx.datastore.preferences.preferencesDataStore
+${needs.runState || needs.reminders ? "import androidx.datastore.preferences.core.longPreferencesKey\n" : ""}${needs.notifications ? "import androidx.datastore.preferences.core.stringPreferencesKey\n" : ""}import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -439,7 +436,15 @@ ${needs.notifications ? `
         require(state == "granted" || state == "denied")
         context.settingsDataStore.edit { it[notificationPermission] = state }
     }
-` : ""}${needs.schedule ? `
+` : ""}${needs.reminders ? `
+    // The moment (epoch milliseconds, from the injected clock) of the schedule's previous tick; null before the first.
+    fun lastTickEpochMs(schedule: String): Flow<Long?> =
+        context.settingsDataStore.data.map { it[longPreferencesKey("last_tick_" + schedule)] }
+
+    suspend fun recordTick(schedule: String, epochMs: Long) {
+        context.settingsDataStore.edit { it[longPreferencesKey("last_tick_" + schedule)] = epochMs }
+    }
+` : ""}${needs.runState ? `
     // The one home of a schedule's once-per-day state: the epoch day (LocalDate.toEpochDay on the injected
     // clock) on which the schedule last sent or deliberately skipped its run; null before the first run.
     fun lastRunEpochDay(schedule: String): Flow<Long?> =
@@ -470,7 +475,16 @@ class SettingsRepositoryTest {
         repository.reset()
 ${needs.notifications ? `        assertEquals("unasked", repository.notificationPermissionState.first())
 ` : ""}    }
-${needs.schedule ? `
+${needs.reminders ? `
+    @Test
+    fun aTickIsRememberedUntilReset() = runTest {
+        assertEquals(null, repository.lastTickEpochMs("reminder").first())
+        repository.recordTick("reminder", 1_000)
+        assertEquals(1_000L, repository.lastTickEpochMs("reminder").first())
+        repository.reset()
+        assertEquals(null, repository.lastTickEpochMs("reminder").first())
+    }
+` : ""}${needs.runState ? `
     @Test
     fun aScheduleRemembersTheDayItLastRanUntilReset() = runTest {
         assertEquals(null, repository.lastRunEpochDay("daily").first())
@@ -568,6 +582,140 @@ class ScheduleMathTest {
     @Test
     fun runsNowWhenExactlyAtTheTime() {
         assertEquals(Duration.ZERO, ScheduleMath.initialDelay(clockAt("09:00"), LocalTime.of(9, 0)))
+    }
+}
+`),
+  ]
+}
+
+// Shipped only when a feature declares runsAtField: the (record id, local day) log and the "which records are due in this
+// tick" rule are compiled and tested once here, so the reminder task writes only the notification and its wiring.
+// The log is its own small Room database, so it never touches the data task's AppDatabase or its schema file.
+function reminderKitFiles(identity: ProjectIdentity): AndroidKitFile[] {
+  const pkg = identity.packageName
+  const path = identity.packagePath
+  return [
+    file(`app/src/main/java/${path}/platform/reminders/ReminderLog.kt`, `package ${pkg}.platform.reminders
+
+import android.content.Context
+import androidx.room.Dao
+import androidx.room.Database
+import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Room
+import androidx.room.RoomDatabase
+
+// One row per record notified on one local day (LocalDate.toEpochDay on the injected clock).
+@Entity(tableName = "reminder_log", primaryKeys = ["recordId", "epochDay"])
+data class ReminderLogEntity(val recordId: Long, val epochDay: Long)
+
+@Dao
+interface ReminderLogDao {
+    @Query("SELECT COUNT(*) FROM reminder_log WHERE recordId = :recordId AND epochDay = :epochDay")
+    suspend fun count(recordId: Long, epochDay: Long): Int
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(entity: ReminderLogEntity): Long
+}
+
+@Database(entities = [ReminderLogEntity::class], version = 1, exportSchema = false)
+abstract class ReminderLogDatabase : RoomDatabase() {
+    abstract fun dao(): ReminderLogDao
+
+    companion object {
+        fun open(context: Context): ReminderLogDatabase =
+            Room.databaseBuilder(context.applicationContext, ReminderLogDatabase::class.java, "reminder-log.db").build()
+    }
+}
+
+class ReminderLogRepository(private val dao: ReminderLogDao) {
+    suspend fun wasNotified(recordId: Long, epochDay: Long): Boolean = dao.count(recordId, epochDay) > 0
+
+    suspend fun markNotified(recordId: Long, epochDay: Long) {
+        dao.insert(ReminderLogEntity(recordId, epochDay))
+    }
+}
+`),
+    file(`app/src/main/java/${path}/platform/reminders/DueReminders.kt`, `package ${pkg}.platform.reminders
+
+import java.time.Instant
+import java.time.LocalTime
+import java.time.ZoneId
+
+// A 15-minute tick cannot match an exact HH:MM, so a record is due when its time of day today fell inside
+// the window (previous tick, now]. The window never reaches back past local midnight, and the first tick
+// ever (no previous tick) has an empty window, so a time that passed before the app first ran sends nothing.
+object DueReminders {
+    fun due(times: List<Pair<Long, LocalTime>>, previousTick: Instant?, now: Instant, zone: ZoneId): List<Long> {
+        val today = now.atZone(zone).toLocalDate()
+        // The day starts one nanosecond early so a record at 00:00 is still due after a tick that ran the evening before.
+        val from = maxOf(previousTick ?: now, today.atStartOfDay(zone).toInstant().minusNanos(1))
+        return times.filter { (_, time) ->
+            val at = today.atTime(time).atZone(zone).toInstant()
+            at > from && at <= now
+        }.map { it.first }
+    }
+}
+`),
+    file(`app/src/test/java/${path}/platform/reminders/ReminderLogTest.kt`, `package ${pkg}.platform.reminders
+
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+
+@RunWith(RobolectricTestRunner::class)
+class ReminderLogTest {
+    private val repository = ReminderLogRepository(
+        Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), ReminderLogDatabase::class.java)
+            .allowMainThreadQueries().build().dao(),
+    )
+
+    @Test
+    fun aRecordIsLoggedPerDayAndNotAcrossRecordsOrDays() = runTest {
+        assertFalse(repository.wasNotified(1, 20_000))
+        repository.markNotified(1, 20_000)
+        repository.markNotified(1, 20_000)
+        assertTrue(repository.wasNotified(1, 20_000))
+        assertFalse(repository.wasNotified(2, 20_000))
+        assertFalse(repository.wasNotified(1, 20_001))
+    }
+}
+`),
+    file(`app/src/test/java/${path}/platform/reminders/DueRemindersTest.kt`, `package ${pkg}.platform.reminders
+
+import java.time.Instant
+import java.time.LocalTime
+import java.time.ZoneId
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class DueRemindersTest {
+    private val zone = ZoneId.of("UTC")
+    private fun at(time: String) = Instant.parse("2030-01-15T$time:00Z")
+    private val times = listOf(1L to LocalTime.of(9, 5), 2L to LocalTime.of(9, 5), 3L to LocalTime.of(9, 20), 4L to LocalTime.of(8, 0))
+
+    @Test
+    fun everyRecordWhoseTimePassedSinceThePreviousTickIsDue() {
+        assertEquals(listOf(1L, 2L), DueReminders.due(times, at("09:00"), at("09:15"), zone))
+    }
+
+    @Test
+    fun aTimeExactlyAtNowIsDueAndExactlyAtThePreviousTickIsNot() {
+        assertEquals(listOf(3L), DueReminders.due(times, at("09:15"), at("09:20"), zone))
+        assertEquals(emptyList<Long>(), DueReminders.due(times, at("09:20"), at("09:35"), zone))
+    }
+
+    @Test
+    fun theFirstTickEverSendsNothingAndTheWindowStopsAtMidnight() {
+        assertEquals(emptyList<Long>(), DueReminders.due(times, null, at("09:15"), zone))
+        assertEquals(listOf(4L), DueReminders.due(times, Instant.parse("2030-01-14T23:00:00Z"), at("08:10"), zone))
     }
 }
 `),

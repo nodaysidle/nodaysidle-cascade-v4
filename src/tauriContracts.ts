@@ -37,6 +37,7 @@ const RUST_TYPE: Record<DataValueType, string> = {
   flag: "bool",
   date: "String",
   "date-time": "String",
+  time: "String",
   "text-list": "list of String",
   reference: "i64",
 }

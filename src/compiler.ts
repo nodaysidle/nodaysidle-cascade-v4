@@ -51,6 +51,7 @@ export interface NormalizedBlueprint {
     readonly invokedBy: InvokedBy
     readonly runsEverySeconds: number | null
     readonly runsDailyAt: string | null
+    readonly runsAtField: SemanticBlueprint["features"][number]["runsAtField"]
     readonly resourceIds: readonly string[]
     readonly choices: readonly string[]
     readonly surface: FeatureSurface
@@ -134,6 +135,7 @@ export interface GraphFeature {
   readonly invokedBy: InvokedBy
   readonly runsEverySeconds: number | null
   readonly runsDailyAt: string | null
+  readonly runsAtField: SemanticBlueprint["features"][number]["runsAtField"]
   readonly resourceIds: readonly string[]
   readonly requiredOwnerIds: readonly string[]
   readonly choices: readonly string[]
@@ -351,6 +353,7 @@ function cleanMeaning(value: string): string {
     .replace(providerId, "")
     .replace(documentName, "the applicable contract document")
     .replace(formatToken, (token, name: string) => fillerToken.test(name) ? token : `{${name}}`)
+    .replace(/\beither\s+(?=[a-z]+\s+(?:is|are|has|have|was|were|contains)\b)/gi, "any ")
     .replace(/\beither\s+/gi, "")
     .replace(/\breject\s+or\s+(?:explicitly\s+)?split\b/gi, "reject")
     .replace(/\bchoose (?:one|between)\b/gi, "select")
@@ -526,6 +529,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       invokedBy: feature.invokedBy,
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,
+      runsAtField: feature.runsAtField,
       resourceIds: [],
       usesPlatformNeeds: unique(feature.usesPlatformNeeds),
       usesData: unique(featureDataUses(source, feature).map(name => dataNameByKey.get(referenceKey(name))!)),
@@ -636,7 +640,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       event: "Application launch",
       // A declared background need means some feature must run from launch, such as clipboard recording.
       behavior: presetId === "android-kotlin-compose"
-        ? `The Application's onCreate builds the AppContainer and calls the lifecycle owner's start(container), which ${features.some(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null) ? "starts only the schedules the schedule contracts name" : "starts nothing, because no schedule is declared"}; nothing starts a remote request or a deletion, and the Room database opens on first use.`
+        ? `The Application's onCreate builds the AppContainer and calls the lifecycle owner's start(container), which starts nothing (${features.some(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null || feature.runsAtField !== null) ? "each declared schedule is started by the Application's onCreate alone, as its schedule contract says, so no schedule has two starters" : "no schedule is declared"}); nothing starts a remote request or a deletion, and the Room database opens on first use.`
         : platformNeeds.includes("background-execution")
         ? "Initialize preset-owned state and services and start the declared background features; start no other capture, remote request, or destructive work automatically."
         : "Initialize preset-owned state and services without starting privileged capture, remote requests, or destructive work automatically.",
@@ -923,6 +927,7 @@ const VALUE_TYPE_LABEL: Record<DataValueType, string> = {
   flag: "true/false flag",
   date: "calendar day (local, no time)",
   "date-time": "date and time",
+  time: "time of day, HH:MM 24-hour zero-padded",
   "text-list": "ordered list of text lines",
   reference: "reference to another stored item",
 }
@@ -975,7 +980,7 @@ function storeInterfaceDetail(presetId: PresetId, item: NormalizedBlueprint["dom
   if (presetId === "android-kotlin-compose") {
     const functions = methods({ create: ["insert"], read: ["observeAll", "getById"], update: ["update"], delete: ["delete"] })
     const signatures = operations.flatMap(operation => ({ create: [`suspend fun insert(entity: ${record}Entity): Long`], read: [`fun observeAll() returning a Flow of the list of every ${record}Entity`, `suspend fun getById(id: Long): ${record}Entity?`], update: [`suspend fun update(entity: ${record}Entity)`], delete: [`suspend fun delete(entity: ${record}Entity)`] })[operation])
-    return `Interface: OWN-DATA-STORE owns one Room entity ${record}Entity with the stored fields above, one ${record}Dao with exactly: ${functions.join(", ")}, the one RoomDatabase subclass AppDatabase that lists every records entity (version 1, exportSchema = true; Room writes the schema JSON under app/schemas when the project builds, and that generated file is committed with the data task and exempt from its create-only list), and ${record}Repository over the DAO, all in its owner file; it constructs the database and repository in AppContainer.kt. Kotlin types: id is Long (autoGenerate), text and long-text are String, number is Double, whole-number is Long, flag is Boolean, a date is a Long epoch day (LocalDate.toEpochDay), a date and time is a Long in epoch milliseconds (UTC), a reference is the referenced Long id, an ordered list of text lines is one String joined by newlines; an optional field is nullable. ${record}Repository has exactly these members, with the DAO's semantics: ${signatures.join("; ")}. Feature tasks use the repository and add no entity or query of their own.`
+    return `Interface: OWN-DATA-STORE owns one Room entity ${record}Entity with the stored fields above, one ${record}Dao with exactly: ${functions.join(", ")}, the one RoomDatabase subclass AppDatabase that lists every records entity (version 1, exportSchema = true; Room writes the schema JSON under app/schemas when the project builds, and that generated file is committed with the data task and exempt from its create-only list), and ${record}Repository over the DAO, all in its owner file; it constructs the database and repository in AppContainer.kt. Kotlin types: id is Long (autoGenerate), text and long-text are String, number is Double, whole-number is Long, flag is Boolean, a date is a Long epoch day (LocalDate.toEpochDay), a date and time is a Long in epoch milliseconds (UTC), a time of day is a String HH:MM (zero-padded, validated 00:00 through 23:59 before it is stored, parsed with LocalTime.parse), a reference is the referenced Long id, an ordered list of text lines is one String joined by newlines; an optional field is nullable. observeAll returns the rows ordered by id ascending (creation order); the feature ViewModel does every filter and other sort over that list, and a sort breaks ties by id in the sort's own direction. ${record}Repository has exactly these members, with the DAO's semantics: ${signatures.join("; ")}. Feature tasks use the repository and add no entity or query of their own.`
   }
   if (presetId === "astro-web") {
     const name = `${record}Entries`
@@ -1024,9 +1029,12 @@ function contract(
 }
 
 // Features with a declared schedule, with the files the schedule adds beside the feature's owner file.
-function androidScheduledFeatures(preset: PresetContract, identity: ProjectIdentity, features: readonly GraphFeature[]): AndroidScheduledFeature[] {
-  return features.filter(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null).map(feature => {
+function androidScheduledFeatures(preset: PresetContract, identity: ProjectIdentity, features: readonly GraphFeature[], data: NormalizedBlueprint["domainData"]): AndroidScheduledFeature[] {
+  return features.filter(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null || feature.runsAtField !== null).map(feature => {
     const ownerName = `${pascal(feature.name)}Feature`
+    const declared = feature.runsAtField
+    const record = declared ? data.find(item => referenceKey(item.name) === referenceKey(declared.data)) : undefined
+    const fieldName = (name: string) => record?.fields.find(item => referenceKey(item.name) === referenceKey(name))?.name ?? name
     return {
       id: feature.id,
       name: feature.name,
@@ -1035,18 +1043,31 @@ function androidScheduledFeatures(preset: PresetContract, identity: ProjectIdent
       implementationFile: preset.ownerFiles({ kind: "feature", slug: slug(ownerName), pascalName: ownerName, identity }).implementationFile,
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,
+      at: declared && record ? { record: pascal(record.name), timeField: fieldName(declared.timeField), titleField: fieldName(declared.titleField), body: declared.notificationBody } : null,
       notifies: feature.resourceIds.includes(permissionResourceId("notifications")),
     }
   })
 }
 
-// A feature that is scheduled, or reads or updates a stored date or time, compares with the present moment and needs an injected clock.
+// A feature that is scheduled or reads a stored date or time compares with the present moment and needs an injected clock; one that only writes a date or time stamps it (androidStampFeatureIds).
 function androidClockFeatureIds(blueprint: NormalizedBlueprint, features: readonly GraphFeature[]): Set<string> {
-  const ids = new Set(features.filter(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null).map(feature => feature.id))
+  const ids = new Set(features.filter(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null || feature.runsAtField !== null).map(feature => feature.id))
   for (const item of blueprint.domainData.filter(entry => entry.fields.some(field => field.valueType === "date-time" || field.valueType === "date"))) {
     for (const featureId of dataFeatureIds(item.name, features)) {
       const reader = features.find(feature => feature.id === featureId)
-      if (reader && opsOn(reader, item.name).some(operation => operation === "read" || operation === "update")) ids.add(featureId)
+      if (reader && opsOn(reader, item.name).includes("read")) ids.add(featureId)
+    }
+  }
+  return ids
+}
+
+// A feature that writes a stored date or time without reading one only stamps it from the injected clock.
+function androidStampFeatureIds(blueprint: NormalizedBlueprint, features: readonly GraphFeature[]): Set<string> {
+  const compares = androidClockFeatureIds(blueprint, features)
+  const ids = new Set<string>()
+  for (const item of blueprint.domainData.filter(entry => entry.fields.some(field => field.valueType === "date-time" || field.valueType === "date"))) {
+    for (const feature of features.filter(candidate => dataFeatureIds(item.name, features).includes(candidate.id) && !compares.has(candidate.id))) {
+      if (opsOn(feature, item.name).some(operation => operation === "create" || operation === "update")) ids.add(feature.id)
     }
   }
   return ids
@@ -1075,22 +1096,22 @@ function mainDetailControls(features: readonly GraphFeature[]): string {
 const opsOnAny = (feature: GraphFeature): readonly DataOperation[] => feature.dataOperations
 
 // The slots the first main-surface task exposes are the ones the declared operations of the other features need.
-function mainSlotsSentence(features: readonly GraphFeature[]): string {
+function mainSlotsSentence(features: readonly GraphFeature[], detailView = true): string {
   const ops = new Set(features.flatMap(feature => feature.dataOperations))
   const slots = [
     "a status area shared by every message the main screen shows (empty state, no match, errors)",
     ...(ops.has("create") ? ["an add-entry control that opens the entry form shell (the add task builds the form fields and validation; an edit task reuses them)"] : []),
-    ...(ops.has("update") || ops.has("delete") ? ["a per-row action area on every list row", `a detail view for the selected record that shows every stored field${mainDetailControls(features)}, built only if an acceptance criterion of a later task opens a record to edit or delete it`] : []),
+    ...(ops.has("update") || ops.has("delete") ? ["a per-row action area on every list row", ...(detailView ? [`a detail view for the selected record that shows every stored field${mainDetailControls(features)}, built only if an acceptance criterion of a later task opens a record to edit or delete it`] : [])] : []),
     ...(features.some(feature => feature.surface === "main" && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read")) ? ["a filter area above the list for read-only features that narrow or reorder it"] : []),
   ]
   return `Expose exactly these named slots in the shared files, no others: ${slots.join("; ")}. Later feature tasks build their controls in their own files and mount them into these slots, editing only the shared registration files; build no control that no later task names.`
 }
 
 // The slot a later feature task mounts into, from its declared operations.
-function slotFor(owned: readonly GraphFeature[]): string {
+function slotFor(owned: readonly GraphFeature[], detailView = true): string {
   const ops = new Set(owned.flatMap(feature => feature.dataOperations))
   if (ops.has("create")) return "the add-entry control"
-  if (ops.has("update") || ops.has("delete")) return "the per-row action area or the detail view, whichever your acceptance criteria describe"
+  if (ops.has("update") || ops.has("delete")) return detailView ? "the per-row action area or the detail view, whichever your acceptance criteria describe" : "the per-row action area"
   return "the filter area or the list region"
 }
 
@@ -1196,7 +1217,7 @@ function buildOwnersAndContracts(
   }
 
   if (preset.id === "android-kotlin-compose") {
-    for (const feature of androidScheduledFeatures(preset, identity, features)) {
+    for (const feature of androidScheduledFeatures(preset, identity, features, blueprint.domainData)) {
       const schedule = androidScheduleContract(identity, feature)
       contracts.push(contract(schedule.id, "lifecycle", schedule.name, [feature.id], features.find(item => item.id === feature.id)!.ownerId, schedule.decision, schedule.details, schedule.failureBehavior, schedule.recovery))
     }
@@ -1564,7 +1585,9 @@ function buildPhases(
   const foundationCriteria = [
     "Every foundation file exists at the exact listed path.",
     `The locked identity is ${identity.bundleId}.`,
-    `The implementation marker is ${preset.implementationMarker}${preset.id === "linux-hyprland-waybar-module" ? ` (the Waybar module key prefix; this module's key is custom/${identity.slug})` : ""}.`,
+    preset.id === "android-kotlin-compose"
+      ? `ContractTest asserts that app/build.gradle.kts declares ${identity.bundleId} as the namespace and applicationId and that App.kt declares the App composable.`
+      : `The implementation marker is ${preset.implementationMarker}${preset.id === "linux-hyprland-waybar-module" ? ` (the Waybar module key prefix; this module's key is custom/${identity.slug})` : ""}.`,
     ...(preset.id === "astro-web" ? ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS.map(script => `package.json defines npm run ${script}.`) : []),
   ]
   const foundationTask: GraphTask = {
@@ -1625,15 +1648,19 @@ function buildPhases(
     const ownedFeatureIds = ownedFeatures.map(feature => feature.id)
     const ownedAcceptance = acceptance.filter(item => item.ownerId === draft.id)
     const routeExtras = placement?.kind === "page" && placement.pageFile !== files.implementationFile ? [placement.pageFile] : []
+    // Android exposes a detail view (and an edit that reuses the add form) only when a feature declares the item-page surface.
+    const detailView = preset.id !== "android-kotlin-compose" || features.some(feature => feature.surface === "item-page")
     const androidExtras = preset.id === "android-kotlin-compose" && blueprint
       ? androidTaskExtras({
           kind: draft.kind,
           identity,
-          scheduled: androidScheduledFeatures(preset, identity, ownedFeatures),
+          scheduled: androidScheduledFeatures(preset, identity, ownedFeatures, blueprint.domainData),
           clockDependent: ownedFeatures.some(feature => androidClockFeatureIds(blueprint, features).has(feature.id)),
+          stamps: ownedFeatures.some(feature => androidStampFeatureIds(blueprint, features).has(feature.id)),
           notifications: blueprint.permissionNeeds.some(item => item.capability === "notifications"),
           focusedTestFile: files.focusedTestFile,
           firstMain: draft.id === firstMainOwnerId,
+          detailView,
         })
       : undefined
     const filesToCreate = unique([
@@ -1675,7 +1702,7 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(features)}` : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(ownedFeatures)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${ownedFeatures.some(feature => opsOnAny(feature).includes("update")) && features.some(feature => opsOnAny(feature).includes("create")) ? " Reuse the form fields and validation that the add task exports from its own file; do not duplicate them." : ""}` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? " Content entry files under src/content/ are also yours: create one file per entry the idea names and delete that collection's sample-entry.md; keep the sample entry when the idea names none (see Content Seed Requirements)." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(features, detailView)}` : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.length > 0 && ownedFeatures.every(feature => feature.invokedBy === "schedule") ? " This feature runs by itself and adds no control to the main screen: it mounts into no slot." : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") && !ownedFeatures.every(feature => feature.invokedBy === "schedule") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(ownedFeatures, detailView)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${detailView && ownedFeatures.some(feature => opsOnAny(feature).includes("update")) && features.some(feature => opsOnAny(feature).includes("create")) ? " Reuse the form fields and validation that the add task exports from its own file; do not duplicate them." : ""}` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? " Content entry files under src/content/ are also yours: create one file per entry the idea names and delete that collection's sample-entry.md; keep the sample entry when the idea names none (see Content Seed Requirements)." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
       // An Astro page or packaging test asserts on the HTML that a production build emits into dist/, so the build runs first.
       validationCommands: unique([
         ...(preset.id === "astro-web" && (draft.kind === "feature" || draft.kind === "packaging") ? ["npm run build"] : []),
@@ -1757,7 +1784,10 @@ function lockedStackFor(preset: PresetContract, blueprint: NormalizedBlueprint):
     return http ? preset.allowedTechnologies : preset.allowedTechnologies.filter(technology => technology !== "reqwest" && !technology.startsWith("tokio-tungstenite"))
   }
   // The kit declares WorkManager only for a declared schedule.
-  if (preset.id === "android-kotlin-compose") return androidKitNeeds(blueprint).schedule ? preset.allowedTechnologies : preset.allowedTechnologies.filter(technology => technology !== "WorkManager")
+  if (preset.id === "android-kotlin-compose") {
+    const needs = androidKitNeeds(blueprint)
+    return preset.allowedTechnologies.filter(technology => (needs.schedule || technology !== "WorkManager") && (needs.settings || technology !== "DataStore"))
+  }
   if (preset.id !== "linux-hyprland-waybar-module" && preset.id !== "linux-wayland-gtk4-desktop") return preset.allowedTechnologies
   const { records, secrets, http } = rustKitHelpers(blueprint)
   const launchers = preset.id === "linux-hyprland-waybar-module" ? waybarLaunchers(blueprint) : { pages: [], notifies: false }
@@ -1800,6 +1830,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       invokedBy: feature.invokedBy,
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,
+      runsAtField: feature.runsAtField,
       resourceIds: feature.resourceIds,
       requiredOwnerIds: [],
       choices: feature.choices,

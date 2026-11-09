@@ -78,12 +78,14 @@ const FeatureSchema = z.strictObject({
   runsEverySeconds: z.number().int().min(1).max(604800).nullable().default(null),
   // A fixed local time of day the feature runs, as HH:MM; null otherwise.
   runsDailyAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().default(null),
+  // A reminder whose time of day is a stored record's field: the data object, its time field, the text field that titles the notification, and the constant notification body (quoted in acceptanceSignals); null otherwise.
+  runsAtField: z.strictObject({ data: shortMeaning, timeField: shortMeaning, titleField: shortMeaning, notificationBody: compactMeaning }).nullable().default(null),
 })
 
 export const DataStorageSchema = z.enum(["settings", "records", "document", "app-files", "secret", "temporary", "session"])
 export const DataWriteModeSchema = z.enum(["direct", "atomic-replace"])
 
-export const DataValueTypeSchema = z.enum(["text", "long-text", "number", "whole-number", "flag", "date", "date-time", "text-list", "reference"])
+export const DataValueTypeSchema = z.enum(["text", "long-text", "number", "whole-number", "flag", "date", "date-time", "time", "text-list", "reference"])
 
 const DataFieldSchema = z.strictObject({
   name: shortMeaning,
@@ -532,8 +534,27 @@ function dataShapeIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
     }
   })
   blueprint.features.forEach((feature, index) => {
-    if (feature.runsEverySeconds !== null && feature.runsDailyAt !== null) {
-      issues.push({ path: `features[${index}]`, rule: "semantic.two-schedules", message: `Feature '${feature.name}' declares both an interval and a daily time.` })
+    if ([feature.runsEverySeconds !== null, feature.runsDailyAt !== null, feature.runsAtField !== null].filter(Boolean).length > 1) {
+      issues.push({ path: `features[${index}]`, rule: "semantic.two-schedules", message: `Feature '${feature.name}' declares more than one of runsEverySeconds, runsDailyAt, and runsAtField.` })
+    }
+    const at = feature.runsAtField
+    if (at !== null) {
+      const path = `features[${index}].runsAtField`
+      const data = blueprint.dataObjects.find(item => referenceKey(item.name) === referenceKey(at.data))
+      const field = (name: string) => data?.fields.find(item => referenceKey(item.name) === referenceKey(name))
+      if (!data || data.storage !== "records" || !feature.usesData.some(name => referenceKey(name) === referenceKey(at.data))) {
+        issues.push({ path, rule: "semantic.run-at-data", message: `Feature '${feature.name}' runsAtField.data '${at.data}' must be a records data object in its usesData.` })
+      } else {
+        if (field(at.timeField)?.valueType !== "time") issues.push({ path, rule: "semantic.run-at-time-field", message: `runsAtField.timeField '${at.timeField}' must be a field of '${data.name}' with valueType time.` })
+        if (field(at.titleField)?.valueType !== "text") issues.push({ path, rule: "semantic.run-at-title-field", message: `runsAtField.titleField '${at.titleField}' must be a text field of '${data.name}'.` })
+      }
+      if (!feature.dataOperations.some(entry => referenceKey(entry.data) === referenceKey(at.data) && entry.operations.includes("read"))) {
+        issues.push({ path, rule: "semantic.run-at-read", message: `Feature '${feature.name}' must declare the read operation on '${at.data}' in dataOperations, because it reads every record to find the due ones.` })
+      }
+      const normal = (value: string) => value.replace(/\s+/g, " ").trim().toLowerCase()
+      if (!feature.acceptanceSignals.some(signal => normal(signal).includes(normal(at.notificationBody)))) {
+        issues.push({ path: `${path}.notificationBody`, rule: "semantic.run-at-body", message: `Feature '${feature.name}' notificationBody must be quoted exactly in one of its acceptanceSignals.` })
+      }
     }
   })
   blueprint.dataObjects.forEach((item, index) => {
@@ -631,9 +652,9 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     ...(input.trayAvailable === false ? ["The selected preset has no tray surface. Set usesTray to false for every feature: the preset's own surface (a bar module, web page, or mobile screen) is not a tray."] : []),
     "For every feature, set buildsOn to the names of the other features whose screen, list, or state it extends (for example a search or filter feature builds on the feature that shows the list); leave it empty for a feature that stands alone. The first screen a user sees is built by a feature that builds on nothing. Never form a cycle.",
     "For every feature, set dataOperations with one entry per data object the feature changes or reads: data is the exact dataObject name (it must also be in usesData) and operations lists what the feature does to that object: create, read, update, delete. A feature that only reads a data object lists read for it. Declare delete only when the idea explicitly asks the user to remove something; then no other text may promise removal. A dataObject's retentionIntent must not mention deleting or removing unless a feature declares delete.",
-    "For every dataObject stored as records or document, list its fields: one entry per value the app keeps (name and valueType: text, long-text, number, whole-number, flag, date for a calendar day with no time of day, date-time for a moment in time, text-list, reference). Do not list an id; the compiler adds one. Other storage kinds may leave fields empty.",
+    "For every dataObject stored as records or document, list its fields: one entry per value the app keeps (name and valueType: text, long-text, number, whole-number, flag, date for a calendar day with no time of day, date-time for a moment in time, time for a local time of day written HH:MM, text-list, reference). Do not list an id; the compiler adds one. Other storage kinds may leave fields empty.",
     "Never invent a keyboard shortcut, key combination, command name, or menu path. Say 'a global shortcut' or 'a keyboard shortcut' unless the idea itself names the keys.",
-    "For a feature that runs by itself, set runsEverySeconds to the exact interval the idea states in seconds (30 minutes is 1800), or runsDailyAt to the stated local time as HH:MM; otherwise leave both null. Mark a record field optional only when a value can legitimately be missing, for example the end time of something still running.",
+    "For a feature that runs by itself, set runsEverySeconds to the exact interval the idea states in seconds (30 minutes is 1800), or runsDailyAt to the stated local time as HH:MM; otherwise leave both null. For a reminder whose time of day is a stored field of each record (for example a per-item time), leave both null and set runsAtField to the records data object, its time-valued field, its text field that titles the notification, and the constant notification body, which must be quoted exactly in one of the feature acceptanceSignals; declare no data object to remember which reminders were sent. Mark a record field optional only when a value can legitimately be missing, for example the end time of something still running.",
     "For every external service, set endpoint to the real, documented HTTPS URL of a public API that fits the purpose, and list the response values the app reads in responseFields. Use only an API you are confident exists; the app never needs an API key unless credentialRequired is true.",
     "Do not create a feature for restoring data after a restart or for loading data when the app starts: persistence and restoring belong to the feature that shows or uses the data. Write failure outcomes and acceptance signals as conditions the finished app can show or a test can assert; never describe an error message for something the stack cannot produce at run time.",
     ...(input.presetNotes ?? []),

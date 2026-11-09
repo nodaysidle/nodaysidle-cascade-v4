@@ -19,6 +19,7 @@ const feature = (name: string, behavior: string, acceptance: string, uses: Parti
   invokedBy: "user-control",
   runsEverySeconds: null,
   runsDailyAt: null,
+  runsAtField: null,
   ...uses,
 })
 

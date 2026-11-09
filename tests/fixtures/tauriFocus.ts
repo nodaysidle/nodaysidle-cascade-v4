@@ -25,6 +25,7 @@ function feature(name: string, behavior: string, acceptance: string, uses: Parti
     dataOperations: [],
     runsEverySeconds: null,
     runsDailyAt: null,
+    runsAtField: null,
     ...uses,
   }
 }

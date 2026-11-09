@@ -46,6 +46,7 @@ function feature(name: string, userOutcome: string, behavior: string, acceptance
     invokedBy: uses.invoked ?? (uses.runsEvery ? "schedule" : "user-control"),
     runsEverySeconds: uses.runsEvery ?? null,
     runsDailyAt: null,
+    runsAtField: null,
   }
 }
 

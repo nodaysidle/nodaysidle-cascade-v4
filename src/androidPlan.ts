@@ -18,6 +18,8 @@ export interface AndroidScheduledFeature {
   readonly implementationFile: string
   readonly runsEverySeconds: number | null
   readonly runsDailyAt: string | null
+  // Per-record reminder: the stored record whose time field decides when each reminder is due.
+  readonly at: { readonly record: string; readonly timeField: string; readonly titleField: string; readonly body: string } | null
   readonly notifies: boolean
 }
 
@@ -46,7 +48,10 @@ const NO_DIRECT_TIME = "no code calls LocalDate.now(), Instant.now(), or System.
 export function androidScheduleContract(identity: ProjectIdentity, feature: AndroidScheduledFeature) {
   const files = androidScheduleFiles(identity, feature)
   const application = `${identity.pascalName}Application`
-  const delay = feature.runsDailyAt !== null
+  const at = feature.at
+  const delay = at !== null
+    ? `Tick rule: periodic work cannot run at an exact HH:MM and WorkManager's minimum repeat interval is 900 seconds, so ${feature.pascal}Scheduler.enqueue(workManager) builds PeriodicWorkRequest.Builder(${feature.pascal}Worker::class.java, 15, TimeUnit.MINUTES) with no initial delay and calls enqueueUniquePeriodicWork("${feature.slug}", ExistingPeriodicWorkPolicy.KEEP, request); the platform may run a tick later than 15 minutes (Doze, battery limits) and never earlier. No lifecycle-scoped coroutine, in-app timer, or exact alarm repeats this check: the only sender is the Worker, so a reminder is never sent from two places. Each tick the Worker reads the previous tick (SettingsRepository.lastTickEpochMs("${feature.slug}")), computes the due record ids with DueReminders.due(times, previousTick, clock.instant(), clock.zone) from every ${at.record} read through ${at.record}Repository (its ${at.timeField} as LocalTime.parse), and records the new tick (SettingsRepository.recordTick("${feature.slug}", clock.millis())) after it has posted. DueReminders (app platform/reminders/DueReminders.kt) is in the kit and already tested: a record is due when its ${at.timeField} today fell after the previous tick and not after now, the window never reaches back past local midnight, and the first tick ever sends nothing.`
+    : feature.runsDailyAt !== null
     ? (() => {
         const [hour, minute] = feature.runsDailyAt.split(":").map(Number)
         return `Delay rule: periodic work cannot run at an exact time, so ${feature.pascal}Scheduler.enqueue(workManager, clock) builds PeriodicWorkRequest.Builder(${feature.pascal}Worker::class.java, 24, TimeUnit.HOURS) with setInitialDelay(ScheduleMath.initialDelay(clock, LocalTime.of(${hour}, ${minute}))) and calls enqueueUniquePeriodicWork("${feature.slug}", ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE, request), so every launch recomputes the delay against the clock. The initial delay is the wait until the next ${feature.runsDailyAt} local time (today when it is still ahead, tomorrow when it has passed), then the period is 24 hours. ScheduleMath (app platform/ScheduleMath.kt) is in the kit and already tested. The platform may run the work later than ${feature.runsDailyAt} (Doze, battery limits) and never earlier.`
@@ -58,15 +63,20 @@ export function androidScheduleContract(identity: ProjectIdentity, feature: Andr
     decision: `${feature.name} runs on its declared schedule through WorkManager, owned by the files below. A scheduled run is not a retry and never waits for a user action.`,
     details: [
       `Worker: ${files.worker} defines ${feature.pascal}Worker, a CoroutineWorker whose doWork() reads the repositories from (applicationContext as ${application}).container, does the feature's work once, and returns Result.success() after every run, including a run that failed or had nothing to do; it never returns Result.retry(), because the next scheduled run is the recovery.`,
-      ...(feature.notifies
-        ? [`Notification channel: ${files.scheduler} defines ${feature.pascal}Scheduler.registerChannel(context), which creates a NotificationChannel with id "${feature.slug}" and name "${feature.name}" (IMPORTANCE_DEFAULT) and is safe to call on every launch; the Worker posts through that channel only when NotificationManagerCompat.areNotificationsEnabled() is true and otherwise posts nothing and still returns Result.success(). The notification uses the feature name as its title, the sentence the feature's behavior gives as its text, the platform icon android.R.drawable.ic_dialog_info (add no resource file), and a PendingIntent.FLAG_IMMUTABLE content intent that opens MainActivity. No screen shows the notification status unless a feature declares one.`]
+      ...(at !== null
+        ? [`Reminder log: ReminderLogRepository (kit, app platform/reminders/ReminderLog.kt, provided as AppContainer.reminderLog) holds one row per (${at.record} id, local epoch day), with wasNotified(recordId, epochDay) and markNotified(recordId, epochDay). For every due id the Worker skips the record when wasNotified(id, LocalDate.now(clock).toEpochDay()) is true; otherwise it posts that record's notification and then calls markNotified. Several records, including records with the same time or the same ${at.titleField}, each get their own notification (notification id = the record id) and their own log row. This log is the only once-per-day state of the reminder: no data object, no SettingsRepository key, and no lastRunEpochDay is added for it.`]
         : []),
-      `Run state: the epoch day (LocalDate.now(clock).toEpochDay()) on which this schedule last sent or deliberately skipped its run is kept in SettingsRepository under the schedule name "${feature.slug}" (lastRunEpochDay("${feature.slug}") and recordRun("${feature.slug}", epochDay), both already in the kit and tested). doWork() reads it first and does nothing when it equals today, so a day is never notified twice; it records today after it sends and after the feature's own skip rule applies, so a skipped day stays skipped. No other store holds this state and no data object is added for it.`,
-      `Enqueue point: ${application}.onCreate calls ${feature.notifies ? `${feature.pascal}Scheduler.registerChannel(this) and then ` : ""}${feature.pascal}Scheduler.enqueue(container.workManager, container.clock) right after the container is created. AppContainer.kt already provides workManager and clock.`,
+      ...(feature.notifies
+        ? [`Notification channel: ${files.scheduler} defines ${feature.pascal}Scheduler.registerChannel(context), which creates a NotificationChannel with id "${feature.slug}" and name "${feature.name}" (IMPORTANCE_DEFAULT) and is safe to call on every launch; the Worker posts through that channel only when NotificationManagerCompat.areNotificationsEnabled() is true and otherwise posts nothing and still returns Result.success(). ${at !== null ? `The notification title is the record's ${at.titleField} value and its text is exactly "${at.body}" (stated in the feature's acceptance); the Worker adds no other text and invents none` : "The notification uses the feature name as its title, the sentence the feature's behavior gives as its text"}, the platform icon android.R.drawable.ic_dialog_info (add no resource file), and a PendingIntent.FLAG_IMMUTABLE content intent that opens MainActivity. No screen shows the notification status unless a feature declares one.`]
+        : []),
+      ...(at !== null ? [] : [`Run state: the epoch day (LocalDate.now(clock).toEpochDay()) on which this schedule last sent or deliberately skipped its run is kept in SettingsRepository under the schedule name "${feature.slug}" (lastRunEpochDay("${feature.slug}") and recordRun("${feature.slug}", epochDay), both already in the kit and tested). doWork() reads it first and does nothing when it equals today, so a day is never notified twice; it records today after it sends and after the feature's own skip rule applies, so a skipped day stays skipped. No other store holds this state and no data object is added for it.`]),
+      `Enqueue point: ${application}.onCreate is the one owner that starts this schedule: it calls ${feature.notifies ? `${feature.pascal}Scheduler.registerChannel(this) and then ` : ""}${feature.pascal}Scheduler.enqueue(container.workManager${at !== null ? "" : ", container.clock"}) right after the container is created. AppContainer.kt already provides workManager and clock${at !== null ? " and reminderLog" : ""}. The lifecycle owner's start(container) does not enqueue it and starts nothing for it.`,
       delay,
-      `Clock: every time read, the initial delay and any comparison with today or now, uses the injected java.time.Clock (AppContainer.clock in production, Clock.fixed in tests); ${NO_DIRECT_TIME}.`,
+      `Clock: every time read, ${at !== null ? "the tick window and the log day" : "the initial delay"} and any comparison with today or now, uses the injected java.time.Clock (AppContainer.clock in production, Clock.fixed in tests); ${NO_DIRECT_TIME}.`,
       `Manifest: ${application} is already the manifest's application class${feature.notifies ? "; PermissionCoordinator adds the POST_NOTIFICATIONS uses-permission entry" : ""}; declare no SCHEDULE_EXACT_ALARM or foreground-service entry; WorkManager's initializer merges in by itself.`,
-      `Tests: ${files.schedulerTest} uses Clock.fixed to assert the initial delay before, at, and after the scheduled time, and TestListenableWorkerBuilder to assert the Worker's result${feature.notifies ? " with notifications enabled and disabled" : ""}; ScheduleMathTest in the kit already covers ScheduleMath itself.`,
+      at !== null
+        ? `Tests: ${files.schedulerTest} asserts that enqueue creates unique periodic work "${feature.slug}" with a 15-minute period and no initial delay and that a second enqueue leaves one work item, and uses TestListenableWorkerBuilder with Clock.fixed and the real ReminderLogRepository (in-memory Room) to assert the Worker's result${feature.notifies ? " with notifications enabled and disabled" : ""}, one notification per due ${at.record} (including two with the same time), no second notification for the same (${at.record} id, day) on the next tick, and none for a ${at.record} whose time is not yet due; DueRemindersTest and ReminderLogTest in the kit already cover those two classes.`
+        : `Tests: ${files.schedulerTest} uses Clock.fixed to assert the initial delay before, at, and after the scheduled time, and TestListenableWorkerBuilder to assert the Worker's result${feature.notifies ? " with notifications enabled and disabled" : ""}; ScheduleMathTest in the kit already covers ScheduleMath itself.`,
     ],
     failureBehavior: "A failed run changes no stored data, posts nothing partial, and is followed by the next scheduled run.",
     recovery: ["The next scheduled run is the recovery; no scheduled run is retried and none waits for a user action."],
@@ -84,9 +94,12 @@ export function androidTaskExtras(input: {
   readonly identity: ProjectIdentity
   readonly scheduled: readonly AndroidScheduledFeature[]
   readonly clockDependent: boolean
+  // The feature writes a stored date or time without comparing one with now: it only stamps it.
+  readonly stamps?: boolean
   readonly notifications: boolean
   readonly focusedTestFile: string
   readonly firstMain?: boolean
+  readonly detailView?: boolean
 }): AndroidTaskExtras {
   const { identity } = input
   const create: string[] = []
@@ -99,19 +112,26 @@ export function androidTaskExtras(input: {
     notes.push(`This feature runs on a schedule: create ${files.worker}, ${files.scheduler}, and ${files.schedulerTest}, and wire them into ${applicationFile(identity)} exactly as CON-${feature.id.replace(/^FEAT-/, "")}-SCHEDULE says.`)
   }
   if (input.clockDependent) {
-    notes.push(`Time rule: this feature is scheduled or reads a stored date or time; every comparison of one with today or now takes a java.time.Clock (AppContainer.clock in production), and when its behavior or acceptance has such a boundary, ${input.focusedTestFile} passes Clock.fixed dates before, on, and after it; ${NO_DIRECT_TIME}.`)
+    notes.push(`Time rule: this feature is scheduled or reads a stored date or time; every comparison of one with today or now takes a java.time.Clock (AppContainer.clock in production), and when its behavior or acceptance has such a boundary, ${input.focusedTestFile} passes Clock.fixed dates before, on, and after it; ${NO_DIRECT_TIME}. A status the screen derives from today is recomputed from the clock on every resume (Lifecycle.Event.ON_RESUME) and after every write; no timer exists for it unless a schedule contract names one.`)
+  }
+  if (input.stamps) {
+    notes.push(`Stamp rule: a stored date or time this feature writes that the user does not enter (a creation or completion moment) is stamped from AppContainer.clock (clock.millis() for a date and time, LocalDate.now(clock).toEpochDay() for a date), and ${input.focusedTestFile} then passes a fixed java.time.Clock and asserts the stored value equals it; ${NO_DIRECT_TIME}. A date the user enters is stored as entered. Nothing here compares a stored value with now, so no before/on/after boundary applies.`)
   }
   if (input.kind === "data") {
     notes.push("Room writes the schema JSON app/schemas/(the AppDatabase class name)/1.json when the project builds (the kit sets room.schemaLocation); that file is generated build output, committed with this task, and is not part of the create-only list.")
   }
   if (input.firstMain) {
-    notes.push("Every list row and detail view shows every stored field the PRD says that list or view shows, in the form the stored value has (for a date, the formatted date); a value an acceptance outcome asserts on screen is shown there too.")
+    notes.push(`Every list row${input.detailView ? " and detail view" : ""} shows every stored field the PRD says that list${input.detailView ? " or view" : ""} shows, in the form the stored value has (for a date, the formatted date); a value an acceptance outcome asserts on screen is shown there too.`)
   }
   if (input.kind === "permission" && input.notifications) {
     modify.push(`app/src/main/java/${identity.packagePath}/MainActivity.kt`)
     notes.push("Notification flow: put the one first-launch request flow in PermissionCoordinator.kt and call it from MainActivity.onCreate as CON-PERMISSION-NOTIFICATIONS says; the recorded state lives in SettingsRepository.notificationPermissionState, which the kit already provides.")
   }
+  if (input.kind === "lifecycle") {
+    notes.push("LifecycleCoordinator API: `fun start(container: AppContainer)` and `fun stop()`. Both have empty bodies unless a contract names a coroutine the coordinator must own, and then they start and cancel only that coroutine; neither ever enqueues WorkManager work, because each schedule contract names the Application as its one starter.")
+  }
   if (input.kind === "packaging") {
+    notes.push("Packaging API: Packaging.kt defines `fun assertProductionWiring(container: AppContainer)`, which throws IllegalStateException naming the first container dependency that is not its concrete production type; the packaging test calls it on a production container.")
     modify.push(applicationFile(identity), `app/src/main/java/${identity.packagePath}/MainActivity.kt`)
     notes.push(`${ANDROID_DEVICE_GATE_RULE} Device gates: ${ANDROID_DEVICE_COMMANDS.map(command => `\`${command}\``).join("; ")}.`)
   }
