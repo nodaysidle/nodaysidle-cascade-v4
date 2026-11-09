@@ -1,4 +1,5 @@
 import { allocateStableIds, pascal, slug, type GraphContract, type GraphPhase, type NormalizedBlueprint } from "./compiler"
+import { clockInitial } from "./schema"
 import { gtkKitFlags, rustKitHelpers } from "./kits"
 import type { PresetContract } from "./presets"
 
@@ -166,10 +167,13 @@ export function refineGtkPhases(phases: readonly GraphPhase[], blueprint: Normal
     const edited = blueprint.features.some(feature => feature.editsRecords)
     // A single flag that a mark action flips and no form edits is set by the app (false), so it is not a user-supplied input.
     // The flag a mark action flips is set by the app (false at add) whether or not an edit feature exists: the edit form changes the user-entered fields only.
-    const appSet = flags.length === 1 && marked ? flags[0]! : undefined
-    const names = item.fields.filter(field => field !== appSet).map(field => field.name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value")
+    const legacyFlag = flags.length === 1 && marked ? flags[0]! : undefined
+    // A field with a declared initial value is set by the app at creation, so it is no input and no argument.
+    const appSet = item.fields.filter(field => field === legacyFlag || clockInitial(field) || (field.initial ?? "") !== "")
+    const names = item.fields.filter(field => !appSet.includes(field)).map(field => field.name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value")
+    const setNote = (field: typeof appSet[number]): string => clockInitial(field) ? `the add function stamps ${field.name.toLowerCase()} from the Clock trait when the record is created (today's date, or the current moment, from the clock it is given; tests pass a fixed clock)` : `the app sets ${field.name.toLowerCase()} to ${(field.initial ?? "") !== "" ? `"${field.initial}"` : "false"} itself inside validate`
     const numeric = item.fields.some(field => field.valueType === "number" || field.valueType === "whole-number")
-    return [`The validate function is validate_${slug(item.name).replaceAll("-", "_")}(${names.map(name => `${name}: &str`).join(", ")}) returning Ok with New${pascal(item.name)} or Err(ValidationError), where ValidationError is an enum in your file with one variant per rejected rule; it trims a text argument only to check it for emptiness and length, and returns a short text field trimmed and a long text field exactly as entered${numeric ? "; a number is typed in a GtkEntry and parsed by validate, never set through a GtkSpinButton range, so an out-of-range value reaches validate and disables Save" : ""}${edited ? "; an edit task calls the same function" : ""}.${appSet ? ` The app sets ${appSet.name.toLowerCase()} to false itself inside validate; it is not a parameter and the form has no input for it${edited ? "; an edit leaves it unchanged" : ""}.` : ""}`]
+    return [`The validate function is validate_${slug(item.name).replaceAll("-", "_")}(${names.map(name => `${name}: &str`).join(", ")}) returning Ok with New${pascal(item.name)} or Err(ValidationError), where ValidationError is an enum in your file with one variant per rejected rule; it trims a text argument only to check it for emptiness and length, and returns a short text field trimmed and a long text field exactly as entered${numeric ? "; a number is typed in a GtkEntry and parsed by validate, never set through a GtkSpinButton range, so an out-of-range value reaches validate and disables Save; a parsed number must be finite (f64 parsing accepts NaN and inf, which validate rejects)" : ""}${edited ? "; an edit task calls the same function" : ""}.${appSet.length ? ` ${appSet.map(setNote).join("; ")}; ${appSet.length === 1 ? "it is" : "they are"} not ${appSet.length === 1 ? "a parameter" : "parameters"} of validate or form_state and the form has no input for ${appSet.length === 1 ? "it" : "them"}${edited ? "; an edit leaves it unchanged" : ""}.`.replace(/^ the/, " The") : ""}`]
   }
   // The dialog's Save button label is the first double-quoted text of an acceptance signal that mentions a button, else "Add".
   const formFacts = (creators: readonly NormalizedBlueprint["features"][number][]): string[] => {

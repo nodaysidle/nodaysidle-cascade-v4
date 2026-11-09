@@ -101,6 +101,8 @@ export function androidTaskExtras(input: {
   readonly clockDependent: boolean
   // The feature writes a stored date or time without comparing one with now: it only stamps it.
   readonly stamps?: boolean
+  // An owned feature creates a record with a date or date-time the app stamps from the clock (initial today or now).
+  readonly clockInitial?: boolean
   readonly notifications: boolean
   readonly focusedTestFile: string
   readonly firstMain?: boolean
@@ -146,7 +148,7 @@ export function androidTaskExtras(input: {
     notes.push(`Time rule: this applies only to a comparison of a stored date or time with today or now (a scheduled feature always has one); a feature that only shows or stores dates adds no clock use and no resume recompute. Every such comparison takes a java.time.Clock (AppContainer.clock in production), and when its behavior or acceptance has such a boundary, ${input.focusedTestFile} passes Clock.fixed dates before, on, and after it; ${NO_DIRECT_TIME}.${input.screen === false ? "" : " A status the screen derives from today (only when one exists) is recomputed from the clock on every resume (Lifecycle.Event.ON_RESUME) and after every write; no timer exists for it unless a schedule contract names one."}`)
   }
   if (input.stamps) {
-    notes.push(`Stamp rule: a stored date or time this feature writes that the user does not enter (a creation or completion moment) is stamped from AppContainer.clock (clock.millis() for a date and time, LocalDate.now(clock).toEpochDay() for a date), and ${input.focusedTestFile} then passes a fixed java.time.Clock and asserts the stored value equals it; ${NO_DIRECT_TIME}. A date the user enters is stored as entered, and every stored date or time is displayed as ${ANDROID_DISPLAY_FORMATS}. Nothing here compares a stored value with now, so no before/on/after boundary applies.`)
+    notes.push(`Stamp rule: a stored date or time this feature writes that the user does not enter (a creation or completion moment) is stamped from AppContainer.clock (clock.millis() for a date and time, LocalDate.now(clock).toEpochDay() for a date), and ${input.focusedTestFile} then passes a fixed java.time.Clock and asserts the stored value equals it; ${NO_DIRECT_TIME}. ${input.clockInitial ? "A field declared with initial today or now is no input and no argument of the validate or form functions: the add function takes the clock (AppContainer.clock) and sets it itself, and its test passes a fixed Clock and asserts the stored value. An edit leaves it unchanged. " : ""}A date the user enters is stored as entered, and every stored date or time is displayed as ${ANDROID_DISPLAY_FORMATS}.${input.clockDependent ? "" : " When this feature's behavior or acceptance compares a stored date with today (a control that is disabled for today), that comparison takes the same injected clock and its test passes Clock.fixed dates before, on, and after the boundary."}`)
   }
   if (input.kind === "data") {
     notes.push("A test that closes and reopens the store uses a file-backed Room database (Room.databaseBuilder on a file in a temporary directory under Robolectric), because the in-memory database of the test hook cannot be reopened.")

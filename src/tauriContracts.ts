@@ -1,6 +1,6 @@
 import type { DataField, DataOperation, NormalizedBlueprint } from "./compiler"
 import type { OwnerKind, PresetContract, PresetOptionValue } from "./presets"
-import type { DataValueType, FeatureRecovery } from "./schema"
+import { clockInitial, type DataValueType, type FeatureRecovery } from "./schema"
 
 // Tauri-only contract text: the Rust/TypeScript wire format, the store and document command
 // interfaces, the option-dependent preset text, and the per-task prompt additions. Everything here is
@@ -78,10 +78,12 @@ function validation(data: TauriData): string {
   const required = data.fields.filter(field => !field.optional && (field.valueType === "text" || field.valueType === "long-text"))
   const days = data.fields.filter(field => field.valueType === "date")
   const stamps = data.fields.filter(field => field.valueType === "date-time")
+  const numbers = data.fields.filter(field => field.valueType === "number")
   const rules = [
     ...(required.length ? [`an empty or whitespace-only required text field (${required.map(field => snake(field.name)).join(", ")}; Rust stores the value as given, so the form trims every text input before it validates and sends the trimmed value)`] : []),
     ...(days.length ? [`a date (${days.map(field => snake(field.name)).join(", ")}) that is not a real YYYY-MM-DD calendar day`] : []),
     ...(stamps.length ? [`a date-time (${stamps.map(field => snake(field.name)).join(", ")}) that is not an RFC3339 UTC string (parsed with the time crate: time::OffsetDateTime::parse(value, &Rfc3339), the offset must be UTC, fractional seconds are accepted)`] : []),
+    ...(numbers.length ? [`a number (${numbers.map(field => snake(field.name)).join(", ")}) that is not finite (NaN or infinity; the form also rejects text that parses to one)`] : []),
   ]
   return `Validation: create and update return AppError invalid for ${rules.length ? rules.join(", ") : "a body that does not match the Rust shape"}; any other value rule a feature states (a minimum, a fixed set of options) is checked by that feature's form before it calls the command, and Rust checks only what is listed here.`
 }
@@ -100,6 +102,7 @@ export function tauriStoreInterface(data: TauriData, operations: readonly DataOp
   }
   const optional = data.fields.filter(field => field.optional)
   const appSet = data.fields.filter(appSets)
+  const clocked = data.fields.filter(clockSet)
   return [
     `Interface: OWN-DATA-STORE owns every Tauri command for ${data.name}, registers them in src-tauri/src/lib.rs, and appends one migration that creates the table to database::MIGRATIONS in src-tauri/src/database.rs${data.fields.some(field => field.valueType === "text-list") ? " (a text-list column holds a JSON array)" : ""}; it never hard-codes the schema version.`,
     `Table: CREATE TABLE ${base} (id INTEGER PRIMARY KEY AUTOINCREMENT${data.fields.map(field => `, ${snake(field.name)} ${SQL_TYPE[field.valueType]}${field.optional ? "" : " NOT NULL"}`).join("")}); ${data.fields.some(field => field.valueType === "flag") ? "a flag column holds 0 or 1; " : ""}${data.fields.some(field => field.valueType === "text-list") ? "a text-list column holds a JSON array; " : ""}the list command orders by id DESC.`,
@@ -107,6 +110,7 @@ export function tauriStoreInterface(data: TauriData, operations: readonly DataOp
     `Commands, exactly: ${tauriStoreCommands(base, operations).map(name => signatures[name]).join("; ")}. Each returns the AppError enum on failure (not-found for an unknown id); feature tasks reach them only through the call(command, args) wrapper in src/api.ts and add no Rust command of their own.`,
     validation(data),
     ...(appSet.length ? [`Stored versus derived: ${appSet.map(field => `${snake(field.name)} is set to "${field.initial}" by the app on create and never typed by the user`).join("; ")}; a stored field holds only what the user entered or an action set, and a state that follows from time passing is derived for display from the stored timestamps and the injected clock, never persisted.`] : []),
+    ...(clocked.length ? [`Clock-set on create: ${clocked.map(field => `${snake(field.name)} is ${field.valueType === "date" ? "today's local day as YYYY-MM-DD" : "the current moment as an RFC3339 UTC string"} from the injected clock`).join("; ")}; the create caller stamps it, it is never typed by the user, and an update carries the stored value back unchanged.`] : []),
     ...(optional.length ? [`Optional: ${optional.map(field => snake(field.name)).join(", ")} ${optional.length === 1 ? "is" : "are"} declared as a Rust Option in ${record} and ${record}Input; a record whose optional value is null is saved and reloaded unchanged, and quitting or relaunching never fills in, edits, or deletes it.`] : []),
   ].join(" ")
 }
@@ -163,8 +167,9 @@ export function tauriDayRule(feature: TauriFeatureUse, data: readonly TauriData[
 // A date-time field is stamped from the clock and a flag is set by the feature's own behavior, so neither is a form input unless a declared choice list names the flag.
 // A stored field name whose wire key is spelled differently from its name beyond the first letter's case (phoneNumber is phonenumber).
 const keyDiffers = (field: DataField): boolean => field.name !== snake(field.name) && field.name.charAt(0).toLowerCase() + field.name.slice(1) !== snake(field.name)
-const appSets = (field: DataField): boolean => field.initial != null && field.initial !== ""
-const formFieldsOf = (item: TauriData, choiceNames: ReadonlySet<string>) => item.fields.filter(field => field.valueType !== "date-time" && !appSets(field) && (field.valueType !== "flag" || choiceNames.has(snake(field.name))))
+const appSets = (field: DataField): boolean => field.initial != null && field.initial !== "" && !clockInitial(field)
+const clockSet = (field: DataField): boolean => clockInitial(field) !== null
+const formFieldsOf = (item: TauriData, choiceNames: ReadonlySet<string>) => item.fields.filter(field => field.valueType !== "date-time" && !appSets(field) && !clockSet(field) && (field.valueType !== "flag" || choiceNames.has(snake(field.name))))
 const choiceNamesOf = (features: readonly TauriFeatureUse[]) => new Set(features.flatMap(feature => feature.choices.map(choice => snake(choice.split(":")[0]!))))
 // Features that create a record without also updating it (a start and stop timer drives its own controls).
 const recordWriters = (features: readonly TauriFeatureUse[], data: readonly TauriData[]) => {
@@ -276,8 +281,10 @@ export function tauriTaskPrompt(input: TauriTaskInput): string {
       const fields = created.flatMap(item => formFields(item, choiceNames).map(field => `${snake(field.name)} (${field.valueType})`))
       const choices = [...new Set(writers.flatMap(feature => feature.choices))]
       const stamps = created.flatMap(item => item.fields.filter(field => field.valueType === "date-time").map(field => snake(field.name)))
+      const stampedDays = created.flatMap(item => item.fields.filter(field => field.valueType === "date" && clockSet(field)).map(field => snake(field.name)))
+      const dayRule = stampedDays.length ? ` ${stampedDays.join(", ")} (date, declared initial today) is no input: create stamps today's local day from the injected now, and an edit sends the stored value unchanged.` : ""
       const preset = created.flatMap(item => item.fields.filter(appSets).map(field => `${snake(field.name)} = "${field.initial}"`))
-      const presetRule = preset.length ? ` The app sets ${preset.join(", ")} itself on create (no input; the value is a constant of your file) and never lets the user type it.` : ""
+      const presetRule = (preset.length ? ` The app sets ${preset.join(", ")} itself on create (no input; the value is a constant of your file) and never lets the user type it.` : "") + dayRule
       if (!fields.length) {
         lines.push(`No stored field takes user input, so this feature has no entry form: build no form, no form shell, and no input. Its add-entry control is a button that calls the create command directly with the values your behavior states${stamps.length ? ` (${stamps.join(", ")} stamped from the injected clock at that moment)` : ""}, and a failed create shows the PRD's message with a retry that presses it again.${presetRule}${flagRule(noInput(created, choiceNames), "create sends the initial value your behavior states (false when it states none).")}`)
       } else lines.push(`Build the entry form's field inputs here, one per stored field that takes user input (${fields.join(", ")}) and no others${stamps.length ? `; a date-time field (${stamps.join(", ")}) is stamped from the injected clock` : ""}${choices.length ? `; build each declared choice list as a picker that lists exactly its options and opens with its initial option selected (${choices.join("; ")})` : ""}.${presetRule}${flagRule(noInput(created, choiceNames), "create sends the initial value your behavior states (false when it states none), and an edit sends the stored value unchanged.")}${input.entryForm ? ' Mount the inputs into slots.host("form") from src/main.ts, register slots.handle("add", submit) there, and export the fields, their validation, and a function that prefills them from a record for the edit task to reuse. The first main task builds the Add button and the empty form shell: you build neither and fill the "form" host only, and your inputs clear themselves whenever the shared view state\'s form becomes "add". The form trims every text input, so an acceptance criterion that says a saved record has the entered values means the trimmed values.' : ` You own the whole add flow because the shared screen has no form shell: build the Add button, the form container it opens (closed by its cancel control and after a successful save) and the inputs, and mount the button into slots.host("add") from src/main.ts.`}`)
