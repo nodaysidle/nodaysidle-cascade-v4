@@ -60,3 +60,24 @@ describe("field identifiers", () => {
     expect(auditCapabilities(blueprint, PRESETS["linux-hyprland-waybar-module"]).map(issue => issue.rule)).toContain("capability.waybar-refresh-setting")
   })
 })
+
+describe("Rust module and SQL table names", () => {
+  it("a keyword feature or data object name stays a valid module and table name", async () => {
+    const blueprint = structuredClone(giftIdeasBlueprint)
+    const oldName = blueprint.features[0]!.name
+    blueprint.features[0]!.name = "Move"
+    blueprint.ideaCoverage = blueprint.ideaCoverage.map(entry => ({ ...entry, features: entry.features.map(name => name === oldName ? "Move" : name) }))
+    for (const feature of blueprint.features) feature.buildsOn = feature.buildsOn.map(name => name === oldName ? "Move" : name)
+    const oldData = blueprint.dataObjects[0]!.name
+    blueprint.dataObjects[0]!.name = "Order"
+    for (const feature of blueprint.features) {
+      feature.usesData = feature.usesData.map(name => name === oldData ? "Order" : name)
+      feature.dataOperations = feature.dataOperations.map(entry => entry.data === oldData ? { ...entry, data: "Order" } : entry)
+    }
+    const packet = await compilePacket(blueprint, "linux-wayland-gtk4-desktop")
+    expect(packet.failures).toEqual([])
+    const docs = Object.values(packet.documents).join("\n")
+    expect(docs).toContain("src/features/movefeature.rs")
+    expect(docs).toContain("creates table order_value (")
+  })
+})
