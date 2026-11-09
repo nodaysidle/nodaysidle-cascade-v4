@@ -97,12 +97,12 @@ export function tauriKitFiles(identity: ProjectIdentity, uses: TauriKitUses): Ta
     { path: "index.html", content: indexHtml(identity) },
     { path: "src/api.ts", content: API_TS },
     { path: "src/errors.ts", content: ERRORS_TS },
-    { path: "src/ui.ts", content: UI_TS },
+    { path: "src/ui.ts", content: withoutSettingsUi(UI_TS, uses, "let nextControlId = 0") },
     ...(uses.shortcut ? [{ path: "src/shortcut.ts", content: SHORTCUT_TS }, { path: "tests/shortcut.test.ts", content: SHORTCUT_TEST_TS }] : []),
     { path: "src/main.ts", content: mainTs(identity) },
-    { path: "src/style.css", content: STYLE_CSS },
+    { path: "src/style.css", content: uses.settings ? STYLE_CSS : STYLE_CSS.replace(/\.settings \{[\s\S]*?\n(?=button:focus-visible)/, "") },
     { path: "tests/kit.test.ts", content: KIT_TEST_TS },
-    { path: "tests/ui.test.ts", content: UI_TEST_TS },
+    { path: "tests/ui.test.ts", content: uses.settings ? UI_TEST_TS : UI_TEST_TS.replace(", settingsGroup, settingsRow, switchControl", "").replace(/  it\("names every settings control[\s\S]*?\n  \}\)\n\n/, "") },
     { path: "app-icon.svg", content: APP_ICON_SVG },
     ...(uses.linuxOnly ? [] : [{ path: "scripts/package_app.sh", content: packageScript(identity) }]),
     { path: "scripts/package_linux.sh", content: packageLinuxScript(identity) },
@@ -110,7 +110,7 @@ export function tauriKitFiles(identity: ProjectIdentity, uses: TauriKitUses): Ta
     { path: "src-tauri/build.rs", content: BUILD_RS },
     { path: "src-tauri/rustfmt.toml", content: RUSTFMT_TOML },
     { path: "src-tauri/src/main.rs", content: mainRs(lib) },
-    { path: "src-tauri/src/lib.rs", content: `${libRs(uses)}\nmod platform;\n` },
+    { path: "src-tauri/src/lib.rs", content: `${libRs(uses)}\npub mod platform;\n` },
     { path: "src-tauri/src/platform/mod.rs", content: "// Platform owners are added by TASKS.md. Each owner declares its module here.\n" },
     { path: "src-tauri/src/error.rs", content: ERROR_RS },
     ...(uses.settings ? [{ path: "src-tauri/src/settings.rs", content: SETTINGS_RS }] : []),
@@ -150,7 +150,7 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     ...(uses.linuxOnly ? [] : ["- scripts/package_app.sh builds only the macOS .app (no DMG), signs it ad hoc, and verifies it; with --install it waits for the running app to quit, moves the installed copy to src-tauri/target/rollback/ (never inside /Applications), installs, restores the previous copy if verification fails, registers, and launches by bundle ID. The first run generates src-tauri/icons from app-icon.svg."]),
     "- scripts/package_linux.sh builds the AppImage, writes dist/, and with --install installs it under ~/.local/bin with a desktop entry and icon. On Arch/Omarchy use it for local proof; the AppImage runs on Wayland with GDK_BACKEND=wayland.",
     "- Versions are exact (= in Cargo.toml, no ^ in package.json) because they are tested together; keep src-tauri/Cargo.lock and package-lock.json from the first build, and change a version only on purpose, never by a broad update.",
-    "- Screens are built from src/ui.ts and the classes in src/style.css, never from unstyled elements: button() is sized to its label (primary for the one main action); toolbar() holds a search field and actions; setEnabled() disables a command until it has something to act on (Edit, Delete, Copy with nothing selected); emptyState(title, hint) fills an empty list with one centered message saying how to fill it; list rows use .row with aria-selected for the selection and clampedText() so long text is cut to a few lines with the full text on hover, never a scroll area inside a scrolling list; settings are settingsGroup() sections of settingsRow() lines, label on the left and control on the right, a switchControl() on the same line as its label, and a footnote under the group; body text uses the system font, and monospace only for code.",
+    `- Screens are built from src/ui.ts and the classes in src/style.css, never from unstyled elements: button() is sized to its label (primary for the one main action); toolbar() holds a search field and actions; setEnabled() disables a command until it has something to act on (Edit, Delete, Copy with nothing selected); emptyState(title, hint) fills an empty list with one centered message saying how to fill it; list rows use .row with aria-selected for the selection and clampedText() so long text is cut to a few lines with the full text on hover, never a scroll area inside a scrolling list; ${uses.settings ? "settings are settingsGroup() sections of settingsRow() lines, label on the left and control on the right, a switchControl() on the same line as its label, and a footnote under the group; " : ""}body text uses the system font, and monospace only for code.`,
     "- src/style.css uses the system font and light and dark system colors; the page never scrolls, and .app-content scrolls inside the window.",
     "",
   ].join("\n")
@@ -203,7 +203,7 @@ const VITE_CONFIG = `import { defineConfig } from "vite"
 export default defineConfig({
   clearScreen: false,
   server: { port: 1420, strictPort: true },
-  build: { target: "safari16", outDir: "dist", emptyOutDir: true },
+  build: { target: "safari16", outDir: "dist-web", emptyOutDir: true },
 })
 `
 
@@ -295,6 +295,11 @@ root.innerHTML = \`
 
 export const errors = createErrorBanner(root)
 `
+}
+
+// The settings helpers (and their test and styles) ship only when a data object uses settings storage.
+function withoutSettingsUi(source: string, uses: TauriKitUses, marker: string): string {
+  return uses.settings ? source : `${source.slice(0, source.indexOf(marker)).trimEnd()}\n`
 }
 
 const UI_TS = `// Small building blocks for screens that look native. Features compose these instead of styling raw
@@ -1218,7 +1223,7 @@ function tauriConf(identity: ProjectIdentity, linuxOnly: boolean): string {
       beforeDevCommand: "npm run dev",
       devUrl: "http://localhost:1420",
       beforeBuildCommand: "npm run build",
-      frontendDist: "../dist",
+      frontendDist: "../dist-web",
     },
     app: {
       windows: [{ label: "main", title: identity.projectName, width: 960, height: 640, minWidth: 720, minHeight: 480 }],
