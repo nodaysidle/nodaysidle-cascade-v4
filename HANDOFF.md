@@ -314,7 +314,13 @@ Stop rule: two consecutive rounds where no finding is a systematic compiler clas
 Strict LLM auditors always find a few one-off issues per packet; judge by classes, not raw counts.
 
 History of blocking findings per round (fresh ideas each time): 38, ~45, 26, 20, 17, 19, 3, 16.
-Round 8's fixes are merged and not re-audited.
+Round 9 (recompiled round-8 blueprints, 9 packets): 6 blocking in 3 classes. Android "Save is disabled"
+in provider acceptance vs the TRD always-enabled rule (2, blueprints predate the aeb985f prompt note);
+Waybar Disk IO picked `disk-space` for a read speed (3, blueprint predates the 546ea57 `disk-read`
+source); kit/ inside the project root made Astro `npm test` run kit/tests (1, fixed in e4b98a5).
+Recurring polish: boilerplate for operations a packet lacks (time rule, path rejection, edit/delete
+clauses), `Categories=Development;` in the Tauri desktop entry, Astro design tokens vs kit global.css.
+Round 10 ideas are in run-round.fish (not yet run: paid).
 
 Known unfixed items from round 8: Waybar `src/main.rs` listed in label/click task modify lists; a GTK
 list feature that itself declares `edit` while an add feature builds on it gives an "Owner dependency
