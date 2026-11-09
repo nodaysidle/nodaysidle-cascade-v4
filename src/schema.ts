@@ -47,6 +47,7 @@ export const FeatureSurfaceSchema = z.enum([
   "collection-index",
   "tag-page",
   "search-page",
+  "page",
 ])
 export const ClipboardAccessSchema = z.enum(["none", "copy", "read", "read-write"])
 
@@ -602,7 +603,7 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "For every feature, set dataOperations to what it does to the data it uses: create, read, update, delete. Declare delete only when the idea explicitly asks the user to remove something; then no other text may promise removal. A dataObject's retentionIntent must not mention deleting or removing unless a feature declares delete.",
     "For every dataObject stored as records or document, list its fields: one entry per value the app keeps (name and valueType: text, long-text, number, whole-number, flag, date-time, text-list, reference). Do not list an id; the compiler adds one. Other storage kinds may leave fields empty.",
     "Coverage is checked structurally. Before finalizing, map every numbered idea sentence in ideaCoverage, then define only the features those mappings name. If a feature is listed by no sentence, remove it. If a sentence asks for behavior, map at least one feature to it. Never add a feature to make the design feel complete.",
-    "For web surfaces, use collection-index for a list page that shows all entries, tag-page for a tag or category page, and search-page for a search results page. Use those values only when the idea asks for those pages.",
+    "For web surfaces: main is the home page, so anything the idea says the home page shows (including a list of featured entries) is main; use collection-index only for a separate page that lists all entries, tag-page for a tag or category page, search-page for a search results page, and page for any other page of its own that the idea names (an events page, a services page, an opening hours page). Use each value only when the idea asks for that page.",
     "Every feature acceptance signal must describe a concrete, mechanically verifiable condition (such as state transitions, UI element visibility, disk persistence, error code handling, or measured response under an explicit numerical threshold) that automated unit or integration tests can assert without human subjective impression. Never use subjective or hyperbolic phrases such as 'feels smooth', 'zero latency', 'instantaneous', or 'aesthetic appeal'.",
     "For features that depend on the operating system or device (notifications, reminders, tray or menu bar presence, background operation, permissions, hardware access, launch at login), write acceptance signals as the request the app makes or the app state a test can read, never as what the user sees or notices, and name the concrete request, value, or state.",
     "When a behavior, failure outcome, or acceptance signal depends on a default, interval, or limit, state its concrete value (for example a font family and point size, or a duration in milliseconds). Never write 'documented defaults' or an interval without its value.",

@@ -15,6 +15,45 @@ function collectionFor(blueprint: NormalizedBlueprint): string {
   return contentCollectionName(blueprint)
 }
 
+const ZOD_FOR: Record<string, string> = {
+  text: "z.string()",
+  "long-text": "z.string()",
+  number: "z.number()",
+  "whole-number": "z.number().int()",
+  flag: "z.boolean()",
+  "date-time": "z.coerce.date()",
+  "text-list": "z.array(z.string())",
+  reference: "z.string()",
+}
+const SEED_FOR: Record<string, string> = {
+  text: "Sample text",
+  "long-text": "Sample text",
+  number: "1",
+  "whole-number": "1",
+  flag: "true",
+  "date-time": "2026-01-01",
+  "text-list": "[Sample item]",
+  reference: "sample-reference",
+}
+
+function fieldKey(name: string): string {
+  const words = name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+  return words.map((word, index) => index === 0 ? word : word[0]!.toUpperCase() + word.slice(1)).join("") || "value"
+}
+
+// The collection schema is the declared data object's fields, never a guess.
+function collectionFields(blueprint: NormalizedBlueprint): { schema: string; seed: string } {
+  const item = blueprint.domainData.find(candidate => candidate.fields.length && (candidate.sensitivity === "public" || candidate.sensitivity === "internal"))
+    ?? blueprint.domainData.find(candidate => candidate.fields.length)
+  if (!item) {
+    return { schema: "      title: z.string(),\n      description: z.string(),\n      published: z.boolean().default(true),", seed: "title: Sample entry\ndescription: Sample description\npublished: true" }
+  }
+  return {
+    schema: item.fields.map(field => `      ${fieldKey(field.name)}: ${ZOD_FOR[field.valueType]},`).join("\n"),
+    seed: item.fields.map(field => `${fieldKey(field.name)}: ${SEED_FOR[field.valueType]}`).join("\n"),
+  }
+}
+
 function hasContent(blueprint: NormalizedBlueprint): boolean {
   return blueprint.domainData.length > 0 || blueprint.features.some(feature => feature.surface === "item-page")
 }
@@ -26,6 +65,7 @@ function hasSurface(blueprint: NormalizedBlueprint, surface: string): boolean {
 export function astroKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, options: Readonly<Record<string, string | boolean | readonly string[]>> = {}): AstroKitFile[] {
   const collection = collectionFor(blueprint)
   const content = hasContent(blueprint)
+  const fields = collectionFields(blueprint)
   const about = hasSurface(blueprint, "about-page")
   const item = content
   const features = Array.isArray(options.features) ? options.features : ["sitemap"]
@@ -206,20 +246,16 @@ export const collections = {
   ${JSON.stringify(collection)}: defineCollection({
     loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/${collection}" }),
     schema: z.object({
-      title: z.string(),
-      description: z.string(),
-      published: z.boolean().default(true),
+${fields.schema}
     }),
   }),
 }
 `),
       file(`src/content/${collection}/_seed.example.md`, `---
-title: Example entry
-description: Replace this seed with the product's first real entry.
-published: true
+${fields.seed}
 ---
 
-This is starter content. Replace it with the product's real content.
+Sample entry body. The content task replaces this file with the product's real entries.
 `),
       file(`src/pages/${collection}/index.astro`, `---
 import BaseLayout from "../../layouts/BaseLayout.astro"

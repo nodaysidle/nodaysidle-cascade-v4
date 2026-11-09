@@ -770,7 +770,7 @@ const astroWeb: PresetContract = {
     globalShortcuts: "none",
     clipboardWatch: false,
     accessibilityControl: false,
-    surfaces: ["main", "item-page", "about-page", "not-found-page", "collection-index", "tag-page", "search-page"],
+    surfaces: ["main", "item-page", "about-page", "not-found-page", "collection-index", "tag-page", "search-page", "page"],
   },
 }
 

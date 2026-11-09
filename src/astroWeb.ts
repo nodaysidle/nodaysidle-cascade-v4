@@ -76,6 +76,11 @@ export function astroFeaturePlacement(
     }
     case "search-page":
       return { kind: "page", pageFile: "src/pages/search.astro", registrationFile: "src/pages/search.astro" }
+    case "page": {
+      const route = feature.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/-page$/, "") || "page"
+      const pageFile = `src/pages/${route}.astro`
+      return { kind: "page", pageFile, registrationFile: pageFile }
+    }
     case "main":
       return { kind: "component", registrationFile: "src/pages/index.astro" }
   }

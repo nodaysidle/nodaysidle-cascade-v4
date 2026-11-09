@@ -54,11 +54,12 @@ function astroRoutesSection(graph: ProjectGraph): string[] {
 function contentSeedSection(graph: ProjectGraph): string[] {
   if (graph.presetId !== "astro-web" || !graph.astroPlan?.usesContentCollections || !graph.blueprint.domainData.length) return []
   const collection = graph.astroPlan.contentCollection
-  const seedLines = graph.blueprint.domainData.map(item => `Seed at least two ${collection} entries covering ${item.name}: frontmatter title, slug, summary, status, tags, repoUrl when applicable, and body text that explains ${item.meaning}.`)
+  const stored = graph.blueprint.domainData.filter(item => item.fields.length)
+  const seedLines = stored.map(item => `Create at least two ${collection} entries for ${item.name}: frontmatter holds exactly ${item.fields.map(field => field.name).join(", ")} (camelCase keys, matching src/content.config.ts) and the body holds the long text of the entry. ${item.meaning}`)
   return [section("Content Seed Requirements", bullets([
     ...seedLines,
-    `Example seed file: src/content/${collection}/_seed.example.md`,
-    "Replace example slugs with real product names from the idea; never publish invented release status or private repository data.",
+    `Starter seed file: src/content/${collection}/_seed.example.md; replace it with real entries and delete it.`,
+    "Use only content the idea names; invent no facts the idea does not state.",
   ]))]
 }
 
@@ -107,7 +108,7 @@ function renderContract(contract: GraphContract): string {
 }
 
 function screenMapSection(graph: ProjectGraph): string[] {
-  const surfaces = ["main", "item-page", "about-page", "not-found-page", "collection-index", "tag-page", "search-page"] as const
+  const surfaces = ["main", "item-page", "about-page", "not-found-page", "collection-index", "tag-page", "search-page", "page"] as const
   const rows = surfaces.flatMap(surface => {
     const features = graph.features.filter(feature => feature.surface === surface)
     return features.length
