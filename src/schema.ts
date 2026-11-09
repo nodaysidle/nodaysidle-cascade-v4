@@ -572,6 +572,16 @@ function buildOrderIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
 // A credential-looking query parameter in an endpoint that claims to need none.
 const CREDENTIAL_QUERY = /[?&](?:token|api[_-]?key|apikey|key|appid|access[_-]?token|auth)=/i
 
+// The {name} placeholders of an endpoint or web page template, each once.
+export function templatePlaceholders(text: string): string[] {
+  return [...new Set([...text.matchAll(/\{([^{}]*)\}/g)].map(match => match[1]!))]
+}
+
+// requestValueFrom names either one settings field (the single {value} form) or a whole settings object (named {field} placeholders).
+export function requestSettingsObject<T extends { readonly name: string; readonly storage: string }>(dataObjects: readonly T[], source: string): T | undefined {
+  return dataObjects.find(item => item.storage === "settings" && referenceKey(item.name) === referenceKey(source.trim()))
+}
+
 function serviceRequestIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
   const issues: SemanticIssue[] = []
   const settingFields = new Set(blueprint.dataObjects.filter(item => item.storage === "settings").flatMap(item => item.fields.map(field => referenceKey(field.name))))
@@ -580,25 +590,47 @@ function serviceRequestIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
     if (!item.credentialRequired && CREDENTIAL_QUERY.test(item.endpoint)) {
       issues.push({ path: `${path}.credentialRequired`, rule: "semantic.credential-in-endpoint", message: `Service '${item.name}' puts a token or key in its endpoint but declares credentialRequired false; set it to true, or name an endpoint that works with no registration.` })
     }
-    const templated = item.endpoint.includes("{value}") || item.webPage.includes("{value}")
+    const endpointNames = templatePlaceholders(item.endpoint)
+    const pageNames = templatePlaceholders(item.webPage)
+    const names = [...new Set([...endpointNames, ...pageNames])]
+    const templated = names.length > 0
     const source = item.requestValueFrom.trim()
     if (templated && source === "") {
-      issues.push({ path: `${path}.requestValueFrom`, rule: "semantic.request-value-source", message: `Service '${item.name}' uses {value} in its endpoint or web page; requestValueFrom must name the saved-setting field that supplies it.` })
+      issues.push({ path: `${path}.requestValueFrom`, rule: "semantic.request-value-source", message: `Service '${item.name}' uses {value} (or named placeholders) in its endpoint or web page; requestValueFrom must name the saved-setting field (for {value}) or the settings object (for {field} placeholders) that supplies it.` })
     }
     if (source !== "" && !templated) {
-      issues.push({ path: `${path}.requestValueFrom`, rule: "semantic.request-value-unused", message: `Service '${item.name}' names requestValueFrom '${source}' but neither its endpoint nor its web page contains {value}.` })
+      issues.push({ path: `${path}.requestValueFrom`, rule: "semantic.request-value-unused", message: `Service '${item.name}' names requestValueFrom '${source}' but neither its endpoint nor its web page contains a placeholder.` })
     }
     if (source === "") return
-    if (!settingFields.has(referenceKey(source))) {
-      issues.push({ path: `${path}.requestValueFrom`, rule: "semantic.request-value-unknown", message: `Service '${item.name}' takes {value} from '${source}', which is not a field of a settings dataObject.` })
+    const object = requestSettingsObject(blueprint.dataObjects, source)
+    if (object === undefined && !settingFields.has(referenceKey(source))) {
+      issues.push({ path: `${path}.requestValueFrom`, rule: "semantic.request-value-unknown", message: `Service '${item.name}' takes its request values from '${source}', which is neither a field nor the name of a settings dataObject.` })
       return
     }
-    // A stored reading must say which setting value it was fetched for, or a changed setting shows another place's value.
+    // The stored reading must carry every saved value it was fetched for.
+    let carried: string[] = [source]
+    if (object === undefined) {
+      for (const name of names.filter(candidate => candidate !== "value")) {
+        issues.push({ path: `${path}.endpoint`, rule: "semantic.request-placeholder-unknown", message: `Service '${item.name}' uses {${name}} but requestValueFrom '${source}' is a single field, so only {value} is allowed. To fill several placeholders, set requestValueFrom to the name of the settings dataObject whose fields they are.` })
+      }
+    } else {
+      const fieldOf = (name: string) => object.fields.find(field => referenceKey(field.name) === referenceKey(name))
+      for (const name of names.filter(candidate => fieldOf(candidate) === undefined)) {
+        issues.push({ path: `${path}.endpoint`, rule: "semantic.request-placeholder-unknown", message: `Service '${item.name}' uses {${name}} but '${name}' is not a field of the settings dataObject '${object.name}'; every placeholder is the exact name of one of its fields (${object.fields.map(field => `{${field.name}}`).join(", ") || "it has none"}).` })
+      }
+      for (const name of pageNames.filter(candidate => !endpointNames.includes(candidate))) {
+        issues.push({ path: `${path}.webPage`, rule: "semantic.request-placeholder-inconsistent", message: `Service '${item.name}' uses {${name}} in its web page but not in its endpoint; the page and the request are built from the same saved values, so every web page placeholder must also appear in the endpoint.` })
+      }
+      carried = names.map(name => fieldOf(name)?.name ?? name)
+    }
     for (const feature of blueprint.features.filter(candidate => candidate.usesServices.some(name => referenceKey(name) === referenceKey(item.name)))) {
       for (const name of feature.usesData) {
         const data = blueprint.dataObjects.findIndex(candidate => referenceKey(candidate.name) === referenceKey(name) && candidate.storage === "records")
-        if (data >= 0 && !blueprint.dataObjects[data]!.fields.some(field => referenceKey(field.name) === referenceKey(source))) {
-          issues.push({ path: `dataObjects[${data}].fields`, rule: "semantic.record-missing-request-value", message: `Records '${name}' hold what '${item.name}' returned for the saved setting '${source}'; add a field named '${source}' so a changed setting is never shown another value.` })
+        if (data < 0) continue
+        for (const field of carried) {
+          if (!blueprint.dataObjects[data]!.fields.some(candidate => referenceKey(candidate.name) === referenceKey(field))) {
+            issues.push({ path: `dataObjects[${data}].fields`, rule: "semantic.record-missing-request-value", message: `Records '${name}' hold what '${item.name}' returned for the saved setting '${field}'; add a field named '${field}' so a changed setting is never shown another value.` })
+          }
         }
       }
     }

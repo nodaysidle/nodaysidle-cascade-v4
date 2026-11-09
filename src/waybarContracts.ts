@@ -1,5 +1,5 @@
 import type { GraphContract, NormalizedBlueprint, SystemSource } from "./compiler"
-import { referenceKey, type SemanticBlueprint, type SemanticIssue } from "./schema"
+import { referenceKey, requestSettingsObject, templatePlaceholders, type SemanticBlueprint, type SemanticIssue } from "./schema"
 
 // Everything the Waybar preset states once and deterministically: units, system sources, and the rules
 // the provider is told and the intake checks. Kit code, TRD wording, and provider notes all read it.
@@ -155,20 +155,39 @@ function waybarValueIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
   const settingFields = blueprint.dataObjects.filter(item => item.storage === "settings").flatMap(item => item.fields)
   blueprint.externalServices.forEach((service, index) => {
     const source = service.requestValueFrom.trim()
+    const object = requestSettingsObject(blueprint.dataObjects, source)
     const wanted = service.requestValueType ?? "text"
-    const field = settingFields.find(item => referenceKey(item.name) === referenceKey(source))
+    const field = object === undefined ? settingFields.find(item => referenceKey(item.name) === referenceKey(source)) : undefined
     if (field !== undefined && (wanted === "number" ? field.valueType !== "number" && field.valueType !== "whole-number" : field.valueType !== "text")) {
       issues.push({ path: `externalServices[${index}].requestValueType`, rule: "capability.waybar-request-value-type", message: `Service '${service.name}' needs {value} to be ${wanted === "number" ? "a number" : "free text"}, but the saved setting '${field.name}' is ${field.valueType}. Save the identifier the service actually needs, or name a service that takes what the user saves; this preset has no geocoding step.` })
     }
-    // A click that opens the page of a service keyed by a saved setting must say where the saved value goes in that page address.
-    if (service.requestValueFrom.trim() !== "" && service.webPage.trim() !== "" && !service.webPage.includes("{value}") && blueprint.features.some(feature => feature.invokedBy === "click" && feature.usesServices.some(name => referenceKey(name) === referenceKey(service.name)))) {
-      issues.push({ path: `externalServices[${index}].webPage`, rule: "capability.waybar-page-value", message: `A click feature opens the page of service '${service.name}', which is keyed by the saved setting '${service.requestValueFrom}', but webPage '${service.webPage}' has no {value}. Put {value} where the saved value goes in the page address (it is percent-encoded), so the click opens that setting's page and not the site root.` })
+    // A named placeholder is a text or number field; a number is substituted as its number text.
+    for (const name of object === undefined ? [] : [...new Set([...templatePlaceholders(service.endpoint), ...templatePlaceholders(service.webPage)])]) {
+      const named = object!.fields.find(item => referenceKey(item.name) === referenceKey(name))
+      if (named !== undefined && !["text", "number", "whole-number"].includes(named.valueType)) {
+        issues.push({ path: `externalServices[${index}].endpoint`, rule: "capability.waybar-request-value-type", message: `Service '${service.name}' puts {${name}} in a request address, but the saved setting '${named.name}' is ${named.valueType}; only text and number fields can be placed in an address.` })
+      }
     }
-    // A coordinate query parameter takes a number, and one saved value cannot supply a latitude and a longitude.
+    // A click that opens the page of a service keyed by saved settings must say where the saved values go in that page address.
+    if (source !== "" && service.webPage.trim() !== "" && templatePlaceholders(service.webPage).length === 0 && blueprint.features.some(feature => feature.invokedBy === "click" && feature.usesServices.some(name => referenceKey(name) === referenceKey(service.name)))) {
+      issues.push({ path: `externalServices[${index}].webPage`, rule: "capability.waybar-page-value", message: `A click feature opens the page of service '${service.name}', which is keyed by the saved setting '${source}', but webPage '${service.webPage}' has no placeholder. Put {value} (or the {field} names of the settings object) where the saved values go in the page address (each is percent-encoded), so the click opens that setting's page and not the site root.` })
+    }
+    // A coordinate query parameter takes a number: the single {value} form cannot supply a pair, a named form needs a bounded number field.
     const pairs = (service.endpoint.split("?")[1] ?? "").split("&").map(part => part.split("=") as [string, string | undefined])
     const coordinates = pairs.filter(([key]) => COORDINATE_PARAMETERS.has(key.toLowerCase()))
-    if (coordinates.some(([, value]) => value?.includes("{value}")) && (wanted !== "number" || coordinates.some(([, value]) => !value?.includes("{value}")))) {
-      issues.push({ path: `externalServices[${index}].endpoint`, rule: "capability.waybar-request-coordinates", message: `Service '${service.name}' sends {value} as a coordinate (latitude or longitude). One saved value cannot supply a coordinate pair and a city name is not a coordinate; this preset has no geocoding step, so choose an endpoint that takes the one identifier the user saves (a city name, a station id).` })
+    if (object === undefined) {
+      if (coordinates.some(([, value]) => value?.includes("{value}")) && (wanted !== "number" || coordinates.some(([, value]) => !value?.includes("{value}")))) {
+        issues.push({ path: `externalServices[${index}].endpoint`, rule: "capability.waybar-request-coordinates", message: `Service '${service.name}' sends {value} as a coordinate (latitude or longitude). One saved value cannot supply a coordinate pair and a city name is not a coordinate; for a service keyed by coordinates set requestValueFrom to the name of the settings dataObject and write {latitude} and {longitude} (two number fields with min and max), or choose an endpoint that takes the one identifier the user saves (a city name, a station id).` })
+      }
+    } else {
+      for (const [key, value] of coordinates.filter(([, text]) => (text ?? "").includes("{"))) {
+        const only = templatePlaceholders(value ?? "")[0]
+        const named = only !== undefined && value === `{${only}}` ? object.fields.find(item => referenceKey(item.name) === referenceKey(only)) : undefined
+        const limit = ["lat", "latitude"].includes(key.toLowerCase()) ? 90 : 180
+        if (named === undefined || (named.valueType !== "number" && named.valueType !== "whole-number") || named.min == null || named.max == null || named.min < -limit || named.max > limit) {
+          issues.push({ path: `externalServices[${index}].endpoint`, rule: "capability.waybar-request-coordinates", message: `Service '${service.name}' sends '${key}=${value}' as a coordinate. The parameter must be exactly one placeholder naming a number field of '${object.name}' that declares min and max within -${limit}..${limit}, so a saved value outside the range is refused before any request.` })
+        }
+      }
     }
   })
   return issues
@@ -186,11 +205,12 @@ export const WAYBAR_PROVIDER_NOTES: readonly string[] = [
   "A response field is never a bare time of day, whether declared as time or as text: a time of day has no date and cannot become an instant. Choose the field that carries the full instant (a date-time, such as an ISO 8601 or epoch value) and declare it date-time. This is checked for fields declared as time; a text field that holds a time of day cannot be detected.",
   "A click feature that opens the page of a service for a saved setting (a city, a station) sets that externalService's webPage to the address template with {value}, filled from the saved setting and percent-encoded; a webPage without {value} opens the site root and ignores the saved value. Say that a stored reading, a stored peak, and a label are each written atomically per record (one write each), never as one transaction across records. Describe the module command as re-reading the cached label, never the stored record.",
   `The module label is composed by one feature, the one that shows the reading: set its labelTemplate to the exact label with {value} for the formatted reading ("{value}", "Sunset {value}"); leave labelTemplate empty on every other feature. When the idea states a limit (red below 10 GB free, amber above 80 percent), declare it on that same feature as thresholds {state warning or critical, comparison above or below, value} where value is in the unit of the raw reading (bytes for a size, bits per second for a rate, a plain number otherwise: 10 GB is 10000000000); "above" means strictly greater and "below" strictly less. Never declare a limit the idea does not state.`,
-  "Use only request parameters that the documented API defines: never invent a parameter (a 'location' or 'city' query that the service does not document). Prefer a service that takes a place name or one saved identifier directly in its documented request; when the documented API needs coordinates, choose another service, because this preset has no geocoding step. Intake detects only latitude and longitude parameters; an invented parameter name cannot be detected, so confirm the endpoint's documented parameters before answering.",
+  "Use only request parameters that the documented API defines: never invent a parameter (a 'location' or 'city' query that the service does not document). Prefer a service that takes a place name or one saved identifier directly in its documented request. Intake checks that a latitude or longitude parameter is filled from a bounded number field, never from {value}; an invented parameter name cannot be detected, so confirm the endpoint's documented parameters before answering.",
+  "A service keyed by coordinates (a weather, sun, or moon service that takes latitude and longitude) is supported without any geocoding: save latitude and longitude as two number fields of ONE settings dataObject, each with min and max (latitude -90 to 90, longitude -180 to 180), set the service's requestValueFrom to the NAME OF THAT settings dataObject, and write {Latitude} and {Longitude} (the exact field names) in the endpoint, for example https://api.open-meteo.com/v1/forecast?latitude={Latitude}&longitude={Longitude}&current=wind_speed_10m, and in webPage when a click opens the service page (webPage may use only placeholders the endpoint also uses). Each coordinate parameter is exactly one placeholder; the user sets each value with --set KEY=VALUE, one command per field; the records dataObject that keeps the reading includes a field with each of those names. Do not use {value} in this form. For a service keyed by one name or identifier (a city name, a station id) keep the single {value} form with requestValueFrom naming the one settings field.",
   "A response value is read by its documented path in the JSON body. When the documented value is a list (a daily forecast with one entry, such as a one-element array), declare the field with its scalar type (whole-number, number, text) and say in the behavior that the reading is the first element of the list, and that a null, missing, or empty value is a failed fetch; the kit's http::value_at, number_at and text_at implement exactly that.",
   "A records dataObject with singleRecord true that a refresh feature writes on every run needs only the operation create (the one write is insert-or-replace of the single row); declare update only when a separate feature edits it, and never promise a delete.",
   "Show a numeric size example (3.67 GB) only where a surface of that feature (label, tooltip, notification) shows a size; a label that shows a percent states the percent example instead. A labelTemplate carries the unit symbol of its reading ('{value}%' for a percent, never just '{value}').",
-  "An externalService whose endpoint uses {value} sets requestValueType to text (a name or identifier) or number, and the saved setting named by requestValueFrom must have that valueType. A service that needs latitude and longitude cannot take a saved city name or one saved value: this preset has no geocoding step, so choose a service that takes the one identifier the user saves.",
+  "An externalService whose endpoint uses {value} sets requestValueType to text (a name or identifier) or number, and the saved setting named by requestValueFrom must have that valueType. A service that needs latitude and longitude uses the named form instead (see the coordinates note); one saved value is never a coordinate pair and a saved city name is never a coordinate, because this preset has no geocoding step.",
   `${WAYBAR_INTERVAL_NOTE}`,
   "Acceptance criteria about a schedule state what a test asserts (the default interval value and the interval the refresh pass returns), not a wall-clock wait. A reading that is only valid for one calendar day is a product limit this preset does not detect; say so in a non-goal instead of promising it.",
   "A value the user saves (a city, a station, a unit) is a settings dataObject with its fields, set by the user with the command's --set KEY=VALUE or by editing config.json; do not add a feature or a records dataObject for it. A records dataObject that keeps the last reading sets singleRecord true when only the latest reading is kept, and a reading fetched for a saved setting includes a field with that setting's name. Compare stored rows by their values, never by file bytes.",
@@ -253,15 +273,55 @@ export function refineWaybarContracts(contracts: readonly GraphContract[]): Grap
   return contracts.map(item => item.kind === "data" || item.kind === "persistence" ? { ...item, failureBehavior: swap(item.failureBehavior), recovery: item.recovery.map(swap) } : item)
 }
 
-// The click page address: {value} replaced by the saved setting; a click with no saved setting fails before the address is built.
-export function waybarPageDetail(service: NormalizedBlueprint["externalServices"][number]): string[] {
-  if (!service.webPage.includes("{value}")) return []
-  return [`Page address: the web page template ${service.webPage} with {value} replaced by the saved setting '${service.requestValueFrom}' (percent-encoded: RFC 3986 unreserved characters kept, every other byte of the UTF-8 text as upper-case %XX, a space as %20, so 'San José' becomes 'San%20Jos%C3%A9'; use http::percent_encode (src/platform/http.rs, kit), no other crate); the integration owner exposes the function page_url (it takes the saved value as text, never an absent value, and returns the address as text) and the click owner calls that function instead of building the address itself, after reading the saved setting: with no value saved the click returns Err (exit 2, nothing is opened) before page_url is called.`]
+type DomainData = NormalizedBlueprint["domainData"]
+type Service = NormalizedBlueprint["externalServices"][number]
+
+export interface WaybarSlot {
+  readonly name: string
+  readonly number: boolean
+  readonly min: number | null
+  readonly max: number | null
 }
 
-export function waybarRequestDetail(service: NormalizedBlueprint["externalServices"][number]): string[] {
-  if (!service.endpoint.includes("{value}")) return []
-  return [`Request URL: ${service.endpoint} with {value} replaced by the saved setting '${service.requestValueFrom}' (percent-encoded: RFC 3986 unreserved characters kept, every other byte of the UTF-8 text as upper-case %XX, a space as %20, so 'San José' becomes 'San%20Jos%C3%A9'; use http::percent_encode (src/platform/http.rs, kit), no other crate). The integration owner exposes the function request_url (it takes the base, the scheme and host, and the saved value as text and returns the address as text; production passes the documented host and the focused tests pass a local 127.0.0.1 listener, so no test reaches the live service); a response whose status or value is not the documented success shape is a failed fetch.`]
+// The named placeholders of a service keyed by a settings object, each with the declared field facts; undefined for the single {value} form.
+export function waybarRequestSlots(service: Service, domainData: DomainData): WaybarSlot[] | undefined {
+  const object = requestSettingsObject(domainData, service.requestValueFrom)
+  if (object === undefined) return undefined
+  return [...new Set([...templatePlaceholders(service.endpoint), ...templatePlaceholders(service.webPage)])].map(name => {
+    const field = object.fields.find(item => referenceKey(item.name) === referenceKey(name))
+    return { name, number: field?.valueType === "number" || field?.valueType === "whole-number", min: field?.min ?? null, max: field?.max ?? null }
+  })
+}
+
+const PERCENT_ENCODING = "percent-encoded: RFC 3986 unreserved characters kept, every other byte of the UTF-8 text as upper-case %XX, a space as %20, so 'San José' becomes 'San%20Jos%C3%A9'; use http::percent_encode (src/platform/http.rs, kit), no other crate"
+
+function slotText(slots: readonly WaybarSlot[]): string {
+  return slots.map(slot => `{${slot.name}} (${slot.number ? `a number${slot.min !== null && slot.max !== null ? ` from ${slot.min} to ${slot.max}` : ""}` : "text"})`).join(", ")
+}
+
+// How named placeholders are filled, once: the kit's http::fill_url does it and the task passes one slot per placeholder.
+function namedFillText(service: Service, slots: readonly WaybarSlot[], template: string): string {
+  return `${template} with each placeholder (${slotText(slots)}) replaced by the saved value of the field of the same name in the settings object '${service.requestValueFrom}' (the user saves each with the module's --set KEY=VALUE, one command per field): a number field is substituted as its number text (it must be finite, and inside the field's declared min and max when it has them; a whole number has no decimal point) and a text field is ${PERCENT_ENCODING}. Build the address only with http::fill_url (src/platform/http.rs, kit), passing one http::Slot per placeholder: Slot::Text(value) or Slot::Number { value, min, max }; it returns Err for an empty value, a number that is not finite or is outside min..max, and a placeholder that has no slot`
+}
+
+// The click page address: placeholders replaced by the saved values; a click with a missing saved value fails before the address is built.
+export function waybarPageDetail(service: Service, domainData: DomainData = []): string[] {
+  if (templatePlaceholders(service.webPage).length === 0) return []
+  const slots = waybarRequestSlots(service, domainData)
+  if (slots !== undefined) {
+    return [`Page address: the web page template ${namedFillText(service, slots.filter(slot => templatePlaceholders(service.webPage).includes(slot.name)), service.webPage)}. The integration owner exposes the function page_url (it takes the saved values as text keyed by field name, never an absent value, and returns the address as text) and the click owner calls that function instead of building the address itself, after reading every saved setting it needs: with any value not saved the click returns Err (exit 2, nothing is opened) before page_url is called.`]
+  }
+  return [`Page address: the web page template ${service.webPage} with {value} replaced by the saved setting '${service.requestValueFrom}' (${PERCENT_ENCODING}); the integration owner exposes the function page_url (it takes the saved value as text, never an absent value, and returns the address as text) and the click owner calls that function instead of building the address itself, after reading the saved setting: with no value saved the click returns Err (exit 2, nothing is opened) before page_url is called.`]
+}
+
+export function waybarRequestDetail(service: Service, domainData: DomainData = []): string[] {
+  if (templatePlaceholders(service.endpoint).length === 0) return []
+  const slots = waybarRequestSlots(service, domainData)
+  const tail = "The integration owner exposes the function request_url (it takes the base, the scheme and host, and the saved values, and returns the address as text; production passes the documented host and the focused tests pass a local 127.0.0.1 listener, so no test reaches the live service); a response whose status or value is not the documented success shape is a failed fetch."
+  if (slots !== undefined) {
+    return [`Request URL: ${namedFillText(service, slots.filter(slot => templatePlaceholders(service.endpoint).includes(slot.name)), service.endpoint)}. A saved value that is missing or refused is a failed fetch: no request is sent, exactly as with no saved value in the single-value form. ${tail}`]
+  }
+  return [`Request URL: ${service.endpoint} with {value} replaced by the saved setting '${service.requestValueFrom}' (${PERCENT_ENCODING}). The integration owner exposes the function request_url (it takes the base, the scheme and host, and the saved value as text and returns the address as text; production passes the documented host and the focused tests pass a local 127.0.0.1 listener, so no test reaches the live service); a response whose status or value is not the documented success shape is a failed fetch.`]
 }
 
 // How a response value is read: a scalar field takes element 0 of a one-element array; null, missing, or empty is a failed fetch.
