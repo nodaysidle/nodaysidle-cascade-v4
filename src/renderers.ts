@@ -316,7 +316,8 @@ function renderAGENTS(graph: ProjectGraph): string {
     section("Accessibility Rules", bullets(graph.accessibilityRules)),
     section("Owner Map", bullets([
       `OWN-FOUNDATION — Foundation — ${graph.foundationFiles.join("; ")} — ${graph.phases[0]?.tasks[0]?.focusedTests[0] ?? "contract tests"} — create PHASE-01-FOUNDATION — modify none`,
-      ...graph.owners.map(owner => `${owner.id} — ${owner.name} — ${owner.implementationFile} — ${owner.focusedTestFile} — create ${owner.createPhaseId} — modify ${owner.modifyPhaseIds.join(", ") || "none"}`),
+      ...graph.owners.map(owner => `${owner.id} — ${owner.name} — ${owner.implementationFile} — ${owner.focusedTestFile} — create ${owner.createPhaseId} — later phases that edit this owner's own file: ${owner.modifyPhaseIds.join(", ") || "none"}`),
+      ...sharedModifyLines(graph),
     ])),
     section("Required Phase Order", numbered(phaseOrder)),
     section("Validation Gates", numbered(graph.validationCommands.map(command => `Run \`${command}\` and require exit status zero.`))),
@@ -325,6 +326,15 @@ function renderAGENTS(graph: ProjectGraph): string {
     section("Review Checklist", bullets(["Product and non-goal boundaries match PRD.md.", "Architecture and state ownership match ARD.md.", "Stack, files, contracts, permissions, persistence, credentials, lifecycle, recovery, packaging, and signing match TRD.md.", "Task and phase ordering match TASKS.md.", "Focused tests and every final command passed with fresh output."])),
     section("Traceability Index", featureTrace(graph)),
   ].join("\n\n") + "\n"
+}
+
+// Files that several tasks modify: each task edits them only after TASK-01 created them, to register its own owner.
+function sharedModifyLines(graph: ProjectGraph): string[] {
+  const editors = new Map<string, string[]>()
+  for (const task of graph.phases.flatMap(phase => phase.tasks)) {
+    for (const path of task.filesToModify) editors.set(path, [...(editors.get(path) ?? []), task.id])
+  }
+  return [...editors].filter(([, tasks]) => tasks.length > 1).map(([path, tasks]) => `Shared file ${path} — edited by ${tasks.join(", ")} in task order, each only to register its own owner`)
 }
 
 export function renderPacket(graph: ProjectGraph): DocumentPacket {

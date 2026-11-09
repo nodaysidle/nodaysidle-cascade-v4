@@ -365,8 +365,8 @@ const linuxGtk: PresetContract = {
     "tests/contract_tests.rs",
   ],
   packagingFiles: identity => [
-    `resources/${identity.slug}.desktop`,
-    `resources/${identity.slug}.metainfo.xml`,
+    `resources/${identity.bundleId}.desktop`,
+    `resources/${identity.bundleId}.metainfo.xml`,
     `resources/icons/hicolor/scalable/apps/${identity.slug}.svg`,
     "PKGBUILD",
     "scripts/package.sh",
@@ -404,7 +404,7 @@ const linuxGtk: PresetContract = {
   },
   credentialPlacement: "Store credentials through the Secret Service (GNOME Keyring or KWallet) with the locked application ID as service and a deterministic account name; fail closed if no Secret Service is available.",
   fileBoundary: "Read and write only the app's XDG config, data, and runtime directories and files or folders the user chooses in the desktop portal; never scan another user folder.",
-  fileBoundaryDetails: ["Settings: $XDG_CONFIG_HOME/{app-id}/config.json.", "Records and app-owned files: $XDG_DATA_HOME/{app-id}/.", "User-chosen paths come only from org.freedesktop.portal.FileChooser or a path the app saved to reopen.", "Every path outside this boundary is rejected and leaves the filesystem unchanged."],
+  fileBoundaryDetails: ["Settings: $XDG_CONFIG_HOME/{app-id}/settings.json.", "Records and app-owned files: $XDG_DATA_HOME/{app-id}/.", "User-chosen paths come only from org.freedesktop.portal.FileChooser or a path the app saved to reopen.", "Every path outside this boundary is rejected and leaves the filesystem unchanged."],
   launchCheck: identity => `GDK_BACKEND=wayland ./scripts/package.sh --install, then launch ~/.local/bin/${identity.slug} and inspect every window.`,
   permissionPatterns: linuxGtkPermissionPatterns,
   lifecycleRules: [
@@ -420,8 +420,8 @@ const linuxGtk: PresetContract = {
     () => "cargo clippy --all-targets --all-features -- -D warnings",
     () => "cargo test",
     () => "cargo build --release",
-    identity => `desktop-file-validate resources/${identity.slug}.desktop`,
-    identity => `appstreamcli validate resources/${identity.slug}.metainfo.xml`,
+    identity => `desktop-file-validate resources/${identity.bundleId}.desktop`,
+    identity => `appstreamcli validate resources/${identity.bundleId}.metainfo.xml`,
     () => "makepkg --printsrcinfo",
   ],
   packagingRules: [

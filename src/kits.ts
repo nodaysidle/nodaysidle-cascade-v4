@@ -410,7 +410,7 @@ fn settings_default_is_stable() {
     assert!(paths::settings_path().ends_with("settings.json"));
 }
 `),
-    file(`resources/${slug}.desktop`, String.raw`
+    file(`resources/${identity.bundleId}.desktop`, String.raw`
 [Desktop Entry]
 Name=${identity.projectName}
 Comment=${identity.projectName} desktop application
@@ -421,7 +421,7 @@ Type=Application
 Categories=Utility;
 StartupWMClass=${identity.bundleId}
 `),
-    file(`resources/${slug}.metainfo.xml`, String.raw`
+    file(`resources/${identity.bundleId}.metainfo.xml`, String.raw`
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>${identity.bundleId}</id>
@@ -440,7 +440,7 @@ StartupWMClass=${identity.bundleId}
     <release version="0.1.0" date="2026-11-09"/>
   </releases>
   <content_rating type="oars-1.1"/>
-  <launchable type="desktop-id">${slug}.desktop</launchable>
+  <launchable type="desktop-id">${identity.bundleId}.desktop</launchable>
 </component>
 `),
     file(`resources/icons/hicolor/scalable/apps/${slug}.svg`, String.raw`
@@ -481,8 +481,8 @@ build() {
 
 package() {
   install -Dm755 "$startdir/target/release/${slug}" "$pkgdir/usr/bin/${slug}"
-  install -Dm644 "$startdir/resources/${slug}.desktop" "$pkgdir/usr/share/applications/${slug}.desktop"
-  install -Dm644 "$startdir/resources/${slug}.metainfo.xml" "$pkgdir/usr/share/metainfo/${slug}.metainfo.xml"
+  install -Dm644 "$startdir/resources/${identity.bundleId}.desktop" "$pkgdir/usr/share/applications/${identity.bundleId}.desktop"
+  install -Dm644 "$startdir/resources/${identity.bundleId}.metainfo.xml" "$pkgdir/usr/share/metainfo/${identity.bundleId}.metainfo.xml"
   install -Dm644 "$startdir/resources/icons/hicolor/scalable/apps/${slug}.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/${slug}.svg"
   install -Dm644 "$startdir/LICENSE" "$pkgdir/usr/share/licenses/${slug}/LICENSE"
 }
@@ -523,8 +523,8 @@ fi
 
 mkdir -p "$install_dir/bin" "$install_dir/share/applications" "$install_dir/share/metainfo" "$install_dir/share/icons/hicolor/scalable/apps"
 install -m755 "$binary" "$install_dir/bin/${slug}"
-install -m644 "resources/${slug}.desktop" "$install_dir/share/applications/${slug}.desktop"
-install -m644 "resources/${slug}.metainfo.xml" "$install_dir/share/metainfo/${slug}.metainfo.xml"
+install -m644 "resources/${identity.bundleId}.desktop" "$install_dir/share/applications/${identity.bundleId}.desktop"
+install -m644 "resources/${identity.bundleId}.metainfo.xml" "$install_dir/share/metainfo/${identity.bundleId}.metainfo.xml"
 install -m644 "resources/icons/hicolor/scalable/apps/${slug}.svg" "$install_dir/share/icons/hicolor/scalable/apps/${slug}.svg"
 
 if [ -f "resources/${slug}.service" ]; then
