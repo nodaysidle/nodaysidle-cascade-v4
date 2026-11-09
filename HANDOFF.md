@@ -62,7 +62,7 @@ cross-platform, but native macOS is not a preset.
 - Local path: `/home/arch/dev/nodaysidle/nodaysidle-cascade-v4`
 - Remote: `https://github.com/nodaysidle/nodaysidle-cascade-v4` (private)
 - Branch: `main`
-- Commits: `27810a9`, `6582197`, `7f6fbc7`, `94a8320` (all local; not pushed at handoff time).
+- Commit history includes `27810a9`, `6582197`, `7f6fbc7`, `94a8320`; run `git log` for the current head. All commits are local and not pushed at handoff time.
 - The app is installed at `~/.local/bin/nodaysidle-cascade-v4`; desktop entry at
   `~/.local/share/applications/com.nodaysidle.cascade.v4.desktop`; Omarchy menu entry is in
   `~/.config/omarchy/extensions/omarchy-menu.jsonc`.
@@ -206,8 +206,8 @@ You are taking over NODAYSIDLE Cascade V4 at
 
 Read HANDOFF.md first. Then audit the previous agent's work instead of trusting it. The previous
 agent wrote the compiler, the Tauri desktop UI, all five preset kits, the Omarchy menu/bar
-integration, and five live packets. The latest local commit is 94a8320 on main; check git status and
-git log before touching anything. The remote is private.
+integration, and five live packets. The commit history is in HANDOFF.md; run git status and git log
+before touching anything. The remote is private.
 
 PHASE 1 — AUDIT (read-only first)
 1. Read HANDOFF.md, README.md, AGENTS.md, and the source in this order: schema.ts, pipeline.ts,
