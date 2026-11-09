@@ -27,8 +27,8 @@ There is no native macOS preset. Do not add one back without an explicit product
   document data objects.
 - Reject duplicate names, unused platform needs, unsupported capabilities, and unrequested features.
   Never silently drop or dedupe provider content.
-- One DeepSeek request plus at most one repair for provider-content failures. Never repair transport,
-  cancellation, input, capability, Jev service, compiler, or export failures.
+- One DeepSeek request plus at most one repair for provider-content failures. A blueprint the selected preset cannot express (capability audit after the provider answered) counts as a
+  provider-content failure. Never repair transport, cancellation, input (including a capability problem in the user's own idea), Jev service, compiler, or export failures.
 - Keys are memory-only. Never log, persist, export, or print them.
 - The output is exactly five documents, then `kit/`, then `blueprint.json`. Preview bytes equal
   export bytes; repeated rendering is byte-identical.

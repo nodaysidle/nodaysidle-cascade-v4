@@ -38,8 +38,8 @@ idea + preset + options + keys
   -> atomic export
 ```
 
-One repair request is allowed for provider-content failures: schema, intake, integrity leakage or
-verifiability, normalization, readiness. Transport, cancellation, input, capability, Jev service,
+One repair request is allowed for provider-content failures: schema, intake, capability audit of the provider's blueprint, integrity leakage or
+verifiability, normalization, readiness. Transport, cancellation, input, Jev service,
 compiler bugs, and export failures are never repaired.
 
 ## Output

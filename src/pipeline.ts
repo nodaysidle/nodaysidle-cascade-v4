@@ -337,9 +337,11 @@ export async function generatePacket(
   throw new Error("unreachable: the repair loop always returns")
 }
 
-// Statuses caused by the provider's content, which a single targeted repair request can fix.
+// Statuses caused by the provider's content, which a single targeted repair request can fix. A blueprint the
+// preset cannot express (capability-rejected after the provider answered) is such a status; a capability problem in the
+// user's own idea is found before the provider is called and is never repaired.
 // Transport, cancellation, Jev service, and local compiler failures are never sent back.
-const REPAIRABLE_STATUSES = new Set<PipelineStatus>(["blueprint-validation-failed", "blueprint-integrity-failed", "local-normalization-failed", "lint-failure"])
+const REPAIRABLE_STATUSES = new Set<PipelineStatus>(["blueprint-validation-failed", "blueprint-integrity-failed", "local-normalization-failed", "lint-failure", "capability-rejected"])
 
 function withRepair(result: GeneratePacketResult, repairedIssues: readonly SemanticIssue[] | undefined): GeneratePacketResult {
   return repairedIssues ? { ...result, repairedIssues } : result

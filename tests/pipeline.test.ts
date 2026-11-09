@@ -35,6 +35,20 @@ describe("v4 pipeline", () => {
     expect(result.repairedIssues?.length).toBeGreaterThan(0)
   })
 
+  it("repairs a capability the preset cannot express once, then compiles the corrected blueprint", async () => {
+    const blocked = structuredClone(fileOrganizerBlueprint)
+    blocked.features[0]!.usesPlatformNeeds = ["accessibility-control"]
+    let calls = 0
+    const provider: BlueprintProvider = async () => {
+      calls += 1
+      return JSON.stringify(calls === 1 ? blocked : fileOrganizerBlueprint)
+    }
+    const result = await generatePacket(baseInput, provider, undefined, fixtureJevProvider)
+    expect(calls).toBe(2)
+    expect(result.status).toBe("gate-clean")
+    expect(result.repairedIssues?.some(issue => issue.rule === "capability.accessibility-control")).toBe(true)
+  })
+
   it("rejects a capability the preset cannot express before compilation", async () => {
     const blocked = structuredClone(fileOrganizerBlueprint)
     blocked.features[0]!.usesPlatformNeeds = ["accessibility-control"]
