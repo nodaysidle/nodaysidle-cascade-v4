@@ -762,9 +762,19 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
   }
 }
 
+// A package segment must not be a Java or Kotlin keyword ("com.class.schedule" is not a valid Android package).
+const RESERVED_SEGMENTS = new Set([
+  "abstract", "as", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "default", "do", "double",
+  "else", "enum", "extends", "false", "final", "finally", "float", "for", "fun", "goto", "if", "implements", "import", "in", "instanceof", "int",
+  "interface", "is", "long", "native", "new", "null", "object", "package", "private", "protected", "public", "return", "short", "static",
+  "strictfp", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "true", "try", "typealias", "val", "var", "void",
+  "volatile", "when", "while",
+])
+
 function bundleSegment(part: string, fallback: string): string {
   const segment = part || fallback
-  return /^[a-z]/.test(segment) ? segment : `p${segment}`
+  const named = /^[a-z]/.test(segment) ? segment : `p${segment}`
+  return RESERVED_SEGMENTS.has(named) ? `${named}app` : named
 }
 
 function projectIdentity(projectName: string): ProjectIdentity {

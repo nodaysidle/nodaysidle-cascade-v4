@@ -454,6 +454,14 @@ describe("v4 deterministic core", () => {
     const broken = { ...packet.documents, "TASKS.md": `${packet.documents["TASKS.md"]}\n- Prompt: it trims its text arguments, , and an edit task calls it.` } as Record<string, string>
     expect(auditPacket(packet.graph, broken, PRESETS[fixture.presetId]).map(item => item.rule)).toContain("content.dangling-punctuation")
   })
+
+  it("never builds a package segment from a Java or Kotlin keyword", async () => {
+    const base = fixtureCases.find(item => item.presetId === "android-kotlin-compose")!.blueprint
+    for (const [name, expected] of [["Class Schedule", "com.classapp.schedule"], ["Package Tracker", "com.packageapp.tracker"], ["Notes Import", "com.notes.importapp"], ["New Notes", "com.newapp.notes"]] as const) {
+      const packet = await compilePacket({ ...base, productName: name }, "android-kotlin-compose")
+      expect(packet.graph.identity.packageName, name).toBe(expected)
+    }
+  })
 })
 
 function blueprintSentenceStarts(text: string, summary: string): boolean {
