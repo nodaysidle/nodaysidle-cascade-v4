@@ -1,5 +1,6 @@
 import {
   DOCUMENT_NAMES,
+  sharedModifyEditors,
   type ContractKind,
   type DocumentName,
   type ProjectGraph,
@@ -477,12 +478,10 @@ function agentReadinessFailures(graph: ProjectGraph, documents: Readonly<Record<
   const tasks = graph.phases.flatMap(phase => phase.tasks)
 
   // The AGENTS shared-file lines must be exactly the files that several tasks modify.
-  const editors = new Map<string, number>()
-  for (const task of tasks) for (const path of task.filesToModify) editors.set(path, (editors.get(path) ?? 0) + 1)
-  const shared = [...editors].filter(([, count]) => count > 1).map(([path]) => path).sort()
+  const shared = [...sharedModifyEditors(graph).keys()].sort()
   const rendered = [...(documents["AGENTS.md"] ?? "").matchAll(/^- Shared file (\S+) —/gm)].map(match => match[1]!).sort()
   if (shared.join("|") !== rendered.join("|")) {
-    failures.push(failure("agent-ready.shared-files", "AGENTS.md", `AGENTS.md lists shared files [${rendered.join(", ")}] but TASKS.md has several tasks modify [${shared.join(", ")}].`))
+    failures.push(failure("agent-ready.shared-files", "AGENTS.md", `AGENTS.md lists shared files [${rendered.join(", ")}] but TASKS.md has tasks modify [${shared.join(", ")}].`))
   }
 
   // One settings file name everywhere.

@@ -1,6 +1,7 @@
 import { auditAgentReadinessGraph, auditMechanicalGraph, auditPacket, auditProjectGraph, buildValidationLedger, type AuditEntry, type AuditFailure } from "./audit"
 import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, astroStaticContentSite, dataKey, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetOptionValue, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
+import { androidKitNeeds } from "./androidKit"
 import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
@@ -634,14 +635,18 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
     {
       event: "Application launch",
       // A declared background need means some feature must run from launch, such as clipboard recording.
-      behavior: platformNeeds.includes("background-execution")
+      behavior: presetId === "android-kotlin-compose"
+        ? `The Application's onCreate builds the AppContainer and calls the lifecycle owner's start(container), which ${features.some(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null) ? "starts only the schedules the schedule contracts name" : "starts nothing, because no schedule is declared"}; nothing starts a remote request or a deletion, and the Room database opens on first use.`
+        : platformNeeds.includes("background-execution")
         ? "Initialize preset-owned state and services and start the declared background features; start no other capture, remote request, or destructive work automatically."
         : "Initialize preset-owned state and services without starting privileged capture, remote requests, or destructive work automatically.",
       cleanup: "Rollback partial initialization and keep a safe retry or manual launch path.",
     },
     {
       event: "Application termination",
-      behavior: "Stop new work, cancel active operations, and preserve only state covered by the persistence contracts.",
+      behavior: presetId === "android-kotlin-compose"
+        ? "Android gives no reliable process-termination callback: every durable change is committed when the user acts, and the lifecycle owner's stop() cancels only the coroutines it started."
+        : "Stop new work, cancel active operations, and preserve only state covered by the persistence contracts.",
       cleanup: features.some(feature => feature.resourceIds.includes(permissionResourceId("clipboard")))
         ? "Release permissions, listeners, handles, tasks, clipboard watchers and snapshots, and temporary resources before termination completes."
         : "Release permissions, listeners, handles, tasks, and temporary resources before termination completes.",
@@ -969,7 +974,8 @@ function storeInterfaceDetail(presetId: PresetId, item: NormalizedBlueprint["dom
   if (presetId === "tauri2-rust-typescript-desktop") return tauriStoreInterface(tauriData(item), operations)
   if (presetId === "android-kotlin-compose") {
     const functions = methods({ create: ["insert"], read: ["observeAll", "getById"], update: ["update"], delete: ["delete"] })
-    return `Interface: OWN-DATA-STORE owns one Room entity ${record}Entity with the stored fields above, one ${record}Dao with exactly: ${functions.join(", ")}, the one RoomDatabase subclass AppDatabase that lists every records entity (version 1, exportSchema = true, schema JSON committed under app/schemas), and ${record}Repository over the DAO, all in its owner file; it constructs the database and repository in AppContainer.kt. Feature tasks use the repository and add no entity or query of their own.`
+    const signatures = operations.flatMap(operation => ({ create: [`suspend fun insert(entity: ${record}Entity): Long`], read: [`fun observeAll() returning a Flow of the list of every ${record}Entity`, `suspend fun getById(id: Long): ${record}Entity?`], update: [`suspend fun update(entity: ${record}Entity)`], delete: [`suspend fun delete(entity: ${record}Entity)`] })[operation])
+    return `Interface: OWN-DATA-STORE owns one Room entity ${record}Entity with the stored fields above, one ${record}Dao with exactly: ${functions.join(", ")}, the one RoomDatabase subclass AppDatabase that lists every records entity (version 1, exportSchema = true; Room writes the schema JSON under app/schemas when the project builds, and that generated file is committed with the data task and exempt from its create-only list), and ${record}Repository over the DAO, all in its owner file; it constructs the database and repository in AppContainer.kt. Kotlin types: id is Long (autoGenerate), text and long-text are String, number is Double, whole-number is Long, flag is Boolean, a date is a Long epoch day (LocalDate.toEpochDay), a date and time is a Long in epoch milliseconds (UTC), a reference is the referenced Long id, an ordered list of text lines is one String joined by newlines; an optional field is nullable. ${record}Repository has exactly these members, with the DAO's semantics: ${signatures.join("; ")}. Feature tasks use the repository and add no entity or query of their own.`
   }
   if (presetId === "astro-web") {
     const name = `${record}Entries`
@@ -1034,13 +1040,13 @@ function androidScheduledFeatures(preset: PresetContract, identity: ProjectIdent
   })
 }
 
-// A feature that is scheduled, or reads a stored date or time, compares with the present moment and needs an injected clock.
+// A feature that is scheduled, or reads or updates a stored date or time, compares with the present moment and needs an injected clock.
 function androidClockFeatureIds(blueprint: NormalizedBlueprint, features: readonly GraphFeature[]): Set<string> {
   const ids = new Set(features.filter(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null).map(feature => feature.id))
-  for (const item of blueprint.domainData.filter(entry => entry.fields.some(field => field.valueType === "date-time"))) {
+  for (const item of blueprint.domainData.filter(entry => entry.fields.some(field => field.valueType === "date-time" || field.valueType === "date"))) {
     for (const featureId of dataFeatureIds(item.name, features)) {
       const reader = features.find(feature => feature.id === featureId)
-      if (reader && opsOn(reader, item.name).includes("read")) ids.add(featureId)
+      if (reader && opsOn(reader, item.name).some(operation => operation === "read" || operation === "update")) ids.add(featureId)
     }
   }
   return ids
@@ -1064,6 +1070,15 @@ function mainDetailControls(features: readonly GraphFeature[]): string {
     ...(features.some(feature => feature.dataOperations.includes("delete")) ? ["a Delete button"] : []),
   ]
   return controls.length ? ` and holds ${controls.join(" and ")}, built here as inert controls that the feature task declaring the operation connects` : ""
+}
+
+// Files several tasks modify, or that one task modifies although the foundation (or its kit) created them: AGENTS.md lists each with its editing tasks.
+export function sharedModifyEditors(graph: Pick<ProjectGraph, "phases" | "foundationFiles">): Map<string, string[]> {
+  const editors = new Map<string, string[]>()
+  for (const task of graph.phases.flatMap(phase => phase.tasks)) {
+    for (const path of task.filesToModify) editors.set(path, [...(editors.get(path) ?? []), task.id])
+  }
+  return new Map([...editors].filter(([path, tasks]) => tasks.length > 1 || graph.foundationFiles.includes(path)))
 }
 
 function buildOwnersAndContracts(
@@ -1588,6 +1603,7 @@ function buildPhases(
           clockDependent: ownedFeatures.some(feature => androidClockFeatureIds(blueprint, features).has(feature.id)),
           notifications: blueprint.permissionNeeds.some(item => item.capability === "notifications"),
           focusedTestFile: files.focusedTestFile,
+          firstMain: draft.id === firstMainOwnerId,
         })
       : undefined
     const filesToCreate = unique([
@@ -1614,7 +1630,7 @@ function buildPhases(
         ])
       : unique([...registrationTargets, ...(androidExtras?.modify ?? [])])
     // A file this task creates is not also a file it modifies.
-    const filesToModify = modifyCandidates.filter(file => !filesToCreate.includes(file))
+    const filesToModify = modifyCandidates.filter(file => !filesToCreate.includes(file) && !(preset.id === "android-kotlin-compose" && blueprint && !androidKitNeeds(blueprint).settingsData && file.endsWith("/data/SettingsRepository.kt")))
     const acceptanceCriteria = buildTaskAcceptanceCriteria(ownedAcceptance, ownedContracts, [files.focusedTestFile])
     const task: GraphTask = {
       id: taskId,
@@ -1710,6 +1726,8 @@ function lockedStackFor(preset: PresetContract, blueprint: NormalizedBlueprint):
     const { http } = rustKitHelpers(blueprint)
     return http ? preset.allowedTechnologies : preset.allowedTechnologies.filter(technology => technology !== "reqwest" && !technology.startsWith("tokio-tungstenite"))
   }
+  // The kit declares WorkManager only for a declared schedule.
+  if (preset.id === "android-kotlin-compose") return androidKitNeeds(blueprint).schedule ? preset.allowedTechnologies : preset.allowedTechnologies.filter(technology => technology !== "WorkManager")
   if (preset.id !== "linux-hyprland-waybar-module" && preset.id !== "linux-wayland-gtk4-desktop") return preset.allowedTechnologies
   const { records, secrets, http } = rustKitHelpers(blueprint)
   const launchers = preset.id === "linux-hyprland-waybar-module" ? waybarLaunchers(blueprint) : { pages: [], notifies: false }
@@ -1798,9 +1816,10 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
         ? preset.persistence.enabledDecision
         : preset.persistence.enabledDecision
     : preset.persistence.disabledDecision
+  const androidWithoutSettings = presetId === "android-kotlin-compose" && !androidKitNeeds(blueprint).settingsData
   const persistenceSettings = (astroPlan?.usesContentCollections
     ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.settingsPlacement
-    : preset.persistence.settingsPlacement).replaceAll("{app-id}", identity.bundleId)
+    : androidWithoutSettings ? "No setting is declared; no key is added to SettingsRepository." : preset.persistence.settingsPlacement).replaceAll("{app-id}", identity.bundleId)
   const persistenceRecords = (astroPlan?.usesContentCollections
     ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.recordsPlacement.replace("{collection}", astroPlan.collections.map(item => `src/content/${item.name}/`).join(", "))
     : preset.persistence.recordsPlacement).replaceAll("{app-id}", identity.bundleId)

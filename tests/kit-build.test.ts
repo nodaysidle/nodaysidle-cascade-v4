@@ -146,8 +146,9 @@ describeBuild("v4 starter kits compile and pass their own tests", () => {
 
   it("Android kit", async () => {
     const fixture = fixtureCases.find(item => item.presetId === "android-kotlin-compose")!
-    // One kit without a schedule and one with it; both must build and pass the JVM unit tests without a device.
-    for (const blueprint of [fixture.blueprint, pantryBlueprint]) {
+    // One kit with notifications only, one with a schedule and a setting, and one with neither; both must build and pass the JVM unit tests without a device.
+    const bare = fixtureCases.find(item => item.blueprint.productName === "Trail Ready")!.blueprint
+    for (const blueprint of [fixture.blueprint, pantryBlueprint, bare]) {
       const root = materialize(await compilePacket(blueprint, fixture.presetId))
       try {
         run("./scripts/gradle.sh", ["assembleDebug", "testDebugUnitTest"], root, { ANDROID_HOME: process.env.ANDROID_HOME ?? join(homedir(), "Android/Sdk") })

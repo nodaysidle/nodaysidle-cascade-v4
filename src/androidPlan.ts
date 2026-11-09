@@ -59,8 +59,9 @@ export function androidScheduleContract(identity: ProjectIdentity, feature: Andr
     details: [
       `Worker: ${files.worker} defines ${feature.pascal}Worker, a CoroutineWorker whose doWork() reads the repositories from (applicationContext as ${application}).container, does the feature's work once, and returns Result.success() after every run, including a run that failed or had nothing to do; it never returns Result.retry(), because the next scheduled run is the recovery.`,
       ...(feature.notifies
-        ? [`Notification channel: ${files.scheduler} defines ${feature.pascal}Scheduler.registerChannel(context), which creates a NotificationChannel with id "${feature.slug}" and name "${feature.name}" (IMPORTANCE_DEFAULT) and is safe to call on every launch; the Worker posts through that channel only when NotificationManagerCompat.areNotificationsEnabled() is true and otherwise posts nothing and still returns Result.success().`]
+        ? [`Notification channel: ${files.scheduler} defines ${feature.pascal}Scheduler.registerChannel(context), which creates a NotificationChannel with id "${feature.slug}" and name "${feature.name}" (IMPORTANCE_DEFAULT) and is safe to call on every launch; the Worker posts through that channel only when NotificationManagerCompat.areNotificationsEnabled() is true and otherwise posts nothing and still returns Result.success(). The notification uses the feature name as its title, the sentence the feature's behavior gives as its text, the platform icon android.R.drawable.ic_dialog_info (add no resource file), and a PendingIntent.FLAG_IMMUTABLE content intent that opens MainActivity. No screen shows the notification status unless a feature declares one.`]
         : []),
+      `Run state: the epoch day (LocalDate.now(clock).toEpochDay()) on which this schedule last sent or deliberately skipped its run is kept in SettingsRepository under the schedule name "${feature.slug}" (lastRunEpochDay("${feature.slug}") and recordRun("${feature.slug}", epochDay), both already in the kit and tested). doWork() reads it first and does nothing when it equals today, so a day is never notified twice; it records today after it sends and after the feature's own skip rule applies, so a skipped day stays skipped. No other store holds this state and no data object is added for it.`,
       `Enqueue point: ${application}.onCreate calls ${feature.notifies ? `${feature.pascal}Scheduler.registerChannel(this) and then ` : ""}${feature.pascal}Scheduler.enqueue(container.workManager, container.clock) right after the container is created. AppContainer.kt already provides workManager and clock.`,
       delay,
       `Clock: every time read, the initial delay and any comparison with today or now, uses the injected java.time.Clock (AppContainer.clock in production, Clock.fixed in tests); ${NO_DIRECT_TIME}.`,
@@ -85,6 +86,7 @@ export function androidTaskExtras(input: {
   readonly clockDependent: boolean
   readonly notifications: boolean
   readonly focusedTestFile: string
+  readonly firstMain?: boolean
 }): AndroidTaskExtras {
   const { identity } = input
   const create: string[] = []
@@ -98,6 +100,12 @@ export function androidTaskExtras(input: {
   }
   if (input.clockDependent) {
     notes.push(`Time rule: this feature is scheduled or reads a stored date or time; every comparison of one with today or now takes a java.time.Clock (AppContainer.clock in production), and when its behavior or acceptance has such a boundary, ${input.focusedTestFile} passes Clock.fixed dates before, on, and after it; ${NO_DIRECT_TIME}.`)
+  }
+  if (input.kind === "data") {
+    notes.push("Room writes the schema JSON app/schemas/(the AppDatabase class name)/1.json when the project builds (the kit sets room.schemaLocation); that file is generated build output, committed with this task, and is not part of the create-only list.")
+  }
+  if (input.firstMain) {
+    notes.push("Every list row and detail view shows every stored field the PRD says that list or view shows, in the form the stored value has (for a date, the formatted date); a value an acceptance outcome asserts on screen is shown there too.")
   }
   if (input.kind === "permission" && input.notifications) {
     modify.push(`app/src/main/java/${identity.packagePath}/MainActivity.kt`)
