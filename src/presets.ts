@@ -5,7 +5,7 @@ import type { NormalizedBlueprint } from "./compiler"
 import type { FeatureSurface } from "./schema"
 import { gtkSpecialize } from "./gtkContracts"
 import { tauriSpecialize } from "./tauriContracts"
-import { waybarWiringTest, WAYBAR_EMPTY_LABEL, WAYBAR_FAILURE_RULE, WAYBAR_PROVIDER_NOTES, WAYBAR_RUNTIME_STORY, WAYBAR_TIME_CONVENTION, WAYBAR_UNITS_KIT, WAYBAR_UNIT_CONVENTION, waybarKitParts } from "./waybarContracts"
+import { waybarClickReadsRecord, waybarWiringTest, WAYBAR_EMPTY_LABEL, WAYBAR_FAILURE_RULE, WAYBAR_PROVIDER_NOTES, WAYBAR_RUNTIME_STORY, WAYBAR_TIME_CONVENTION, WAYBAR_UNITS_KIT, WAYBAR_UNIT_CONVENTION, waybarKitParts } from "./waybarContracts"
 import { waybarLaunchers } from "./kits"
 
 export const PRESET_IDS = [
@@ -549,7 +549,9 @@ function waybarSpecialize(preset: PresetContract, blueprint: NormalizedBlueprint
     wiringRules: preset.wiringRules.map((rule, index) => index === 0 ? waybarWiringTest(blueprint) : rule),
     registrationFiles: (kind, identity) => kind === "data" ? ["src/platform/mod.rs", ...(settingsData ? ["src/config.rs"] : [])] : preset.registrationFiles!(kind, identity),
   }
-  const shipped = preset.runtimeArchitecture.filter(line => !(line.startsWith("Units are fixed") && !parts.sizes) && !(line.startsWith("Time: ") && !parts.localTime) && !(line.startsWith("A click feature that opens") && !launches.pages.length && !launches.notifies))
+  const clickRule = ": a click action that needs the reading reads the stored record through the store, never cache.json, and with no stored record it does nothing and exits non-zero."
+  const clickReads = waybarClickReadsRecord(blueprint)
+  const shipped = preset.runtimeArchitecture.map(line => clickReads ? line : line.replace(clickRule, ".")).filter(line => !(line.startsWith("Units are fixed") && !parts.sizes) && !(line.startsWith("Time: ") && !parts.localTime) && !(line.startsWith("A click feature that opens") && !launches.pages.length && !launches.notifies))
   if (blueprint.persistenceNeeds.some(need => need.storage === "records")) return { ...common, runtimeArchitecture: shipped }
   return {
     ...common,

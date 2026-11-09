@@ -58,7 +58,7 @@ describe("Waybar system sources, units, and one failure rule", () => {
     expect(trd).toContain("Request URL: https://api.example.org/feed/{value}/")
     expect(trd).toContain("the function request_url")
     expect(trd).toContain("the function page_url")
-    expect(trd).toContain("when no value is saved the address is https://example.org/")
+    expect(trd).toContain("with no value saved the click returns Err")
     const tasks = packet.documents["TASKS.md"]
     const order = taskOrder(tasks)
     const display = order.findIndex(id => id.includes("AIR-QUALITY-INDEX-DISPLAY"))

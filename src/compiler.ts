@@ -9,7 +9,7 @@ import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { gtkStoreInterface, refineGtkContracts, refineGtkPhases } from "./gtkContracts"
 import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarRoles, waybarTaskNotes } from "./kits"
-import { waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarSourceDetail } from "./waybarContracts"
+import { waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarResponseDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarSourceDetail } from "./waybarContracts"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
 import { TAURI_WIRE_FORMAT, tauriAddHasForm, tauriDocumentInterface, tauriFeatureOps, tauriMainSlotsSentence, tauriStoreInterface, tauriTaskPrompt, type TauriData, type TauriFeatureUse } from "./tauriContracts"
@@ -18,7 +18,7 @@ export const DOCUMENT_NAMES = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS
 export type DocumentName = (typeof DOCUMENT_NAMES)[number]
 export type ContractKind = "interface" | "data" | "integration" | "lifecycle" | "persistence" | "credential" | "permission" | "recovery" | "security" | "packaging"
 
-export type SystemSource = "none" | "network-received" | "network-sent" | "load-average" | "memory" | "battery" | "disk-space" | "temperature"
+export type SystemSource = "none" | "network-received" | "network-sent" | "load-average" | "memory" | "swap" | "battery" | "disk-space" | "temperature"
 export type InvokedBy = "user-control" | "click" | "schedule" | "launch" | "shortcut"
 export type DataOperation = "create" | "read" | "update" | "delete"
 export interface DataField {
@@ -1447,7 +1447,7 @@ function buildOwnersAndContracts(
       integrationFeatureIds(service, features),
       ownerId,
       `${service.purpose} ${preset.integrationBoundary}`,
-      [...(service.endpoint ? [`Endpoint: ${service.endpoint}`] : []), ...(service.webPage ? [`Web page opened for the user: ${service.webPage}`] : []), ...(preset.id === "linux-hyprland-waybar-module" ? [...waybarRequestDetail(service), ...waybarPageDetail(service)] : []), ...(service.responseFields.length ? [`Response values read (anything else is ignored): ${service.responseFields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`] : []), `Data sent: ${service.dataSent.join("; ") || "No product data beyond the explicit request."}`, `Credential requirement: ${service.credentialRequirement}`, `Preset boundary: ${preset.platform}`, `Framework boundary: ${preset.integrationBoundary}`],
+      [...(service.endpoint ? [`Endpoint: ${service.endpoint}`] : []), ...(service.webPage ? [`Web page opened for the user: ${service.webPage}`] : []), ...(preset.id === "linux-hyprland-waybar-module" ? [...waybarRequestDetail(service), ...waybarPageDetail(service)] : []), ...(service.responseFields.length ? [`Response values read (anything else is ignored): ${service.responseFields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`] : []), ...(preset.id === "linux-hyprland-waybar-module" ? waybarResponseDetail(service) : []), `Data sent: ${service.dataSent.join("; ") || "No product data beyond the explicit request."}`, `Credential requirement: ${service.credentialRequirement}`, `Preset boundary: ${preset.platform}`, `Framework boundary: ${preset.integrationBoundary}`],
       service.failureBehavior,
       [service.recovery],
     ))
