@@ -25,6 +25,8 @@ export interface DataField {
   readonly name: string
   readonly valueType: DataValueType
   readonly optional: boolean
+  readonly min?: number | null
+  readonly max?: number | null
 }
 
 export interface NormalizedBlueprint {
@@ -606,7 +608,7 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       retentionIntent: cleanMeaning(item.retentionIntent),
       storage: item.storage,
       writeMode: item.writeMode,
-      fields: item.fields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional })).filter(field => field.name),
+      fields: item.fields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional, min: field.min ?? null, max: field.max ?? null })).filter(field => field.name),
       singleRecord: item.singleRecord,
       entryCount: item.entryCount ?? null,
     }
@@ -980,6 +982,14 @@ function documentWriteDetail(storage: string, placement: string, preset: PresetC
 const SESSION_MEMORY_PLACEMENT = "Held in memory for the session and not written to disk."
 const ATOMIC_RENAME_SCRATCH_PLACEMENT = "A temporary file in the destination file's own directory, renamed over the destination on success and removed on failure; never in temporaryDirectory or Application Support."
 
+// A declared bound is part of the field's type everywhere it is stated.
+function rangeNote(field: DataField): string {
+  if (field.min != null && field.max != null) return `, from ${field.min} to ${field.max}`
+  if (field.min != null) return `, at least ${field.min}`
+  if (field.max != null) return `, at most ${field.max}`
+  return ""
+}
+
 const VALUE_TYPE_LABEL: Record<DataValueType, string> = {
   text: "short text",
   "long-text": "long text",
@@ -1022,7 +1032,7 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
   if (!item.fields.length) return []
   if (presetId === "linux-hyprland-waybar-module" && item.storage === "settings") return [waybarSettingsInterface(item, operations)]
   const lines = [
-    `Stored fields (one record each, plus ${presetId === "astro-web" ? "its entry id, the file name without extension" : "a stable generated id"}): ${item.fields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`,
+    `Stored fields (one record each, plus ${presetId === "astro-web" ? "its entry id, the file name without extension" : "a stable generated id"}): ${item.fields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${rangeNote(field)}${field.optional ? ", optional" : ""})`).join("; ")}.`,
   ]
   if (operations.length) {
     lines.push(`Store operations, exactly these and no others: ${operations.map(operation => `${operation} (${users.filter(feature => operationsOf(feature).includes(operation)).map(feature => feature.id).join(", ")})`).join("; ")}.`)

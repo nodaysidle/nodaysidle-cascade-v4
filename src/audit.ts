@@ -455,6 +455,10 @@ function markdownFailures(name: string, markdown: string): AuditFailure[] {
   }
   const unfinished = markdown.match(unfinishedPattern) ?? markdown.match(/<[^>]+>|\[insert\s+[^\]]+\]/i)
   if (unfinished) failures.push(failure("content.unfinished", name, `${name} contains unfinished content: "${unfinished[0].slice(0, 60)}".`))
+  // A dropped template fragment leaves ", ," or ", ." in the text.
+  const prose = markdown.replace(/```[\s\S]*?```/g, "CODE").replace(/`[^`\n]*`/g, "CODE")
+  const dangling = prose.match(/,\s*,|,\s+\.(?!\.)|;\s*;/)
+  if (dangling) failures.push(failure("content.dangling-punctuation", name, `${name} contains a dangling clause: "${prose.slice(Math.max(0, (dangling.index ?? 0) - 40), (dangling.index ?? 0) + 20).replace(/\n/g, " ")}".`))
   if (unresolvedDecisionPattern.test(markdown)) failures.push(failure("content.unresolved-decision", name, `${name} contains an unresolved implementation alternative.`))
   if (genericIdentityPattern.test(markdown)) failures.push(failure("content.identity", name, `${name} contains a generic identity.`))
   if (secretPatterns.some(pattern => pattern.test(markdown))) failures.push(failure("content.secret-shaped", name, `${name} contains a secret-shaped value.`))

@@ -106,6 +106,9 @@ const DataFieldSchema = z.strictObject({
   valueType: DataValueTypeSchema,
   // True when the value may be absent (for example the end time of a running timer).
   optional: z.boolean().default(false),
+  // Lower and upper bound of a number or whole-number field when the idea states a range (a mood from one to five); otherwise null.
+  min: z.number().nullable().optional(),
+  max: z.number().nullable().optional(),
 })
 
 const DataObjectSchema = z.strictObject({
@@ -597,6 +600,15 @@ function serviceRequestIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
 
 function dataShapeIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
   const issues: SemanticIssue[] = []
+  blueprint.dataObjects.forEach((item, index) => item.fields.forEach((field, position) => {
+    const bounded = field.min != null || field.max != null
+    if (bounded && field.valueType !== "number" && field.valueType !== "whole-number") {
+      issues.push({ path: `dataObjects[${index}].fields[${position}]`, rule: "semantic.bound-on-non-number", message: `Field '${field.name}' sets min or max but is not a number or whole-number.` })
+    }
+    if (field.min != null && field.max != null && field.min > field.max) {
+      issues.push({ path: `dataObjects[${index}].fields[${position}]`, rule: "semantic.bound-order", message: `Field '${field.name}' has min above max.` })
+    }
+  }))
   blueprint.externalServices.forEach((item, index) => {
     if (!/^https:\/\/\S+$/.test(item.endpoint)) {
       issues.push({ path: `externalServices[${index}].endpoint`, rule: "semantic.missing-service-endpoint", message: `Service '${item.name}' must declare the documented HTTPS endpoint the app calls.` })
@@ -752,6 +764,8 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "For every external service, set endpoint to the real, documented HTTPS URL of a public API that fits the purpose, and list the response values the app reads in responseFields. Use only an API you are confident exists; the app never needs an API key unless credentialRequired is true, so name only an endpoint that works with no registration unless you set credentialRequired true. When the endpoint or webPage needs a value the user saved (a city, station, or account identifier), write {value} in it and set requestValueFrom to the name of the settings field holding it; the records that keep the fetched result must then include a field with that same name.",
     "Do not create a feature for restoring data after a restart or for loading data when the app starts: persistence and restoring belong to the feature that shows or uses the data. Write failure outcomes and acceptance signals as conditions the finished app can show or a test can assert; never describe an error message for something the stack cannot produce at run time.",
     ...(input.presetNotes ?? []),
+    "Set min and max on a number or whole-number field only when the idea states the range (a mood from one to five: min 1, max 5; an amount that cannot be negative: min 0); otherwise leave them null. Never invent a bound the idea does not state.",
+    "When the order of a list depends on when something changed, declare a date-time field for that moment (for example updated at); the compiler orders by it. Without such a field the list is ordered by newest created first.",
     "Coverage is checked structurally. Before finalizing, map every numbered idea sentence in ideaCoverage, then define only the features those mappings name. If a feature is listed by no sentence, remove it. If a sentence asks for behavior, map at least one feature to it. Never add a feature to make the design feel complete.",
     "For web surfaces: main is the home page, so anything the idea says the home page shows (including a list of featured entries) is main; use collection-index only for a separate page that lists all entries, tag-page for a tag or category page, search-page for a search results page, and page for any other page of its own that the idea names (an events page, a services page, an opening hours page). Use each value only when the idea asks for that page.",
     "Every feature acceptance signal must describe a concrete, mechanically verifiable condition (such as state transitions, UI element visibility, disk persistence, error code handling, or measured response under an explicit numerical threshold) that automated unit or integration tests can assert without human subjective impression. Never use subjective or hyperbolic phrases such as 'feels smooth', 'zero latency', 'instantaneous', or 'aesthetic appeal'.",

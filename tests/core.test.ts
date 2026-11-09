@@ -434,6 +434,26 @@ describe("v4 deterministic core", () => {
     const issues = auditCapabilities({ ...waybar.blueprint, dataObjects: [{ ...waybar.blueprint.dataObjects[0]!, storage: "session" }] }, PRESETS["linux-hyprland-waybar-module"])
     expect(issues.map(issue => issue.rule)).toContain("capability.waybar-process-memory")
   })
+
+  it("states declared number bounds in the data contract and the Astro schema, and rejects bounds on non-numbers", async () => {
+    const astro = fixtureCases.find(item => item.presetId === "astro-web")!.blueprint
+    const records = { name: "Lighthouses", purpose: "The lighthouses.", sensitivity: "public" as const, retentionIntent: "Kept in the repository.", storage: "records" as const, writeMode: "direct" as const, singleRecord: false, fields: [{ name: "Name", valueType: "text" as const, optional: false }, { name: "Year built", valueType: "whole-number" as const, optional: false, min: 1000, max: 2100 }] }
+    const bounded = { ...astro, dataObjects: [records], features: astro.features.map(feature => ({ ...feature, usesData: ["Lighthouses"], dataOperations: [] })) }
+    const packet = await compilePacket(bounded, "astro-web")
+    const config = packet.kit.find(file => file.name.endsWith("content.config.ts"))!.content
+    expect(config).toContain("z.number().int().min(1000).max(2100)")
+    expect(packet.documents["TRD.md"]).toContain("whole number, from 1000 to 2100")
+    expect(packet.kit.map(file => file.content).join("\n")).toContain("yearBuilt: 1000")
+    const bad = { ...bounded, dataObjects: [{ ...records, fields: [{ name: "Name", valueType: "text" as const, optional: false, min: 1, max: 5 }] }] }
+    expect(auditSemanticIntake(bad).map(issue => issue.rule)).toContain("semantic.bound-on-non-number")
+  })
+
+  it("fails the audit on a dangling clause left by a dropped template fragment", async () => {
+    const fixture = fixtureCases.find(item => item.presetId === "linux-wayland-gtk4-desktop")!
+    const packet = await compilePacket(fixture.blueprint, fixture.presetId)
+    const broken = { ...packet.documents, "TASKS.md": `${packet.documents["TASKS.md"]}\n- Prompt: it trims its text arguments, , and an edit task calls it.` } as Record<string, string>
+    expect(auditPacket(packet.graph, broken, PRESETS[fixture.presetId]).map(item => item.rule)).toContain("content.dangling-punctuation")
+  })
 })
 
 function blueprintSentenceStarts(text: string, summary: string): boolean {
