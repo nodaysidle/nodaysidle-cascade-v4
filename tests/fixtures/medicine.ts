@@ -42,7 +42,7 @@ export const medicineBlueprint: SemanticBlueprint = {
   dataObjects: [
     {
       name: "Medicines", purpose: "The medicines with the time of day each is taken.", sensitivity: "personal", retentionIntent: "Keep until the user removes the app data.", storage: "records", writeMode: "direct", singleRecord: false,
-      fields: [{ name: "Name", valueType: "text", optional: false }, { name: "Time of day", valueType: "time", optional: false }, { name: "Taken date", valueType: "date", optional: true }],
+      fields: [{ name: "Name", valueType: "text", optional: false }, { name: "Time of day", valueType: "time", optional: false }, { name: "Taken date", valueType: "date", optional: true, appStamped: true }],
     },
   ],
   externalServices: [],

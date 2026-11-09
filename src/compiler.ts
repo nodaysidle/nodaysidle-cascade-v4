@@ -6,7 +6,7 @@ import { androidKitNeeds } from "./androidKit"
 import { ANDROID_DELETE_PROMPT, androidChoiceMatchesPicker, androidFormRules } from "./androidForms"
 import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
-import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
+import { clockInitial, featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { gtkStoreInterface, refineGtkContracts, refineGtkPhases } from "./gtkContracts"
 import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarRoles, waybarTaskNotes } from "./kits"
 import { waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarResponseDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarSourceDetail } from "./waybarContracts"
@@ -1010,7 +1010,7 @@ function androidEditsPicker(feature: SemanticBlueprint["features"][number], opti
 
 // A declared bound is part of the field's type everywhere it is stated.
 function rangeNote(field: DataField): string {
-  const initial = field.initial != null && field.initial !== "" ? `, set to "${field.initial}" by the app when the record is created (never typed by the user)` : ""
+  const initial = clockInitial(field) ? ", set at creation from the clock (never typed by the user)" : field.initial != null && field.initial !== "" ? `, set to "${field.initial}" by the app when the record is created (never typed by the user)` : ""
   if (field.min != null && field.max != null) return `, from ${field.min} to ${field.max}${initial}`
   if (field.min != null) return `, at least ${field.min}${initial}`
   if (field.max != null) return `, at most ${field.max}${initial}`
@@ -1208,13 +1208,13 @@ function androidClockFeatureIds(blueprint: NormalizedBlueprint, features: readon
   return ids
 }
 
-// A feature that writes a stored date or time without reading one only stamps it from the injected clock.
+// A feature that creates a record with a clock-initial field, or writes a record with an app-stamped one, stamps it from the injected clock (a feature that also compares a stored date with now has both notes).
 function androidStampFeatureIds(blueprint: NormalizedBlueprint, features: readonly GraphFeature[]): Set<string> {
-  const compares = androidClockFeatureIds(blueprint, features)
   const ids = new Set<string>()
-  for (const item of blueprint.domainData.filter(entry => entry.fields.some(field => field.valueType === "date-time" || field.valueType === "date"))) {
-    for (const feature of features.filter(candidate => dataFeatureIds(item.name, features).includes(candidate.id) && !compares.has(candidate.id))) {
-      if (opsOn(feature, item.name).some(operation => operation === "create" || operation === "update")) ids.add(feature.id)
+  for (const item of blueprint.domainData.filter(entry => entry.fields.some(field => clockInitial(field) || field.appStamped))) {
+    for (const feature of features.filter(candidate => dataFeatureIds(item.name, features).includes(candidate.id))) {
+      const operations = opsOn(feature, item.name)
+      if ((item.fields.some(field => clockInitial(field)) && operations.includes("create")) || (item.fields.some(field => field.appStamped) && operations.some(operation => operation === "create" || operation === "update"))) ids.add(feature.id)
     }
   }
   return ids
@@ -1271,7 +1271,7 @@ function mainSlotsSentence(features: readonly GraphFeature[], detailView = true,
   const changes = ops.has("update") || ops.has("delete")
   if (rowOpensEditor) return tauriMainSlotsSentence({ create: ops.has("create"), directAdd, entryForm: !directAdd && ops.has("create") && features.some(feature => feature.editsRecords && feature.dataOperations.includes("update")), rowArea: needsRowArea(features), detail: changes && features.some(feature => feature.editsRecords), filter: filterSlot, countdown: features.some(isCountdown) })
   const slots = [
-    android ? "a status area (testTag \"status\") that carries only the main list's empty message (the exact text an acceptance signal quotes, else a short plain sentence; tag \"empty-state\"), the form errors, and the write-failure message of a later task's save, delete, mark, or toggle (the text its acceptance quotes, else \"Could not save changes\" or \"Could not delete\"; tag \"write-error\"; the row stays as it was); a section a later feature mounts above the list renders its own empty text inside itself, never in this area, and its rows are compact name-only rows tagged \"summary-row-\" plus the record id, so no \"row-\" tag or message appears twice" : "a status area shared by every message the main screen shows (empty state, no match, errors)",
+    android ? "a status area (testTag \"status\") that carries only the main list's empty message (the exact text an acceptance signal quotes, else a short plain sentence; tag \"empty-state\"), the one quoted form-error text when the PRD or an acceptance signal quotes it (else each field shows its own supporting text and none goes here), and the write-failure message of a later task's save, delete, mark, or toggle (the text its acceptance quotes, else \"Could not save changes\" or \"Could not delete\"; tag \"write-error\"; the row stays as it was); a section a later feature mounts above the list renders its own empty text inside itself, never in this area, and its rows are compact name-only rows tagged \"summary-row-\" plus the record id, so no \"row-\" tag or message appears twice" : "a status area shared by every message the main screen shows (empty state, no match, errors)",
     ...(ops.has("create") ? [directAdd ? "an add-entry control: a button that the add task connects to the create command (no stored field takes user input, so build no entry form shell)" : android && !detailView ? "the add-entry area on the main screen above the list: the Add button (testTag \"add-entry\") plus the inline form shell, which hosts whichever form (add or edit) is open, one at a time, so opening one closes the other (the add task builds the form fields, validation, and the open or closed state in its own file; an edit task reuses them)" : "an add-entry control that opens the entry form shell (the add task builds the form fields and validation; an edit task reuses them)"] : []),
     ...(ops.has("update") || ops.has("delete") ? [...(rowOpensEditor && !needsRowArea(features) ? [] : [android ? "a per-row action area on every row of the main list (rows a later feature shows in the area above the list get none)" : "a per-row action area on every list row"]), ...(detailView ? [`a detail view for the selected record that shows every stored field
 ${mainDetailControls(features)}, ${rowOpensEditor && features.some(feature => feature.editsRecords) ? "it is always built because the packet has an edit feature: every list row is selectable (activating the row selects the record, marks it aria-selected, and shows this detail view), which is how the user reaches the editor; a single mark or toggle action belongs in the per-row action area and never uses the Edit button" : "built only if an acceptance criterion of a later task opens a record to edit or delete it"}`] : [])] : []),
@@ -1859,6 +1859,7 @@ function buildPhases(
           scheduled: androidScheduledFeatures(preset, identity, ownedFeatures, blueprint.domainData),
           clockDependent: ownedFeatures.some(feature => androidClockFeatureIds(blueprint, features).has(feature.id)),
           stamps: ownedFeatures.some(feature => androidStampFeatureIds(blueprint, features).has(feature.id)),
+          clockInitial: ownedFeatures.some(feature => blueprint.domainData.some(item => item.fields.some(field => clockInitial(field)) && opsOn(feature, item.name).includes("create"))),
           notifications: blueprint.permissionNeeds.some(item => item.capability === "notifications"),
           screen: ownedFeatures.length === 0 || ownedFeatures.some(feature => feature.invokedBy !== "schedule"),
           form: ownedFeatures.some(feature => androidFeatureFormDetails(feature, blueprint.domainData, features).some(detail => detail.startsWith("Form (")) ),

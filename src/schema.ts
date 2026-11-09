@@ -105,6 +105,10 @@ export const DataWriteModeSchema = z.enum(["direct", "atomic-replace"])
 
 export const DataValueTypeSchema = z.enum(["text", "long-text", "number", "whole-number", "flag", "date", "date-time", "time", "text-list", "reference"])
 
+// A date with initial "today" or a date-time with initial "now" is stamped by the app from the injected clock when the record is created.
+export const clockInitial = (field: { readonly valueType: string; readonly initial?: string | null }): "today" | "now" | null =>
+  (field.valueType === "date" && field.initial === "today") || (field.valueType === "date-time" && field.initial === "now") ? field.initial : null
+
 const DataFieldSchema = z.strictObject({
   name: shortMeaning,
   valueType: DataValueTypeSchema,
@@ -113,7 +117,7 @@ const DataFieldSchema = z.strictObject({
   // Lower and upper bound of a number or whole-number field when the idea states a range (a mood from one to five); otherwise null.
   min: z.number().nullable().optional(),
   max: z.number().nullable().optional(),
-  // The value the app itself stores when it creates a record, so the user never types the field (a status that starts as Not started); null for a value the user enters.
+  // The value the app itself stores when it creates a record, so the user never types the field (a status that starts as Not started); "today" on a date and "now" on a date-time mean the injected clock's value at creation; null for a value the user enters.
   initial: z.string().max(80).nullable().optional(),
   // True for a date or date-time that an action of the app writes (a last-watered day a Watered button stamps); the add and edit forms have no input for it. False for every field the user enters.
   appStamped: z.boolean().nullable().optional(),
@@ -646,8 +650,15 @@ function dataShapeIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
       issues.push({ path: `dataObjects[${index}].fields[${position}]`, rule: "semantic.bound-on-non-number", message: `Field '${field.name}' sets min or max but is not a number or whole-number.` })
     }
     const initial = field.initial ?? ""
-    if (initial !== "" && (((field.valueType === "number" || field.valueType === "whole-number") && !Number.isFinite(Number(initial))) || (field.valueType === "flag" && initial !== "true" && initial !== "false") || field.valueType === "date-time" || field.valueType === "date" || field.valueType === "time")) {
-      issues.push({ path: `dataObjects[${index}].fields[${position}]`, rule: "semantic.initial-value-type", message: `Field '${field.name}' has an initial value that does not fit its type (a number, true or false for a flag; a date or time is never set as an initial text).` })
+    const clock = clockInitial(field)
+    if (initial !== "" && !clock && (((field.valueType === "number" || field.valueType === "whole-number") && !Number.isFinite(Number(initial))) || (field.valueType === "flag" && initial !== "true" && initial !== "false") || field.valueType === "date-time" || field.valueType === "date" || field.valueType === "time")) {
+      issues.push({ path: `dataObjects[${index}].fields[${position}]`, rule: "semantic.initial-value-type", message: `Field '${field.name}' has an initial value that does not fit its type (a number, true or false for a flag; today for a date and now for a date-time that the app stamps from the clock when the record is created; no other date or time text).` })
+    }
+    if (clock && field.optional) {
+      issues.push({ path: `dataObjects[${index}].fields[${position}]`, rule: "semantic.stamped-optional", message: `Field '${field.name}' is stamped from the clock when the record is created, so it is never absent: it must not be optional.` })
+    }
+    if ((initial === "today" || initial === "now") && !clock) {
+      issues.push({ path: `dataObjects[${index}].fields[${position}]`, rule: "semantic.initial-clock-type", message: `Field '${field.name}' has initial '${initial}', which is only for a date (today) or a date-time (now) field.` })
     }
     if (field.appStamped && field.valueType !== "date" && field.valueType !== "date-time") {
       issues.push({ path: `dataObjects[${index}].fields[${position}]`, rule: "semantic.stamped-not-date", message: `Field '${field.name}' is appStamped but is not a date or date-time.` })
@@ -820,7 +831,7 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "For every external service, set endpoint to the real, documented HTTPS URL of a public API that fits the purpose, and list the response values the app reads in responseFields. Use only an API you are confident exists; the app never needs an API key unless credentialRequired is true, so name only an endpoint that works with no registration unless you set credentialRequired true. When the endpoint or webPage needs a value the user saved (a city, station, or account identifier), write {value} in it and set requestValueFrom to the name of the settings field holding it; the records that keep the fetched result must then include a field with that same name.",
     "Do not create a feature for restoring data after a restart or for loading data when the app starts: persistence and restoring belong to the feature that shows or uses the data. Write failure outcomes and acceptance signals as conditions the finished app can show or a test can assert; never describe an error message for something the stack cannot produce at run time.",
     ...(input.presetNotes ?? []),
-    "Set initial on a field only when the app, not the user, gives it its first value when the record is created (a state that starts as Not started); the add form then has no input for it. Give the value as text (true or false for a flag). Leave it null for every field the user enters or that a feature stamps. A state that follows only from time passing (a timer that has run out) is not stored: derive it, and do not list it as an option of a stored field.",
+    "Set initial on a field only when the app, not the user, gives it its first value when the record is created (a state that starts as Not started); the add form then has no input for it. Give the value as text (true or false for a flag). A date or moment the app records when a record is created (created, added, logged at) is a non-optional field with initial today (a date) or now (a date-time) and is not entered by the user; a date the user chooses (a due date, a last vet visit) has no initial. Leave it null for every field the user enters or that a later action of the app stamps. A state that follows only from time passing (a timer that has run out) is not stored: derive it, and do not list it as an option of a stored field.",
     "Set appStamped to true only on a date or date-time field that an action of the app writes (a last-watered day that a Watered today button stamps); the add and edit forms then have no input for it, and it is false for every date the user enters. For a delete, state in the behavior whether it asks for confirmation: the default is a confirmation dialog, and no confirmation is stated only when the idea says so, once and in the same words everywhere (no rule can detect a contradiction here, so write it once).",
     "Set refreshesEverySeconds on a feature that shows a value changing on its own while the app is open (a countdown or elapsed time shown in seconds is 1); otherwise leave it null.",
     "Set min and max on a number or whole-number field only when the idea states the range (a mood from one to five: min 1, max 5; an amount that cannot be negative: min 0); otherwise leave them null. Never invent a bound the idea does not state. A choice list of consecutive whole numbers (1 to 5) needs the same min and max on the whole-number field it picks. A number field whose acceptance signal states a format (a four-digit year: min 1000, max 9999) takes the bounds that format implies, so the sample values the compiler writes satisfy that signal. Likewise never invent a capacity or performance target (a number of records, a duration) in qualityRequirements that the idea does not state.",
