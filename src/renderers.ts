@@ -160,8 +160,8 @@ function renderPRD(graph: ProjectGraph): string {
 }
 
 function renderARD(graph: ProjectGraph): string {
-  const foundationLine = `OWN-FOUNDATION — Foundation owns ${graph.foundationFiles.join(", ")}; focused test ${graph.phases[0]?.tasks[0]?.focusedTests[0] ?? "contract tests"}; create phase PHASE-01-FOUNDATION; modify phases none`
-  const ownerLines = [foundationLine, ...graph.owners.map(owner => `${owner.id} — ${owner.name} owns ${owner.implementationFile}; focused test ${owner.focusedTestFile}; create phase ${owner.createPhaseId}; modify phases ${owner.modifyPhaseIds.join(", ") || "none"}`)]
+  const foundationLine = `OWN-FOUNDATION — Foundation owns ${graph.foundationFiles.join(", ")}; focused test ${graph.phases[0]?.tasks[0]?.focusedTests[0] ?? "contract tests"}; create phase PHASE-01-FOUNDATION`
+  const ownerLines = [foundationLine, ...graph.owners.map(owner => `${owner.id} — ${owner.name} owns ${owner.implementationFile}; focused test ${owner.focusedTestFile}; create phase ${owner.createPhaseId}; registration edits are listed per task in TASKS.md`)]
   const journeys = graph.blueprint.primaryUserJourneys.map(journey => `${journey.name}: ${journey.steps.join(" → ")} → ${journey.outcome}`)
   const lifecycle = graph.contracts.filter(contract => contract.kind === "lifecycle").map(contract => `${contract.id}: ${contract.decision} Cleanup: ${contract.recovery.join("; ")}`)
   const integrations = graph.contracts.filter(contract => contract.kind === "integration").map(contract => `${contract.id}: ${contract.decision} Failure: ${contract.failureBehavior} Recovery: ${contract.recovery.join("; ")}`)
@@ -207,6 +207,7 @@ function contractsOfKind(graph: ProjectGraph, ...kinds: GraphContract["kind"][])
 }
 
 function renderTRD(graph: ProjectGraph): string {
+  const hasKind = (kind: GraphContract["kind"]) => graph.contracts.some(contract => contract.kind === kind)
   return [
     `# Technical Requirements Document — ${graph.blueprint.projectName}`,
     section("Document Purpose", "Lock the stack, project layout, interfaces, data, integrations, lifecycle, persistence, credentials, permissions, recovery, tests, packaging, signing, validation, and completion proof."),
@@ -223,12 +224,12 @@ function renderTRD(graph: ProjectGraph): string {
       ...graph.owners.map(owner => `${owner.id} — ${owner.name} — implementation ${owner.implementationFile} — focused test ${owner.focusedTestFile} — command ${owner.focusedTestCommand}`),
     ])),
     section("Interface Contracts", contractsOfKind(graph, "interface")),
-    section("Data Contracts", contractsOfKind(graph, "data")),
-    section("External Integration Contracts", `${bullets([graph.integrationBoundary])}\n\n${contractsOfKind(graph, "integration")}`),
+    section("Data Contracts", hasKind("data") ? contractsOfKind(graph, "data") : "No data object is declared; the product keeps no product data between explicit user actions."),
+    section("External Integration Contracts", hasKind("integration") ? `${bullets([graph.integrationBoundary])}\n\n${contractsOfKind(graph, "integration")}` : bullets([graph.integrationBoundary])),
     section("Lifecycle Contracts", contractsOfKind(graph, "lifecycle")),
     section("Persistence Contracts", `${graph.persistence.decision}\n\n${contractsOfKind(graph, "persistence")}`),
-    section("Credential Contracts", contractsOfKind(graph, "credential")),
-    section("Permission Contracts", contractsOfKind(graph, "permission")),
+    section("Credential Contracts", hasKind("credential") ? contractsOfKind(graph, "credential") : "No credential contract is required; no feature stores a secret."),
+    section("Permission Contracts", hasKind("permission") ? contractsOfKind(graph, "permission") : "No permission contract is required; no feature requests a platform permission."),
     section("Errors and Recovery Contracts", `${bullets(graph.recoveryRules)}\n\n${contractsOfKind(graph, "recovery")}`),
     section("Security Contract", contractsOfKind(graph, "security")),
     section("Accessibility Contracts", bullets(graph.accessibilityRules)),

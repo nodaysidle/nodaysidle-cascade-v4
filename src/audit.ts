@@ -119,7 +119,7 @@ const unresolvedDecisionPattern = /\breject\s+or\s+(?:explicitly\s+)?split\b|\be
 
 function isRootValidationCommand(command: string): boolean {
   const trimmed = command.trim()
-  const supportedStart = /^(?:npm|cargo|swift|codesign|open|adb|desktop-file-validate|appstreamcli|namcap|systemd-analyze|gtk4-builder-tool|waybar)(?:\s|$)|^\.\/gradlew(?:\s|$)|^\.\/Scripts\/[A-Za-z0-9._-]+(?:\s|$)/
+  const supportedStart = /^(?:npm|cargo|swift|codesign|open|adb|desktop-file-validate|appstreamcli|makepkg|systemd-analyze|gtk4-builder-tool|waybar)(?:\s|$)|^\.\/gradlew(?:\s|$)|^\.\/scripts\/[A-Za-z0-9._-]+(?:\s|$)|^\.\/Scripts\/[A-Za-z0-9._-]+(?:\s|$)/
   return command === trimmed
     && supportedStart.test(command)
     && !/[\r\n;&|<>]/.test(command)

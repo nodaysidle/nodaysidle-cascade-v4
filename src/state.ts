@@ -1,0 +1,123 @@
+import type { AuditEntry } from "./audit"
+import type { CompiledPacket } from "./compiler"
+import type { JevReport } from "./jev"
+import { DEFAULT_API_URL, MAX_IDEA_CHARS, isSafeProviderUrl, type ProgressStage, type ProviderFailure, type ProviderModel } from "./pipeline"
+import { PRESET_IDS, type PresetId } from "./presets"
+import type { SemanticBlueprint, SemanticIssue } from "./schema"
+
+export type AppStatus = "empty" | "ready" | "generating" | "cancelling" | "input-invalid" | "capability-rejected" | "provider-failure" | "blueprint-validation-failed" | "local-normalization-failed" | "local-compiler-failure" | "lint-failure" | "gate-clean" | "export-success" | "cancelled" | "intake-rejected" | "blueprint-integrity-failed" | "jev-failure"
+
+export interface FormState {
+  readonly presetId: PresetId
+  readonly model: ProviderModel
+  readonly apiUrl: string
+  readonly apiKey: string
+  readonly jevApiKey: string
+  readonly idea: string
+  readonly presetOptions: Readonly<Record<string, string | boolean | readonly string[]>>
+}
+
+export type ScalarFormField = Exclude<keyof FormState, "presetOptions">
+
+export interface AppState {
+  readonly form: FormState
+  readonly status: AppStatus
+  readonly progress?: ProgressStage
+  readonly activeRequestId?: string
+  readonly packet?: CompiledPacket
+  readonly ledger: readonly AuditEntry[]
+  readonly failure?: ProviderFailure
+  readonly issues: readonly SemanticIssue[]
+  readonly exportPath?: string
+  readonly jev?: JevReport
+  readonly repairedIssues?: readonly SemanticIssue[]
+  readonly blueprint?: SemanticBlueprint
+  // Exports include blueprint.json unless the user turns it off.
+  readonly saveBlueprint: boolean
+}
+
+export type AppAction =
+  | { readonly type: "form-changed"; readonly field: ScalarFormField; readonly value: string }
+  | { readonly type: "preset-option-changed"; readonly id: string; readonly value: string | boolean | readonly string[] }
+  | { readonly type: "generation-started"; readonly requestId: string }
+  | { readonly type: "progressed"; readonly stage: ProgressStage }
+  | { readonly type: "cancel-requested" }
+  | { readonly type: "generation-failed"; readonly status: Extract<AppStatus, "input-invalid" | "capability-rejected" | "provider-failure" | "blueprint-validation-failed" | "local-normalization-failed" | "local-compiler-failure" | "lint-failure" | "cancelled" | "intake-rejected" | "blueprint-integrity-failed" | "jev-failure">; readonly failure?: ProviderFailure; readonly issues: readonly SemanticIssue[]; readonly jev?: JevReport; readonly repairedIssues?: readonly SemanticIssue[] }
+  | { readonly type: "generation-succeeded"; readonly packet: CompiledPacket; readonly jev?: JevReport; readonly repairedIssues?: readonly SemanticIssue[]; readonly blueprint?: SemanticBlueprint }
+  | { readonly type: "save-blueprint-changed"; readonly value: boolean }
+  | { readonly type: "export-succeeded"; readonly path: string }
+
+const defaultForm: FormState = {
+  presetId: "linux-wayland-gtk4-desktop",
+  model: "deepseek-flash",
+  apiUrl: DEFAULT_API_URL,
+  apiKey: "",
+  jevApiKey: "",
+  idea: "",
+  presetOptions: {},
+}
+
+function validModel(value: string): value is ProviderModel {
+  return value === "deepseek-flash" || value === "deepseek-v4-pro" || value === "deepseek-v4-flash"
+}
+
+function validPreset(value: string): value is PresetId {
+  return (PRESET_IDS as readonly string[]).includes(value)
+}
+
+export function createInitialState(initial: Partial<FormState> = {}): AppState {
+  const form = { ...defaultForm, ...initial }
+  const state: AppState = { form, status: "empty", ledger: [], issues: [], saveBlueprint: true }
+  return { ...state, status: canGenerate(state) ? "ready" : "empty" }
+}
+
+export function canGenerate(state: AppState): boolean {
+  return state.form.idea.trim().length > 0
+    && state.form.idea.length <= MAX_IDEA_CHARS
+    && state.form.apiKey.length > 0
+    && state.form.jevApiKey.length > 0
+    && isSafeProviderUrl(state.form.apiUrl)
+    && validPreset(state.form.presetId)
+    && validModel(state.form.model)
+    && !["generating", "cancelling"].includes(state.status)
+}
+
+export function canExport(state: AppState): boolean {
+  return (state.status === "gate-clean" || state.status === "export-success") && state.packet?.exportable === true
+}
+
+export function visibleIssues(state: AppState): readonly SemanticIssue[] {
+  return state.issues
+}
+
+export function statusActionLabel(state: AppState): "Generate" | "Retry" {
+  return ["input-invalid", "capability-rejected", "provider-failure", "blueprint-validation-failed", "local-normalization-failed", "local-compiler-failure", "lint-failure", "cancelled", "intake-rejected", "blueprint-integrity-failed", "jev-failure"].includes(state.status) ? "Retry" : "Generate"
+}
+
+export function reduceAppState(state: AppState, action: AppAction): AppState {
+  switch (action.type) {
+    case "preset-option-changed":
+      return { ...state, form: { ...state.form, presetOptions: { ...state.form.presetOptions, [action.id]: action.value } } }
+    case "form-changed": {
+      const form = { ...state.form, [action.field]: action.value } as FormState
+      const next = { ...state, form, packet: undefined, ledger: [], issues: [], failure: undefined, exportPath: undefined, jev: undefined, repairedIssues: undefined, blueprint: undefined }
+      return { ...next, status: canGenerate(next) ? "ready" : "empty" }
+    }
+    case "generation-started":
+      return { ...state, status: "generating", progress: "jev-preflight", activeRequestId: action.requestId, packet: undefined, ledger: [], issues: [], failure: undefined, exportPath: undefined, jev: undefined, repairedIssues: undefined, blueprint: undefined }
+    case "progressed":
+      if (state.status === "cancelling") return { ...state, progress: action.stage }
+      if (state.status !== "generating") return state
+      return { ...state, progress: action.stage }
+    case "cancel-requested":
+      return { ...state, status: "cancelling" }
+    case "generation-failed":
+      return { ...state, status: action.status, activeRequestId: undefined, packet: undefined, ledger: [], issues: action.issues, failure: action.failure, jev: action.jev, repairedIssues: action.repairedIssues }
+    case "generation-succeeded":
+      return { ...state, form: { ...state.form, apiKey: "", jevApiKey: "" }, status: "gate-clean", progress: "export-gate", activeRequestId: undefined, packet: action.packet, ledger: action.packet.ledger, issues: [], failure: undefined, jev: action.jev, repairedIssues: action.repairedIssues, blueprint: action.blueprint }
+    case "save-blueprint-changed":
+      return { ...state, saveBlueprint: action.value }
+    case "export-succeeded":
+      return { ...state, status: "export-success", exportPath: action.path }
+  }
+}

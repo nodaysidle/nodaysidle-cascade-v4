@@ -65,11 +65,25 @@ blueprint compiles to identical bytes.
 On Arch / Omarchy:
 
 ```sh
-sudo pacman -S --needed base-devel cargo gtk4 libadwaita desktop-file-utils appstream namcap
+sudo pacman -S --needed base-devel cargo gtk4 libadwaita desktop-file-utils appstream
 ```
 
-`namcap` is only needed for the PKGBUILD gate. `waybar` is needed to run a Waybar module
+`base-devel` provides `makepkg` for the PKGBUILD gate. `waybar` is needed to run a Waybar module
 packet; the module builds without it.
+
+## Desktop app
+
+The Tauri desktop app is the authoring surface: preset + options, idea, model and two memory-only
+keys, live progress, five preview tabs, validation ledger, and export.
+
+```sh
+npm run tauri:dev
+npm run tauri:build      # deb bundle
+npm run install:app      # build and install the Linux binary under ~/.local
+```
+
+`install:app` also writes the desktop entry, the Omarchy menu entry, and the `Cascade V4` bar widget
+from `omarchy/plugin/`. The app is installed at `~/.local/bin/nodaysidle-cascade-v4`.
 
 ## Commands
 
@@ -135,7 +149,6 @@ kit instead of inventing plumbing, and report every command and acceptance resul
 
 ## Scope
 
-V4.0 implements the core, CLI, GTK4 kit, Waybar kit, and all five preset contracts. Tauri, Astro, and
-Android packets share the same five-document output; their starter kits are the next milestone. The
-Tauri desktop shell for the Cascade app itself is also a later milestone; the CLI is the current
-authoring surface.
+V4.0 implements the core, CLI, Tauri desktop app, GTK4 kit, Waybar kit, Tauri kit, Astro kit, Android
+kit, and all five preset contracts. The live runs under `/tmp/v4-live-final` (or a new run of
+`scripts/live-presets.ts` + `scripts/live-astro.ts`) are the evidence set.

@@ -25,7 +25,7 @@ function hasSurface(features: readonly SurfaceFeature[], surface: FeatureSurface
 }
 
 // The collection is named after the declared content data, never guessed from feature prose.
-function contentCollectionName(blueprint: NormalizedBlueprint): string {
+export function contentCollectionName(blueprint: NormalizedBlueprint): string {
   const source = blueprint.domainData.find(item => item.sensitivity === "public" || item.sensitivity === "internal") ?? blueprint.domainData[0]
   const name = source?.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
   return name || "entries"

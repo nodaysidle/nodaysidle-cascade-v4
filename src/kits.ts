@@ -1,3 +1,6 @@
+import { androidKit } from "./androidKit"
+import { astroKit } from "./astroKit"
+import { tauriKitFiles, tauriKitReadme, tauriKitUses } from "./tauriKit"
 import type { NormalizedBlueprint } from "./compiler"
 import type { PresetId, ProjectIdentity } from "./presets"
 
@@ -229,6 +232,16 @@ pub fn database_path() -> PathBuf {
 pub fn app_files_dir() -> PathBuf {
     data_dir().join("files")
 }
+
+pub fn downloads_dir() -> PathBuf {
+    dirs::download_dir()
+        .or_else(|| dirs::home_dir().map(|home| home.join("Downloads")))
+        .unwrap_or_else(|| PathBuf::from("Downloads"))
+}
+
+pub fn named_folder(name: &str) -> PathBuf {
+    downloads_dir().join(name)
+}
 `),
     file("src/platform/mod.rs", String.raw`
 pub mod atomic_file;
@@ -458,7 +471,7 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc="${identity.projectName}"
 arch=('x86_64' 'aarch64')
-url="https://example.invalid/${slug}"
+url="https://github.com/nodaysidle"
 license=('MIT')
 depends=('gtk4' 'libadwaita' 'dbus')
 makedepends=('cargo')
@@ -699,7 +712,7 @@ impl Default for Settings {
             schema_version: 1,
             text: String::from("${identity.projectName}"),
             tooltip: String::from("${identity.projectName}"),
-            refresh_seconds: ${refresh},
+            refresh_seconds: 900,
             enabled: true,
         }
     }
@@ -916,7 +929,7 @@ fn sqlite_sets_user_version() {
 
 #[test]
 fn settings_default_is_stable() {
-    assert_eq!(Settings::default().refresh_seconds, 15);
+    assert_eq!(Settings::default().refresh_seconds, 900);
     assert!(paths::settings_path().ends_with("config.json"));
 }
 `),
@@ -968,7 +981,7 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc="${identity.projectName}"
 arch=('x86_64' 'aarch64')
-url="https://example.invalid/${slug}"
+url="https://github.com/nodaysidle"
 license=('MIT')
 depends=('dbus')
 optdepends=('waybar: status bar')
@@ -1027,6 +1040,13 @@ echo "Add @import \"$HOME/.config/waybar/${slug}.css\"; to ~/.config/waybar/styl
 export function presetKit(presetId: PresetId, identity: ProjectIdentity, blueprint: NormalizedBlueprint, options: Readonly<Record<string, string | boolean | readonly string[]>> = {}): readonly KitFile[] {
   if (presetId === "linux-wayland-gtk4-desktop") return gtkKit(identity, blueprint)
   if (presetId === "linux-hyprland-waybar-module") return waybarKit(identity, blueprint, options)
+  if (presetId === "astro-web") return astroKit(identity, blueprint, options).map(item => ({ path: item.path, content: item.content }))
+  if (presetId === "android-kotlin-compose") return androidKit(identity, blueprint).map(item => ({ path: item.path, content: item.content }))
+  if (presetId === "tauri2-rust-typescript-desktop") {
+    const uses = tauriKitUses(blueprint, nativeUsageDescriptions(identity, blueprint.platformNeeds))
+    const files = tauriKitFiles(identity, uses)
+    return [{ path: "README.md", content: tauriKitReadme(identity, files.map(item => item.path), uses) }, ...files]
+  }
   return []
 }
 

@@ -173,6 +173,9 @@ export interface PresetContract {
   readonly outputArtifact: string
   readonly artifactPath: (identity: ProjectIdentity) => string
   readonly completionEvidence: readonly string[]
+  readonly fileBoundary: string
+  readonly fileBoundaryDetails?: readonly string[]
+  readonly launchCheck: (identity: ProjectIdentity) => string
   readonly options: readonly PresetOption[]
   readonly capabilities: PresetCapabilities
 }
@@ -181,7 +184,7 @@ const linuxGtkPermissionPatterns: Readonly<Record<PermissionCapability, string>>
   microphone: "Use PipeWire or GStreamer through the XDG desktop portal; request capture only from an explicit recording action and release every stream on stop.",
   accessibility: "Use GTK4 and AT-SPI for the app's own accessibility. The app cannot control another application on Wayland; a feature that needs that is outside this preset.",
   notifications: "Use gio::Notification through the freedesktop notification service; when no daemon is present, keep in-app status and do not retry in a loop.",
-  filesystem: "Use org.freedesktop.portal.FileChooser for user-selected files and folders; never scan $HOME or read a path the user did not choose, except a path the app saved to reopen.",
+  filesystem: "Read only the user's downloads directory (dirs::download_dir(), falling back to $HOME/Downloads) and files or folders chosen in org.freedesktop.portal.FileChooser; never scan another user folder.",
   network: "Use reqwest with rustls and HTTPS only; Linux has no network permission, so the boundary is the declared service list.",
   camera: "Use PipeWire or GStreamer through the portal after an explicit action; release the stream on stop.",
   location: "Use GeoClue2 through the portal only while the feature is visible; manual entry remains available when denied.",
@@ -248,6 +251,7 @@ const androidPermissionPatterns: Readonly<Record<PermissionCapability, string>> 
 }
 
 function gtkOwnerFiles(input: OwnerFileInput): OwnerFiles {
+  const segment = input.slug.replaceAll("-", "_")
   if (input.kind === "packaging") {
     return {
       implementationFile: "scripts/package.sh",
@@ -257,19 +261,20 @@ function gtkOwnerFiles(input: OwnerFileInput): OwnerFiles {
   }
   if (input.kind === "feature") {
     return {
-      implementationFile: `src/features/${input.slug}.rs`,
-      focusedTestFile: `tests/${input.slug}_tests.rs`,
+      implementationFile: `src/features/${segment}.rs`,
+      focusedTestFile: `tests/${segment}_tests.rs`,
       focusedTestCommand: `cargo test --test ${input.slug}_tests`,
     }
   }
   return {
-    implementationFile: `src/platform/${input.slug}.rs`,
-    focusedTestFile: `tests/platform_${input.slug}_tests.rs`,
+    implementationFile: `src/platform/${segment}.rs`,
+    focusedTestFile: `tests/platform_${segment}_tests.rs`,
     focusedTestCommand: `cargo test --test platform_${input.slug}_tests`,
   }
 }
 
 function waybarOwnerFiles(input: OwnerFileInput): OwnerFiles {
+  const segment = input.slug.replaceAll("-", "_")
   if (input.kind === "packaging") {
     return {
       implementationFile: "scripts/package.sh",
@@ -279,14 +284,14 @@ function waybarOwnerFiles(input: OwnerFileInput): OwnerFiles {
   }
   if (input.kind === "feature") {
     return {
-      implementationFile: `src/features/${input.slug}.rs`,
-      focusedTestFile: `tests/${input.slug}_tests.rs`,
+      implementationFile: `src/features/${segment}.rs`,
+      focusedTestFile: `tests/${segment}_tests.rs`,
       focusedTestCommand: `cargo test --test ${input.slug}_tests`,
     }
   }
   return {
-    implementationFile: `src/platform/${input.slug}.rs`,
-    focusedTestFile: `tests/platform_${input.slug}_tests.rs`,
+    implementationFile: `src/platform/${segment}.rs`,
+    focusedTestFile: `tests/platform_${segment}_tests.rs`,
     focusedTestCommand: `cargo test --test platform_${input.slug}_tests`,
   }
 }
@@ -338,7 +343,7 @@ function androidOwnerFiles(input: OwnerFileInput): OwnerFiles {
   return {
     implementationFile,
     focusedTestFile,
-    focusedTestCommand: `./gradlew testDebugUnitTest --tests "${input.identity.packageName}.${folder.replaceAll("/", ".")}.${input.pascalName}Test"`,
+    focusedTestCommand: `./scripts/gradle.sh testDebugUnitTest --tests "${input.identity.packageName}.${folder.replaceAll("/", ".")}.${input.pascalName}Test"`,
   }
 }
 
@@ -381,6 +386,7 @@ const linuxGtk: PresetContract = {
     "Use one AdwApplication with the locked application ID and one AdwApplicationWindow; AdwHeaderBar is the title bar and AdwNavigationView owns item, about, and not-found pages.",
     "One AppState lives on the GTK main thread; async work runs on a tokio runtime and returns to the main context through glib::MainContext::spawn_local. No blocking I/O runs on the main thread.",
     "Rust platform owners implement atomic settings, SQLite records, XDG paths, Secret Service credentials, notifications, and the HTTPS client; features depend on their traits.",
+    "Resolve the user's downloads directory with dirs::download_dir(), falling back to $HOME/Downloads. Named destination folders are child directories of that downloads directory; creating a name creates Downloads/{name}, rejects duplicate names, and never scans another user folder. Moves use fs::rename and fall back to copy, fsync, and remove only when rename returns EXDEV.",
   ],
   integrationBoundary: "Use one reqwest client with rustls inside each integration owner; HTTPS only, typed serde DTOs, timeouts, and privacy-safe errors. Never pass a raw response body to a view.",
   recoveryRules: [
@@ -397,6 +403,9 @@ const linuxGtk: PresetContract = {
     documentPlacement: USER_SELECTED_FILE_PLACEMENT,
   },
   credentialPlacement: "Store credentials through the Secret Service (GNOME Keyring or KWallet) with the locked application ID as service and a deterministic account name; fail closed if no Secret Service is available.",
+  fileBoundary: "Read and write only the user's downloads directory and files or folders the user chooses in the desktop portal; never scan another user folder.",
+  fileBoundaryDetails: ["Downloads directory: dirs::download_dir(), falling back to $HOME/Downloads.", "Named destination folders are child directories of the downloads directory; duplicate names are rejected.", "A move uses fs::rename; on EXDEV it copies, syncs, and removes the source only after the destination is complete.", "Every path outside this boundary is rejected and leaves the filesystem unchanged."],
+  launchCheck: identity => `GDK_BACKEND=wayland ./scripts/package.sh --install, then launch ~/.local/bin/${identity.slug} and inspect every window.`,
   permissionPatterns: linuxGtkPermissionPatterns,
   lifecycleRules: [
     "Use AdwApplication as the entry point and keep exactly one primary window.",
@@ -413,12 +422,12 @@ const linuxGtk: PresetContract = {
     () => "cargo build --release",
     identity => `desktop-file-validate resources/${identity.slug}.desktop`,
     identity => `appstreamcli validate resources/${identity.slug}.metainfo.xml`,
-    () => "namcap PKGBUILD",
+    () => "makepkg --printsrcinfo",
   ],
   packagingRules: [
     "scripts/package.sh is the sole packaging authority for local proof: release build, install to ~/.local, desktop entry, icon, metainfo, and optional systemd unit.",
     "PKGBUILD is the Arch distribution authority: cargo build --release, install binary, desktop entry, icon, metainfo, license, and optional systemd unit.",
-    "Validate the desktop entry with desktop-file-validate, the metainfo with appstreamcli, and the PKGBUILD with namcap before completion.",
+    "Validate the desktop entry with desktop-file-validate, the metainfo with appstreamcli, and the PKGBUILD with makepkg --printsrcinfo before completion.",
     "Run the launch check under Wayland with GDK_BACKEND=wayland; a silent fallback to X11 is a contract violation.",
   ],
   wiringRules: [
@@ -495,6 +504,7 @@ const linuxWaybar: PresetContract = {
     "The binary is a Waybar custom module: with no arguments or --once it prints exactly one JSON object on stdout and exits 0; logs go to stderr only.",
     "A declared background feature may run with --service under a systemd user unit; the Waybar exec path reads the cached value and never blocks the bar.",
     "Click actions run the same binary with --action toggle; no key grabs, no window, and no clipboard watcher.",
+    "The Waybar fragment polls the cached value at its preset interval; the systemd service refreshes the source on the feature's stated interval. The service default is 900 seconds for a 15-minute feature, not the fragment poll interval.",
   ],
   integrationBoundary: "Use one reqwest client with rustls inside each integration owner; HTTPS only, typed serde DTOs, timeouts, and privacy-safe errors. The module output never contains a credential or raw response body.",
   recoveryRules: [
@@ -511,6 +521,9 @@ const linuxWaybar: PresetContract = {
     documentPlacement: "A path passed explicitly on the command line; the module never opens a file picker.",
   },
   credentialPlacement: "Store credentials through the Secret Service with the locked application ID as service and a deterministic account name; output never contains a credential.",
+  fileBoundary: "Read and write only the app's XDG config, data, and runtime directories and explicit CLI paths; never scan the user's home directory.",
+  fileBoundaryDetails: ["Settings: $XDG_CONFIG_HOME/{app-id}/config.json.", "Records: $XDG_DATA_HOME/{app-id}/records.sqlite3 only when the blueprint declares records.", "Cache: $XDG_RUNTIME_DIR/{app-id}/cache.json.", "Every path outside this boundary is rejected."],
+  launchCheck: identity => `./scripts/package.sh --install, add the Waybar include, restart Waybar, and click the ${identity.slug} module.`,
   permissionPatterns: waybarPermissionPatterns,
   lifecycleRules: [
     "The Waybar exec path is stateless per invocation and exits after one JSON object.",
@@ -526,12 +539,12 @@ const linuxWaybar: PresetContract = {
     () => "cargo test",
     () => "cargo build --release",
     identity => `systemd-analyze verify resources/systemd/${identity.slug}.service`,
-    () => "namcap PKGBUILD",
+    () => "makepkg --printsrcinfo",
   ],
   packagingRules: [
     "scripts/package.sh is the sole packaging authority for local proof: release build, binary under ~/.local/bin, Waybar fragment under ~/.config/waybar, systemd unit under ~/.config/systemd/user, and daemon-reload.",
     "PKGBUILD is the Arch distribution authority: install binary, Waybar fragment, style fragment, systemd unit, and license.",
-    "Validate the systemd unit with systemd-analyze and the PKGBUILD with namcap before completion.",
+    "Validate the systemd unit with systemd-analyze and the PKGBUILD with makepkg --printsrcinfo before completion.",
     "The launch check adds the fragment to the user's Waybar config, restarts Waybar, and confirms the module renders and its click action works.",
   ],
   wiringRules: [
@@ -547,7 +560,7 @@ const linuxWaybar: PresetContract = {
   artifactPath: identity => `dist/${identity.slug}`,
   completionEvidence: ["Cargo format, clippy, test, and release build pass.", "jq validates the JSON output and systemd-analyze validates the unit.", "Waybar renders the module with the real fragment.", "The click action and restart behavior pass."],
   options: [
-    { id: "refreshSeconds", label: "Refresh interval", type: "select", values: ["5", "15", "60"], default: "15", description: "Sets the Waybar interval in the generated fragment." },
+    { id: "refreshSeconds", label: "Waybar poll interval", type: "select", values: ["5", "15", "60"], default: "15", description: "Sets the Waybar fragment poll interval in seconds; the service refresh interval is the feature's stated interval." },
     { id: "tooltip", label: "Show tooltip", type: "toggle", default: true, description: "Sets the Waybar tooltip flag in the generated fragment." },
     
   ],
@@ -586,6 +599,7 @@ const tauriDesktop: PresetContract = {
     "src-tauri/Cargo.toml",
     "src-tauri/src/main.rs",
     "src-tauri/src/lib.rs",
+    "src-tauri/src/platform/mod.rs",
     "src-tauri/tests/contract_tests.rs",
     "src-tauri/tauri.conf.json",
     "src-tauri/capabilities/default.json",
@@ -597,8 +611,8 @@ const tauriDesktop: PresetContract = {
   registrationFiles: (kind, identity) => kind === "feature"
     ? ["src/main.ts", "src-tauri/capabilities/default.json"]
     : kind === "packaging"
-      ? ["src-tauri/src/lib.rs", "src-tauri/Cargo.toml", "src-tauri/capabilities/default.json", "src-tauri/tauri.conf.json"]
-      : ["src-tauri/src/lib.rs", "src-tauri/Cargo.toml", "src-tauri/capabilities/default.json"],
+      ? ["src-tauri/src/lib.rs", "src-tauri/Cargo.toml", "src-tauri/capabilities/default.json", "src-tauri/tauri.conf.json", "src-tauri/tests/kit_tests.rs"]
+      : ["src-tauri/src/lib.rs", "src-tauri/Cargo.toml", "src-tauri/capabilities/default.json", "src-tauri/src/platform/mod.rs", "src-tauri/tests/kit_tests.rs"],
   runtimeMode: () => "cross-platform",
   runtimeArchitecture: ["The TypeScript DOM frontend owns presentation and sends typed Tauri invoke requests; Rust commands own filesystem, network, credential, persistence, and platform operations behind least-privilege capabilities.", "Managed Rust state owns cancellable operations and returns allowlisted serializable results; frontend state never receives secrets, raw provider bodies, or unrestricted paths."],
   integrationBoundary: "Use reqwest::Client inside a dedicated Rust integration owner for HTTPS; expose typed DTOs through Tauri commands and keep credentials and raw responses in Rust memory only.",
@@ -613,6 +627,9 @@ const tauriDesktop: PresetContract = {
     documentPlacement: "Local filesystem at the path the user chooses through tauri-plugin-dialog; Rust reads or writes that exact path and nothing else.",
   },
   credentialPlacement: "Use one Rust SecretStore trait: the macOS login keychain, Linux Secret Service (GNOME Keyring or KWallet), or Windows Credential Manager through the keyring crate; tests use an in-memory store and never the real store; never expose stored values to the frontend after insertion.",
+  fileBoundary: "Read and write only paths the user chooses through the dialog; the app never scans a broad folder or keeps a copy of a user document.",
+  fileBoundaryDetails: ["Every path comes from tauri-plugin-dialog or a path the app saved to reopen.", "Rust canonicalizes the path and operates on that exact path.", "The frontend receives no unrestricted filesystem scope."],
+  launchCheck: identity => `scripts/package_linux.sh --install, then launch the installed ${identity.projectName} app and complete one acceptance outcome per feature.`,
   permissionPatterns: tauriPermissionPatterns,
   lifecycleRules: ["Use tauri::Builder as the cross-platform desktop entry.", "Close managed tasks, database handles, temporary files, and platform listeners on exit.", "Keep platform differences behind Rust commands and capability files."],
   accessibilityRules: ["Use semantic HTML, native controls, ARIA only where native semantics are insufficient, visible focus, full keyboard operation, reduced motion, and Vitest DOM accessibility assertions."],
@@ -638,6 +655,7 @@ const tauriDesktop: PresetContract = {
   outputArtifact: "Tauri bundle (AppImage, deb, or native .app)",
   artifactPath: () => "src-tauri/target/release/bundle/",
   completionEvidence: ["TypeScript, Vitest, Rust format, Clippy, and Cargo tests pass.", "Tauri builds the bundle from the locked capabilities.", "The built app installs and launches.", "Local data and temporary-resource cleanup survive a restart smoke."],
+  foundationValidationCommands: ["npm install", "npm run tauri -- icon app-icon.svg", "npm run typecheck", "npm test"],
   options: [
     { id: "linuxPackaging", label: "Linux package", type: "select", values: ["appimage", "deb", "pkgbuild"], default: "appimage", description: "Recorded in the packet. v4.0 builds the host default bundles; per-choice artifact selection is next." },
     { id: "wayland", label: "Verify native Wayland", type: "toggle", default: true, description: "Recorded in the packet. The launch check already requires native Wayland." },
@@ -683,6 +701,13 @@ const astroWeb: PresetContract = {
   packagingFiles: () => [],
   ownerFiles: astroOwnerFiles,
   registrationFile: kind => kind === "feature" ? "src/pages/index.astro" : "astro.config.mjs",
+  registrationFiles: (kind, identity) => kind === "data"
+    ? ["src/content.config.ts"]
+    : kind === "integration"
+      ? ["astro.config.mjs", "package.json"]
+      : kind === "packaging"
+        ? ["astro.config.mjs", "package.json"]
+        : ["src/pages/index.astro"],
   runtimeMode: blueprint => blueprint.externalServices.some(service => service.credentialRequirement !== "none") ? "server" : "static",
   runtimeArchitecture: ["Astro components render the content-first shell at build or request time; use client islands only for interaction that cannot be expressed with native HTML and CSS.", "Static output is mandatory unless a server-held credential requires an explicit adapter; browser code never receives deployment secrets."],
   integrationBoundary: "Use standards-based fetch with typed local request and response validators; credentialed calls run only in Astro server endpoints using import.meta.env, while public browser calls use allowlisted HTTPS URLs and AbortController cancellation.",
@@ -698,14 +723,17 @@ const astroWeb: PresetContract = {
     documentAtomicWrite: "Build the complete file as one Blob before starting the download, so a failed build never starts a partial file.",
   },
   credentialPlacement: "Never ship service credentials to the browser; a required secret switches output to server rendering and reads the deployment secret at request time.",
+  fileBoundary: "Use a user-initiated file input or File System Access API path; the site keeps no copy and never assumes persistent access.",
+  fileBoundaryDetails: ["A selected file is handled in memory or downloaded explicitly.", "Browser storage is used only when the blueprint declares it.", "No server-side filesystem path is exposed to the browser."],
+  launchCheck: () => "npm run build, then npm run preview and open every declared route.",
   permissionPatterns: webPermissionPatterns,
   lifecycleRules: ["Generate static output by default.", "Enable server rendering only when a server-held credential or remote account contract makes it necessary.", "Clean up event listeners, observers, media tracks, and object URLs when interactive components unmount."],
   accessibilityRules: ["Meet WCAG 2.2 AA with semantic landmarks, ordered headings, keyboard access, visible focus, text alternatives, reduced motion, and automated accessibility checks."],
   validationCommands: [
     () => "npm run check",
     () => "npm test",
-    () => "npm run test:a11y",
     () => "npm run build",
+    () => "npm run test:a11y",
     () => "npm run audit:performance",
   ],
   packagingRules: ["Generate static output unless the graph records a server-required decision.", "Emit semantic metadata, sitemap, robots rules, and canonical URLs.", "Run accessibility, link, SEO metadata, and performance gates against the production build.", "Deploy the dist/ output or the documented server adapter artifact."],
@@ -787,14 +815,17 @@ const androidCompose: PresetContract = {
     documentAtomicWrite: "Write the complete content to one per-operation file in Context.cacheDir first, then copy it to the chosen URI through ContentResolver.openOutputStream(uri, \"wt\") and delete the cache file; a failure before the copy starts leaves the existing document unchanged, and a failed copy is reported honestly because document providers cannot rename in place.",
   },
   credentialPlacement: "Store app-owned credentials with Android Keystore-backed AES-GCM encryption and never expose decrypted values to Compose state.",
+  fileBoundary: "Use the Storage Access Framework for user-chosen documents and app-private files for app-owned data; never request broad storage access.",
+  fileBoundaryDetails: ["Documents come from ActivityResultContracts.OpenDocument or CreateDocument.", "App files stay in filesDir/files/.", "A persistable URI permission is taken only when the feature reopens a saved document."],
+  launchCheck: identity => `scripts/gradle.sh assembleDebug, adb install -r app/build/outputs/apk/debug/app-debug.apk, and launch applicationId ${identity.packageName}.`,
   permissionPatterns: androidPermissionPatterns,
   lifecycleRules: ["Collect StateFlow with lifecycle-aware Compose APIs.", "Keep durable work in repositories or WorkManager rather than Activity instances.", "Release sensors, media, callbacks, and temporary files when lifecycle ownership ends."],
   accessibilityRules: ["Expose Compose semantics for TalkBack, content descriptions for non-text controls, logical traversal, 48dp targets, scalable text, predictive back, and Compose accessibility tests."],
   validationCommands: [
-    () => "./gradlew testDebugUnitTest",
-    () => "./gradlew lintDebug",
-    () => "./gradlew connectedDebugAndroidTest",
-    () => "./gradlew assembleDebug",
+    () => "./scripts/gradle.sh testDebugUnitTest",
+    () => "./scripts/gradle.sh lintDebug",
+    () => "./scripts/gradle.sh connectedDebugAndroidTest",
+    () => "./scripts/gradle.sh assembleDebug",
     () => "adb install -r app/build/outputs/apk/debug/app-debug.apk",
   ],
   packagingRules: ["Use Gradle Kotlin DSL and a version catalog.", "Build an Android-only APK with the locked applicationId.", "Declare only required permissions and test denied paths.", "Install the debug APK on an identified emulator or device for launch smoke."],

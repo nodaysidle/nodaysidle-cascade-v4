@@ -8,15 +8,25 @@
     "test": "vitest run",
     "cascade": "tsx src/cli.ts",
     "probe:live": "CASCADE_LIVE_PROBE=1 vitest run tests/live-probe.test.ts",
-    "kit:check": "CASCADE_KIT_BUILD=1 vitest run tests/kit-build.test.ts"
+    "kit:check": "CASCADE_KIT_BUILD=1 vitest run tests/kit-build.test.ts",
+    "dev": "vite",
+    "build": "vite build",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "install:app": "bash scripts/install-linux-app.sh"
   },
   "dependencies": {
-    "zod": "4.5.4"
+    "zod": "4.5.4",
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-dialog": "2.7.2"
   },
   "devDependencies": {
     "@types/node": "25.1.0",
     "tsx": "4.20.6",
     "typescript": "5.9.3",
-    "vitest": "4.1.11"
+    "vitest": "4.1.11",
+    "@tauri-apps/cli": "2.11.4",
+    "vite": "7.3.6"
   }
 }

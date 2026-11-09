@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { parseArgs } from "node:util"
 import { DOCUMENT_NAMES, compilePacket, packetForExport, type CompiledPacket } from "./compiler"
@@ -7,22 +6,9 @@ import { nodeJevProvider } from "./jev-wire"
 import { generatePacket, DEFAULT_API_URL, type BlueprintProvider } from "./pipeline"
 import { deepseekProvider } from "./provider"
 import { PRESETS, PRESET_IDS, isPresetId, resolvePresetOptions, type PresetId, type PresetOptionValue } from "./presets"
+import { buildPacketManifest, sha256, verifyPacketFolder, writePacketAtomic, type PacketManifest } from "./packet"
 import { auditSemanticIntake, SemanticBlueprintSchema, type SemanticBlueprint } from "./schema"
 import { auditCapabilities } from "./capabilities"
-
-interface PacketManifest {
-  readonly schema: "nodaysidle.cascade.packet.v4"
-  readonly compiler: { readonly version: string }
-  readonly preset: {
-    readonly id: PresetId
-    readonly options: Readonly<Record<string, PresetOptionValue>>
-    readonly capabilities: (typeof PRESETS)[PresetId]["capabilities"]
-  }
-  readonly blueprint: SemanticBlueprint
-  readonly documents: Record<string, { readonly sha256: string }>
-  readonly kit: readonly { readonly path: string; readonly sha256: string }[]
-  readonly validation: { readonly status: "pass" | "fail"; readonly ledger: CompiledPacket["ledger"] }
-}
 
 function fail(message: string): never {
   console.error(message)
@@ -45,46 +31,8 @@ function blueprintFrom(value: unknown): SemanticBlueprint {
   return parsed.data
 }
 
-function sha256(bytes: string | Buffer): string {
-  return createHash("sha256").update(bytes).digest("hex")
-}
-
-function kitFiles(root: string): string[] {
-  if (!existsSync(root)) return []
-  return readdirSync(root).flatMap(entry => {
-    const path = join(root, entry)
-    return statSync(path).isDirectory() ? kitFiles(path) : [path]
-  })
-}
-
 async function writePacket(packet: CompiledPacket, blueprint: SemanticBlueprint, presetId: PresetId, options: Readonly<Record<string, PresetOptionValue>>, outDir: string): Promise<string> {
-  const parent = resolve(outDir)
-  const destination = join(parent, packet.projectSlug)
-  if (existsSync(destination)) fail(`Destination already exists: ${destination}`)
-  mkdirSync(parent, { recursive: true })
-  const staging = mkdtempSync(join(parent, `.cascade-${packet.projectSlug}-`))
-  try {
-    for (const file of packetForExport(packet)) {
-      const path = join(staging, file.name)
-      mkdirSync(join(path, ".."), { recursive: true })
-      writeFileSync(path, file.content)
-    }
-    const manifest: PacketManifest = {
-      schema: "nodaysidle.cascade.packet.v4",
-      compiler: { version: "4.0.0" },
-      preset: { id: presetId, options, capabilities: PRESETS[presetId].capabilities },
-      blueprint,
-      documents: Object.fromEntries(DOCUMENT_NAMES.map(name => [name, { sha256: packet.hashes[name] }])),
-      kit: packet.kit.map(file => ({ path: file.name, sha256: file.sha256 })),
-      validation: { status: packet.exportable ? "pass" : "fail", ledger: packet.ledger },
-    }
-    writeFileSync(join(staging, "blueprint.json"), `${JSON.stringify(manifest, null, 2)}\n`)
-    renameSync(staging, destination)
-  } catch (error) {
-    rmSync(staging, { recursive: true, force: true })
-    throw error
-  }
-  return destination
+  return writePacketAtomic(packet, blueprint, presetId, options, outDir)
 }
 
 function presetId(value: string | undefined): PresetId {
@@ -154,13 +102,8 @@ async function verify(options: Record<string, string>): Promise<void> {
   }
   const packet = await compilePacket(blueprint, manifest.preset.id, manifest.preset.options)
   if (!packet.exportable || manifest.validation.status !== "pass") fail(`Packet is not Gate Clean: ${folder}`)
-  const documentMismatch = DOCUMENT_NAMES.find(name => sha256(readFileSync(join(folder, name))) !== manifest.documents[name]?.sha256 || packet.hashes[name] !== manifest.documents[name]?.sha256)
-  if (documentMismatch) fail(`Document hash mismatch: ${documentMismatch}`)
-  const actualKit = kitFiles(join(folder, "kit")).map(path => path.slice(folder.length + 1).replaceAll("\\", "/")).sort()
-  const expectedKit = manifest.kit.map(item => item.path).sort()
-  if (actualKit.join("|") !== expectedKit.join("|")) fail(`Kit file set mismatch: ${folder}`)
-  const kitMismatch = manifest.kit.find(item => sha256(readFileSync(join(folder, item.path))) !== item.sha256)
-  if (kitMismatch) fail(`Kit hash mismatch: ${kitMismatch.path}`)
+  const mismatch = verifyPacketFolder(folder, packet, manifest)
+  if (mismatch) fail(mismatch)
   console.log(`Verified: ${folder}`)
 }
 

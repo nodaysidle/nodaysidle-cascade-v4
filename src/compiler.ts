@@ -539,6 +539,17 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
     .filter(capability => features.some(f => f.resourceIds.includes(permissionResourceId(capability))))
   const platformNeeds = rawPlatformNeeds
   const permissionNeeds = permissionCapabilities.map(capability => ({ capability, purpose: needPurpose[capability], deniedBehavior: deniedBehavior[capability] }))
+  if (presetId === "astro-web") {
+    const runtimeStatic = !source.externalServices.some(service => service.credentialRequired)
+    const personalRecord = source.dataObjects.find(item => (item.sensitivity === "personal" || item.sensitivity === "sensitive") && item.storage === "records")
+    if (runtimeStatic && personalRecord) {
+      throw new NormalizationError([{
+        path: "dataObjects",
+        rule: "normalization.astro-personal-record",
+        message: `Static Astro output cannot persist personal records such as '${personalRecord.name}'. Send them to a declared server endpoint, use session storage, or switch the site to server output.`,
+      }])
+    }
+  }
   const contentSite = astroContentSiteSemantics(source, presetId)
   const persistenceRequired = platformNeeds.includes("local-storage") || contentSite
   const persistenceNeeds = dataObjects
@@ -861,7 +872,7 @@ function persistencePlacement(
   const userDefaultsPlacement = hasCredentials
     ? "UserDefaults with versioned lightweight keys; API keys are forbidden."
     : "UserDefaults with versioned lightweight keys."
-  if (preset.id === "astro-web" && astroPlan?.usesContentCollections && item.storage === "records") {
+  if (preset.id === "astro-web" && astroPlan?.usesContentCollections && item.storage === "records" && (item.sensitivity === "public" || item.sensitivity === "internal")) {
     return `src/content/${astroPlan.contentCollection}/ as build-time markdown or MDX compiled through src/content.config.ts.`
   }
   if (preset.id === "astro-web" && astroPlan?.browserPersistence && item.storage === "records") return preset.persistence.recordsPlacement
@@ -1226,6 +1237,20 @@ function buildOwnersAndContracts(
     ))
   }
 
+  if (preset.fileBoundary) {
+    contracts.push(contract(
+      "CON-PLATFORM-FILES",
+      "security",
+      "Local file boundary",
+      features.map(feature => feature.id),
+      "OWN-PACKAGING",
+      preset.fileBoundary,
+      (preset.fileBoundaryDetails ?? []).map(detail => detail.replaceAll("{app-id}", identity.bundleId)),
+      "A path outside the declared boundary is rejected and leaves the filesystem unchanged.",
+      ["Return to the declared boundary, explain the rejected path, and retry only with an allowed path."],
+    ))
+  }
+
   contracts.push(contract(
     "CON-RUNTIME-WIRING",
     "packaging",
@@ -1233,7 +1258,7 @@ function buildOwnersAndContracts(
     features.map(feature => feature.id),
     "OWN-PACKAGING",
     "The shipped app calls the real owners named in the contracts; test doubles never reach a production entry point.",
-    preset.wiringRules,
+    [...preset.wiringRules, `Launch check: ${preset.launchCheck(identity)}`],
     "A production entry point that uses a test double, or a platform owner the running app never calls, blocks completion.",
     ["Replace the stand-in with the concrete owner, rerun the packaging focused test, and repeat the launch check."],
   ))
@@ -1397,8 +1422,10 @@ function buildPhases(
       ...routeExtras,
       ...(draft.kind === "packaging" ? preset.packagingFiles(identity) : []),
     ])
-    const registrationTargets = preset.registrationFiles?.(draft.kind, identity)
-      ?? [placement?.registrationFile ?? preset.registrationFile(draft.kind, identity)]
+    const registrationTargets = placement?.registrationFile
+      ? [placement.registrationFile]
+      : preset.registrationFiles?.(draft.kind, identity)
+        ?? [preset.registrationFile(draft.kind, identity)]
     // The packaging task verifies runtime wiring, so it may fix the composition roots it checks.
     const filesToModify = draft.kind === "packaging"
       ? unique([
@@ -1504,9 +1531,20 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
   const integrationServices = compilerIntegrationServices(blueprint)
   const { ownerDrafts, contracts } = buildOwnersAndContracts(blueprint, preset, identity, features, astroPlan, integrationServices, presetOptions)
   // Kit files no other owner claims belong to the foundation, so the "create only" lists stay exact.
-  const kitPaths = kitProjectPaths(presetKit(presetId, identity, blueprint))
+  const kitPaths = kitProjectPaths(presetKit(presetId, identity, blueprint, presetOptions))
   const packagingOwned = new Set(["Scripts/package_app.sh", ...preset.packagingFiles(identity)])
-  const kitFoundationFiles = kitPaths.filter(path => !preset.sourceLayout(identity).includes(path) && !packagingOwned.has(path))
+  const featureOwnedFiles = new Set(features.flatMap(feature => {
+    const placement = astroPlan?.featurePlacements[feature.id]
+    const files = preset.ownerFiles({
+      kind: "feature",
+      slug: slug(feature.name),
+      pascalName: pascal(feature.name),
+      identity,
+      pageFile: placement?.kind === "page" ? placement.pageFile : undefined,
+    })
+    return [files.implementationFile, files.focusedTestFile]
+  }))
+  const kitFoundationFiles = kitPaths.filter(path => !preset.sourceLayout(identity).includes(path) && !packagingOwned.has(path) && !featureOwnedFiles.has(path))
   const { owners, phases } = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices, kitFoundationFiles)
   const persistenceEnabled = blueprint.persistenceNeeds.length > 0
   const declaredStorage = new Set(blueprint.persistenceNeeds.map(p => p.storage))

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "nodaysidle.cascade-v4",
+  "name": "Cascade V4",
+  "version": "4.0.0",
+  "author": "nodaysidle",
+  "license": "MIT",
+  "description": "Open Cascade V4 from the Omarchy bar",
+  "kinds": ["bar-widget"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Cascade V4",
+    "description": "One idea into five agent-ready contracts",
+    "category": "Development",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

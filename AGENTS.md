@@ -12,6 +12,8 @@ shell is a later milestone.
 - `tauri2-rust-typescript-desktop` — Tauri 2; verify Wayland behavior instead of assuming it.
 - `astro-web` — static by default; server output only with a declared endpoint and adapter.
 - `android-kotlin-compose` — Navigation 3, Room, DataStore, edge-to-edge, predictive back.
+- Every preset ships a starter kit. The app is a Tauri desktop UI installed under `~/.local`; the
+  Omarchy menu entry and bar widget live in `omarchy/plugin/` and `scripts/install-linux-app.sh`.
 
 There is no native macOS preset. Do not add one back without an explicit product decision.
 
@@ -37,7 +39,8 @@ There is no native macOS preset. Do not add one back without an explicit product
 ```sh
 npm run typecheck
 npm test
-npm run kit:check        # slow: real cargo builds for GTK4 and Waybar kits
+npm run kit:check        # slow: builds every preset kit (GTK4, Waybar, Tauri, Astro, Android)
+# All five kits are built by the live packet output plus the per-kit commands in README.
 CASCADE_LIVE_PROBE=1 npm run probe:live   # paid; reads DEEPSEEK_API_KEY and TYPESAFE_API_KEY
 ```
 
