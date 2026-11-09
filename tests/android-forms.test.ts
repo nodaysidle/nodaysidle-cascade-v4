@@ -80,4 +80,36 @@ describe("Android form, validation, and notification contracts", () => {
     expect(auditSemanticIntake(swap({ acceptanceSignals: ["Something else happens."] })).map(issue => issue.rule)).toContain("semantic.notification-title")
     expect(auditSemanticIntake(swap({ runsDailyAt: null })).map(issue => issue.rule)).toContain("semantic.notification-schedule")
   })
+  it("keeps stamped and initial fields out of the forms, makes a same-named choice list a picker, and states each rule once", async () => {
+    const fields = [
+      { name: "Name", valueType: "text" as const, optional: false },
+      { name: "Weekday", valueType: "text" as const, optional: false },
+      { name: "Start time", valueType: "time" as const, optional: false },
+      { name: "Last watered", valueType: "date" as const, optional: true, appStamped: true },
+      { name: "Status", valueType: "text" as const, optional: false, initial: "Open" },
+    ]
+    const days = ["Monday", "Tuesday", "Wednesday"]
+    const blueprint: SemanticBlueprint = {
+      ...withForm,
+      dataObjects: withForm.dataObjects.map(item => item.name === "Grocery items" ? { ...item, fields } : item),
+      features: withForm.features.map(feature => feature.name === "Add grocery item" ? { ...feature, choiceLists: [{ name: "Weekday", options: days, initial: "Monday" }] } : feature),
+    }
+    expect(auditSemanticIntake({ ...blueprint, dataObjects: blueprint.dataObjects.map(item => ({ ...item, fields: item.fields.map(field => field.name === "Name" ? { ...field, appStamped: true } : field) })) }).map(issue => issue.rule)).toContain("semantic.stamped-not-date")
+    const packet = await compilePacket(blueprint, "android-kotlin-compose")
+    expect(packet.failures).toEqual([])
+    const trd = packet.documents["TRD.md"]
+    expect(trd).not.toContain("Last watered: a text field")
+    expect(trd).not.toContain("Status: text")
+    expect(trd).toContain("Last watered is stamped by an action of the app, so no form (add or edit) has an input for it")
+    expect(trd).toContain("Weekday: a single-select picker (not a text field) whose options are Monday, Tuesday, Wednesday")
+    expect(trd).not.toContain("Weekday is required")
+    expect(trd).toContain("^([01][0-9]|2[0-3]):[0-5][0-9]$")
+    expect(trd).toContain('the form shows that one quoted text, once, in the status area (testTag "form-error")')
+    expect(trd).toContain("the only exception is a feature whose own behavior says it removes with no confirmation step")
+    const tasks = packet.documents["TASKS.md"]
+    expect(tasks).toContain('the write-failure message of a later task\'s save, delete, mark, or toggle')
+    expect(tasks).toContain('"summary-row-" plus the record id')
+    expect(tasks).toContain("asserted by the packaging focused test as well")
+    expect(packet.documents["ARD.md"]).not.toContain("the kit's SettingsRepository, built on Jetpack DataStore, holds run and permission state")
+  })
 })
