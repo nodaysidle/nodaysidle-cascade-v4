@@ -82,17 +82,17 @@ CASCADE_LIVE_PROBE=1 npm run probe:live
 npx tsx scripts/live-presets.ts [preset-id]   # one live idea per preset (all five); needs both keys; CASCADE_LIVE_ROOT sets the output folder
 ```
 
-## Current verified state
+## Current verified state (2026-11-09)
 
-- All five live packets exist under `/tmp/v4-live-final2/<preset>/<slug>` and `cascade verify`
-  passes for GTK, Waybar, Tauri, Astro, and Android.
-- All five output exactly five Markdown files + `blueprint.json` + `kit/`.
-- `tests/alignment.test.ts` checks every feature, requirement, contract, owner, phase, task, and
-  acceptance ID across all five documents for the fixture matrix.
-- All five kits pass `npm run kit:check`: GTK4, Waybar, Tauri, Astro, and Android.
-- The Tauri kit rerun was confirmed after the `mod platform;` placement fix.
-- The Tauri desktop app builds (`deb`), installs, launches on Wayland, and shows the V4 brand and
-  preset-options panel. Screenshot: `/tmp/cascade-ui4.png`.
+- Live set `/tmp/v4-live-final/<preset>/<slug>` (Receipt Shelf, Tide Tick, Focus Ledger, Lantern Books,
+  Pantry Pal): one DeepSeek request each, all Gate Clean, `cascade verify` passes for all five, and every kit
+  passes its own commands (GTK/Waybar fmt+clippy+test(+release), Tauri typecheck/test/build/icons/cargo,
+  Astro check/test/build/a11y/performance, Android assembleDebug).
+- `npm run typecheck`, `npm test` (41 pass), `npm run kit:check` (6 kit builds incl. the bare Waybar kit)
+  and the src-tauri fmt/clippy/test pass.
+- The app builds (deb), installs (`scripts/install-linux-app.sh --no-build`), launches on Wayland, shows the V4
+  brand, preset options, five tabs, ledger and export; `omarchy menu summon apps.cascade-v4` works; C4 is in the bar.
+- Document quality is NOT yet agent-ready for every preset: see 2b.
 
 ## Where the remaining problems are
 

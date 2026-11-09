@@ -322,3 +322,17 @@ export const fixtureCases: ReadonlyArray<{ presetId: FixturePresetId; blueprint:
   { presetId: "android-kotlin-compose", blueprint: habitTrackerBlueprint },
   { presetId: "android-kotlin-compose", blueprint: trailChecklistBlueprint },
 ]
+
+// Synthetic Waybar blueprint with no records, secrets, services, or network: the kit must omit every optional helper.
+export const bareWaybarBlueprint: SemanticBlueprint = {
+  ...networkMonitorBlueprint,
+  dataObjects: networkMonitorBlueprint.dataObjects.filter(item => item.storage === "settings"),
+  externalServices: [],
+  platformNeeds: networkMonitorBlueprint.platformNeeds.filter(need => need !== "network"),
+  features: networkMonitorBlueprint.features.map(feature => ({
+    ...feature,
+    usesData: feature.usesData.filter(name => networkMonitorBlueprint.dataObjects.some(item => item.name === name && item.storage === "settings")),
+    usesServices: [],
+    usesPlatformNeeds: feature.usesPlatformNeeds.filter(need => need !== "network"),
+  })),
+}

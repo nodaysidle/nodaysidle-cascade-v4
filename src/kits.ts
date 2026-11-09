@@ -538,16 +538,24 @@ echo "Installed $app_id under $install_dir"
   ]
 }
 
+// The one place that decides which optional Waybar helpers a blueprint needs; the kit files, Cargo
+// dependencies, and the locked stack all read it so they cannot drift apart.
+export function waybarHelpers(blueprint: NormalizedBlueprint): { records: boolean; secrets: boolean; http: boolean } {
+  return {
+    records: blueprint.persistenceNeeds.some(need => need.storage === "records"),
+    secrets: blueprint.externalServices.some(item => item.credentialRequirement !== "none")
+      || blueprint.domainData.some(item => item.storage === "secret"),
+    http: blueprint.externalServices.length > 0 || blueprint.platformNeeds.includes("network"),
+  }
+}
+
 function waybarKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, options: Readonly<Record<string, string | boolean | readonly string[]>> = {}): KitFile[] {
   const slug = identity.slug
   const crate = crateName(slug)
   const service = true
   const refresh = options.refreshSeconds === "60" || options.refreshSeconds === "5" ? options.refreshSeconds : "15"
   const tooltip = options.tooltip === false ? false : true
-  const records = blueprint.persistenceNeeds.some(need => need.storage === "records")
-  const secrets = blueprint.externalServices.some(item => item.credentialRequirement !== "none")
-    || blueprint.domainData.some(item => item.storage === "secret")
-  const http = blueprint.externalServices.length > 0 || blueprint.platformNeeds.includes("network")
+  const { records, secrets, http } = waybarHelpers(blueprint)
   const helperNames = [...(records ? ["sqlite.rs"] : []), ...(secrets ? ["credentials.rs"] : []), ...(http ? ["http.rs"] : [])]
   const optionalDeps = [
     ...(records ? ['rusqlite = { version = "0.41", features = ["bundled"] }'] : []),

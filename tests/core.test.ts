@@ -5,7 +5,7 @@ import { dirname, join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { DOCUMENT_NAMES, compilePacket } from "../src/compiler"
 import { PRESETS, PRESET_IDS } from "../src/presets"
-import { fixtureCases } from "./fixtures/blueprints"
+import { bareWaybarBlueprint, fixtureCases } from "./fixtures/blueprints"
 
 describe("v4 deterministic core", () => {
   it("exposes only the approved presets", () => {
@@ -47,21 +47,26 @@ describe("v4 deterministic core", () => {
     expect(waybarPacket.kit.map(file => file.name)).toContain("kit/resources/waybar/style.css")
   })
 
-  it("ships Waybar platform helpers only for declared storage, secrets, and services", async () => {
-    const waybar = fixtureCases.find(item => item.presetId === "linux-hyprland-waybar-module")!
-    const packet = await compilePacket(waybar.blueprint, waybar.presetId)
-    const names = packet.kit.map(file => file.name)
-    const text = (name: string) => packet.kit.find(file => file.name === name)?.content ?? ""
-    const cargo = text("kit/Cargo.toml")
-    const mod = text("kit/src/platform/mod.rs")
-    const contractTests = text("kit/tests/contract_tests.rs")
-    for (const [file, dep] of [["sqlite", "rusqlite"], ["credentials", "keyring"], ["http", "reqwest"]] as const) {
-      const shipped = names.includes(`kit/src/platform/${file}.rs`)
-      expect(cargo.includes(`${dep} =`)).toBe(shipped)
-      expect(mod.includes(`pub mod ${file};`)).toBe(shipped)
+  it("ships Waybar platform helpers and stack entries only for declared storage, secrets, and services", async () => {
+    const waybarBlueprints = [...fixtureCases.filter(item => item.presetId === "linux-hyprland-waybar-module").map(item => item.blueprint), bareWaybarBlueprint]
+    for (const blueprint of waybarBlueprints) {
+      const packet = await compilePacket(blueprint, "linux-hyprland-waybar-module")
+      const names = packet.kit.map(file => file.name)
+      const text = (name: string) => packet.kit.find(file => file.name === name)?.content ?? ""
+      const cargo = text("kit/Cargo.toml")
+      const mod = text("kit/src/platform/mod.rs")
+      const stackText = `${packet.documents["TRD.md"]}\n${packet.documents["AGENTS.md"]}`
+      for (const [file, dep, stack] of [["sqlite", "rusqlite", "rusqlite"], ["credentials", "keyring", "keyring (Secret Service)"], ["http", "reqwest", "reqwest with rustls"]] as const) {
+        const shipped = names.includes(`kit/src/platform/${file}.rs`)
+        expect(cargo.includes(`${dep} =`), `${blueprint.productName} cargo ${dep}`).toBe(shipped)
+        expect(mod.includes(`pub mod ${file};`), `${blueprint.productName} mod ${file}`).toBe(shipped)
+        expect(stackText.includes(stack), `${blueprint.productName} stack ${stack}`).toBe(shipped)
+      }
+      expect(text("kit/tests/contract_tests.rs").includes("platform::sqlite")).toBe(names.includes("kit/src/platform/sqlite.rs"))
+      expect(names).toContain("kit/src/platform/atomic_file.rs")
     }
-    expect(contractTests.includes("platform::sqlite")).toBe(names.includes("kit/src/platform/sqlite.rs"))
-    expect(names).toContain("kit/src/platform/atomic_file.rs")
+    const bare = await compilePacket(bareWaybarBlueprint, "linux-hyprland-waybar-module")
+    expect(bare.kit.map(file => file.name).some(name => /platform\/(sqlite|credentials|http)\.rs$/.test(name))).toBe(false)
   })
 
   it("renders create and modify file lists as separate sentences", async () => {

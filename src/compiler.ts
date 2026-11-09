@@ -3,7 +3,7 @@ import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREME
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetOptionValue, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
-import { kitProjectPaths, nativeUsageDescriptions, presetKit } from "./kits"
+import { kitProjectPaths, nativeUsageDescriptions, presetKit, waybarHelpers } from "./kits"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
 
@@ -1416,6 +1416,13 @@ function buildPhases(
   return { owners, phases }
 }
 
+function lockedStackFor(preset: PresetContract, blueprint: NormalizedBlueprint): readonly string[] {
+  if (preset.id !== "linux-hyprland-waybar-module") return preset.allowedTechnologies
+  const { records, secrets, http } = waybarHelpers(blueprint)
+  const omitted = new Set([...(records ? [] : ["rusqlite"]), ...(secrets ? [] : ["keyring (Secret Service)"]), ...(http ? [] : ["reqwest with rustls"])])
+  return preset.allowedTechnologies.filter(technology => !omitted.has(technology))
+}
+
 export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: PresetId, presetOptions: Readonly<Record<string, PresetOptionValue>> = {}): ProjectGraph {
   const preset = PRESETS[presetId]
   if (!preset) throw new Error(`Unknown preset: ${String(presetId)}`)
@@ -1512,7 +1519,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     phases,
     foundationFiles: unique([...preset.sourceLayout(identity), ...kitFoundationFiles, ...(astroPlan?.foundationExtras ?? []), ...(astroPlan?.seedContentPaths ?? [])]),
     kitPaths,
-    lockedStack: preset.allowedTechnologies,
+    lockedStack: lockedStackFor(preset, blueprint),
     forbiddenTechnologies: preset.forbiddenTechnologies,
     testFramework: preset.testFramework,
     persistence: {
