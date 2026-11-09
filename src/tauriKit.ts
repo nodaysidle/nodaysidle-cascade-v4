@@ -306,7 +306,7 @@ function mainTs(identity: ProjectIdentity): string {
   return `import { createErrorBanner } from "./errors"
 
 // Composition root: feature tasks add their views to .app-content and call Rust commands through
-// call() from ./api, reporting failures with errors.report().
+// call() from ./api; each feature task states how it reports a failure (errors.show).
 const root = document.querySelector<HTMLElement>("#app")
 if (!root) throw new Error("#app is missing from index.html")
 
