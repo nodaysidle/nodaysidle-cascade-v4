@@ -14,7 +14,8 @@ const MAX_EXPORT_FILE_BYTES: usize = 2_000_000;
 // A preset's starter kit follows the five documents, only under kit/ and in plain relative paths.
 const KIT_PREFIX: &str = "kit/";
 const MAX_KIT_FILES: usize = 64;
-const MAX_KIT_PATH_DEPTH: usize = 8;
+// Android source paths run 10+ segments (app/src/main/java/<package>/...).
+const MAX_KIT_PATH_DEPTH: usize = 16;
 // The validated provider blueprint, exported next to the documents for audits.
 const BLUEPRINT_FILE_NAME: &str = "blueprint.json";
 #[cfg(target_os = "macos")]
@@ -104,7 +105,8 @@ fn valid_kit_path(name: &str) -> bool {
                 && !part.starts_with('.')
                 && part
                     .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || b"._-+".contains(&byte))
+                    // `[` and `]` are Astro dynamic routes such as src/pages/books/[slug].astro.
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"._-+[]".contains(&byte))
         })
 }
 
@@ -233,4 +235,101 @@ fn write_staging_packet(staging: &Path, files: &[ExportFile]) -> io::Result<()> 
         }
     }
     File::open(staging)?.sync_all()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file(name: &str, content: &str) -> ExportFile {
+        ExportFile {
+            name: name.to_string(),
+            content: content.to_string(),
+            sha256: sha256_hex(content.as_bytes()),
+        }
+    }
+
+    fn packet(extra: &[&str]) -> Vec<ExportFile> {
+        DOCUMENT_NAMES
+            .iter()
+            .chain(extra)
+            .map(|name| file(name, "content\n"))
+            .collect()
+    }
+
+    #[test]
+    fn accepts_android_and_astro_kit_paths() {
+        for path in [
+            "kit/app/src/main/java/com/steady/day/data/SettingsRepository.kt",
+            "kit/src/pages/featured-book/[slug].astro",
+            "kit/gradle/libs.versions.toml",
+        ] {
+            assert!(valid_kit_path(path), "{path}");
+        }
+        assert!(validate_export_files(&packet(&[
+            "kit/app/src/main/java/com/steady/day/data/SettingsRepository.kt",
+            "kit/src/pages/guides/[slug].astro",
+            BLUEPRINT_FILE_NAME,
+        ]))
+        .is_ok());
+    }
+
+    #[test]
+    fn rejects_traversal_dotfiles_and_bad_names() {
+        for path in [
+            "kit/../escape.txt",
+            "kit/a/../../escape.txt",
+            "kit/.env",
+            "kit/a/.hidden/file",
+            "kit//double",
+            "kit/",
+            "/etc/passwd",
+            "notkit/file",
+            "kit/a b.txt",
+            "kit/a\\b.txt",
+            "kit/1/2/3/4/5/6/7/8/9/10/11/12/13/14/15/16/17.txt",
+        ] {
+            assert!(!valid_kit_path(path), "{path}");
+        }
+    }
+
+    #[test]
+    fn rejects_bad_hash_duplicates_order_and_too_many_files() {
+        let mut bad_hash = packet(&["kit/a.txt"]);
+        bad_hash[5].sha256 = "0".repeat(64);
+        assert!(validate_export_files(&bad_hash).is_err());
+        assert!(validate_export_files(&packet(&["kit/a.txt", "kit/a.txt"])).is_err());
+        let mut swapped = packet(&[]);
+        swapped.swap(0, 1);
+        assert!(validate_export_files(&swapped).is_err());
+        let mut names: Vec<String> = (0..=MAX_KIT_FILES)
+            .map(|i| format!("kit/f{i}.txt"))
+            .collect();
+        names.push(BLUEPRINT_FILE_NAME.to_string());
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        assert!(validate_export_files(&packet(&refs)).is_err());
+        assert!(validate_export_files(&packet(&refs[1..])).is_ok());
+    }
+
+    #[test]
+    fn writes_once_and_refuses_an_existing_destination() {
+        let parent = tempfile::tempdir().expect("tempdir");
+        let files = packet(&["kit/scripts/run.sh", BLUEPRINT_FILE_NAME]);
+        let destination = write_packet_atomic(parent.path(), "demo-app", &files).expect("export");
+        assert_eq!(
+            fs::read_to_string(destination.join("kit/scripts/run.sh")).expect("kit file"),
+            "content\n"
+        );
+        assert!(write_packet_atomic(parent.path(), "demo-app", &files).is_err());
+        assert!(write_packet_atomic(parent.path(), "../demo", &files).is_err());
+        let leftovers = fs::read_dir(parent.path())
+            .expect("list")
+            .filter(|entry| {
+                entry
+                    .as_ref()
+                    .is_ok_and(|e| e.file_name().to_string_lossy().ends_with(".staging"))
+            })
+            .count();
+        assert_eq!(leftovers, 0);
+    }
 }

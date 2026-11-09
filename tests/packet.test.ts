@@ -31,6 +31,24 @@ describe("packet determinism and verify", () => {
     expect(verifyPacketFolder(folder, packet, manifest)).toBeUndefined()
   })
 
+  // The desktop app's Rust export gate (src-tauri/src/export.rs) must accept every packet the compiler emits.
+  it.each(fixtureCases)("$presetId / $blueprint.productName passes the desktop export path rules", async ({ presetId, blueprint }) => {
+    const rust = readFileSync("src-tauri/src/export.rs", "utf8")
+    const constant = (name: string) => Number(rust.match(new RegExp(`const ${name}: usize = ([0-9_]+);`))![1]!.replaceAll("_", ""))
+    const allowed = rust.match(/is_ascii_alphanumeric\(\) \|\| b"([^"]+)"\.contains/)![1]!
+    const packet = await compilePacket(blueprint, presetId)
+    expect(packet.kit.length).toBeLessThanOrEqual(constant("MAX_KIT_FILES"))
+    for (const file of packet.kit) {
+      const parts = file.name.slice("kit/".length).split("/")
+      expect(parts.length, file.name).toBeLessThanOrEqual(constant("MAX_KIT_PATH_DEPTH"))
+      for (const part of parts) {
+        expect(part.length > 0 && !part.startsWith("."), file.name).toBe(true)
+        expect([...part].every(char => /[A-Za-z0-9]/.test(char) || allowed.includes(char)), file.name).toBe(true)
+      }
+      expect(Buffer.byteLength(file.content)).toBeLessThanOrEqual(constant("MAX_EXPORT_FILE_BYTES"))
+    }
+  })
+
   it("rejects a kit file that matches its manifest but not the current compiler", async () => {
     const { presetId, blueprint } = fixtureCases[0]!
     const packet = await compilePacket(blueprint, presetId)
