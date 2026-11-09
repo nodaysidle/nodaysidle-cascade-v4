@@ -57,6 +57,6 @@ describe("memory source wiring, one failure wording, and no inherited boilerplat
     const named = structuredClone(memory)
     named.features[1]!.acceptanceSignals = ["After a failed refresh cache.json is unchanged."]
     expect(rules(named)).toContain("capability.waybar-cache-file")
-    expect(PRESETS[ID]!.providerNotes.join(" ")).toContain("reads the stored record and, with no stored record, sends nothing")
+    expect(PRESETS[ID]!.providerNotes?.join(" ")).toContain("reads the stored record and, with no stored record, sends nothing")
   })
 })
