@@ -141,7 +141,7 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     "",
     "## Behavior to keep",
     "",
-    "- src/store.ts: createStore(initial) is the one shared view state (get, set(patch), subscribe) and createSlots() the named mount points (host(name), mount(name, element)). The task that builds the main screen creates the store and places every host; a later task never edits that task's file: it reads the store, calls store.set, subscribes to re-render its own view, and mounts its control from src/main.ts with slots.mount.",
+    "- src/store.ts: createStore(initial) is the one shared view state (get, set(patch), subscribe) and createSlots() the named mount points (host(name), mount(name, element); mountRow(name, render) and row(name, record) for a control that repeats in every list row; handle(name, action) and run(name) for an action a shared control runs). The task that builds the main screen creates the store and places every host; a later task never edits that task's file: it reads the store, calls store.set, subscribes to re-render its own view, and mounts its control from src/main.ts with slots.mount.",
     "- Time: no kit file reads the clock. A feature that needs the time takes now: () => Date in the dependencies object of its factory; src/main.ts passes () => new Date() to every such factory, so every task sees the same today, and a test passes a fake clock.",
     "- src/errors.ts: errors.show(message, onRetry?) shows a message; passing onRetry adds a Retry button that repeats the failed command (the banner has no other retry control). src/ui.ts confirmDialog(message, confirmLabel) is the in-page confirmation (Cancel and the confirm button; Escape cancels), styled in src/style.css.",
     "- src-tauri/src/lib.rs: app_builder registers every plugin and command and nothing else; run() owns the only setup closure, because Builder::setup replaces any earlier one. Add each new command to generate_handler! and each new store to manage_state.",
@@ -356,14 +356,17 @@ export const toolbar = (...children: HTMLElement[]): HTMLElement => {
 }
 
 /** What an empty list shows: one centered message and a hint saying how to fill it. */
-export const emptyState = (title: string, hint: string): HTMLElement => {
+export const emptyState = (title: string, hint = ""): HTMLElement => {
   const element = document.createElement("div")
   element.className = "empty-state"
   const heading = document.createElement("strong")
   heading.textContent = title
-  const detail = document.createElement("span")
-  detail.textContent = hint
-  element.append(heading, detail)
+  element.append(heading)
+  if (hint) {
+    const detail = document.createElement("span")
+    detail.textContent = hint
+    element.append(detail)
+  }
   return element
 }
 
@@ -652,6 +655,8 @@ export const createStore = <S extends object>(initial: S) => {
  */
 export const createSlots = () => {
   const hosts = new Map<string, HTMLElement>()
+  const rowRenders = new Map<string, Array<(record: never) => HTMLElement>>()
+  const handlers = new Map<string, () => unknown>()
   const host = (name: string): HTMLElement => {
     let element = hosts.get(name)
     if (!element) {
@@ -661,7 +666,23 @@ export const createSlots = () => {
     }
     return element
   }
-  return { host, mount: (name: string, ...children: HTMLElement[]): void => host(name).append(...children) }
+  return {
+    host,
+    mount: (name: string, ...children: HTMLElement[]): void => host(name).append(...children),
+    /** A later task registers how its control renders in each row; the list calls row(name, record) once per row on every render. */
+    mountRow: <T>(name: string, render: (record: T) => HTMLElement): void => {
+      rowRenders.set(name, [...(rowRenders.get(name) ?? []), render as (record: never) => HTMLElement])
+    },
+    row: <T>(name: string, record: T): HTMLElement => {
+      const element = document.createElement("div")
+      element.dataset.slot = name
+      for (const render of rowRenders.get(name) ?? []) element.append((render as (record: T) => HTMLElement)(record))
+      return element
+    },
+    /** A later task registers the action a shared control runs (the form's confirm runs "add" or "edit"); run(name) calls it. */
+    handle: (name: string, action: () => unknown): void => { handlers.set(name, action) },
+    run: (name: string): unknown => handlers.get(name)?.(),
+  }
 }
 `
 
@@ -688,6 +709,23 @@ describe("shared view state and slots", () => {
     slots.mount("filter", control)
     expect(slots.host("filter").contains(control)).toBe(true)
     expect(slots.host("filter")).toBe(slots.host("filter"))
+  })
+
+  it("renders a registered row control once per row with that row's record, and runs a registered handler", () => {
+    const slots = createSlots()
+    slots.mountRow("row-actions", (record: { id: number }) => {
+      const button = document.createElement("button")
+      button.textContent = "Row " + record.id
+      return button
+    })
+    expect(slots.row("row-actions", { id: 1 }).textContent).toBe("Row 1")
+    expect(slots.row("row-actions", { id: 2 }).textContent).toBe("Row 2")
+    expect(slots.row("row-actions", { id: 2 })).not.toBe(slots.row("row-actions", { id: 2 }))
+    const submit = vi.fn()
+    slots.handle("add", submit)
+    slots.run("add")
+    slots.run("edit")
+    expect(submit).toHaveBeenCalledTimes(1)
   })
 })
 `

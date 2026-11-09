@@ -30,12 +30,12 @@ describe("Tauri expense log: recovery, form ownership, and boilerplate", () => {
 
   it("has the add task build the fields and the choice picker, and the first task only the shell", async () => {
     const tasks = (await compilePacket(expenseLogBlueprint, PRESET, linux)).documents["TASKS.md"]
-    expect(task(tasks, "TASK-04-EXPENSE-LIST")).toContain("You build only the shell; the add task builds its field inputs and choice pickers")
+    expect(task(tasks, "TASK-04-EXPENSE-LIST")).toContain("You build only the shell, no field input, no Edit button, and no Delete button.")
     const add = task(tasks, "TASK-05-ADD-EXPENSE")
     expect(add).toContain("amount (number), category (text), spent_on (date)")
     expect(add).toContain("opens with its initial option selected (Expense category: Food, Rent, Travel, Other; initially Other)")
     const edit = task(tasks, "TASK-06-EDIT-EXPENSE")
-    expect(edit).toContain("Connect the detail view's Edit button")
+    expect(edit).toContain('mount it into slots.host("detail-actions")')
     expect(edit).toContain("every choice picker set to the stored option, not the list's initial one")
     expect(edit).toContain("reuse the form fields and validation that the add task exports")
   })
@@ -56,7 +56,7 @@ describe("Tauri expense log: recovery, form ownership, and boilerplate", () => {
     expect(all).not.toContain("longer than the view is wide")
     expect(all).not.toContain("long text")
     expect(all).not.toContain("call invoke()")
-    expect(documents["TRD.md"]).toContain("Validation: create and update return AppError invalid for an empty required text field (category), a date (spent_on) that is not a real YYYY-MM-DD calendar day")
+    expect(documents["TRD.md"]).toContain("Validation: create and update return AppError invalid for an empty or whitespace-only required text field (category; Rust stores the value as given, so the form trims every text input before it validates and sends the trimmed value), a date (spent_on) that is not a real YYYY-MM-DD calendar day")
     expect(task(documents["TASKS.md"], "TASK-04-EXPENSE-LIST")).toContain("(today's local date)")
     // Free text keeps the long-text launch check.
     const notes = await compilePacket(focusLedgerBlueprint, PRESET, linux)

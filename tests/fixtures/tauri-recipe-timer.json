@@ -1,0 +1,248 @@
+{
+ "productName": "Recipe Timer",
+ "summary": "Recipe Timer keeps a list of cooking timers on the device. Each timer has a name and a number of minutes; the user starts a timer and watches the remaining time count down. Timers persist across restarts.",
+ "targetUsers": [
+  "Home cooks timing multiple dishes at once",
+  "People following recipes that need several timed steps"
+ ],
+ "goals": [
+  "Keep a persistent list of named cooking timers",
+  "Let the user add a timer with a name and a duration in minutes",
+  "Let the user start a timer and see the remaining time count down",
+  "Restore saved timers after the app restarts"
+ ],
+ "nonGoals": [
+  "Recipe storage or recipe instructions",
+  "Shopping lists or meal planning",
+  "Cloud sync or sharing timers between devices"
+ ],
+ "features": [
+  {
+   "name": "Timer list",
+   "userOutcome": "The user sees all saved cooking timers with their names, durations, and current state.",
+   "trigger": "The app opens or the user returns to the main screen.",
+   "behavior": "Shows every saved timer as a row with its name, its duration in whole minutes written as a number followed by ' min', and its state: Not started, Running, or Finished. Rows are ordered oldest first by creation time. When no timers exist, the list shows the text 'No timers yet'. The list loads saved timers from the device when the app starts; if that load fails, the list shows one message 'Could not load timers' and stays empty.",
+   "failureOutcome": "Saved timers cannot be read at startup; the list shows 'Could not load timers' and stays empty.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With two saved timers, the list shows both rows ordered oldest first by creation time.",
+    "A timer read back from the store shows its saved name, duration, and state.",
+    "With no saved timers, the list shows 'No timers yet'.",
+    "When the store read fails, the list shows 'Could not load timers' and contains no rows."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Timers"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Timers",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "launch",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Add timer",
+   "userOutcome": "The user creates a new named cooking timer with a duration in minutes.",
+   "trigger": "The user chooses to add a timer.",
+   "behavior": "Opens a form with a name field and a minutes field. The name is required and must not be blank. The minutes value is required, a whole number, and at least 1; the form rejects a blank name, a blank minutes value, a non-whole number, or a value below 1 and keeps the form open. On save, the timer is stored with state Not started and the current moment as its creation time, and the list shows it as the newest row. If the save fails, the form stays open with the entered values and shows 'Could not save timer'.",
+   "failureOutcome": "The new timer cannot be written to the device; the form stays open with the entered values and shows 'Could not save timer'.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Saving a timer named 'Pasta' with 9 minutes stores a record with name 'Pasta', duration 9, and state Not started.",
+    "Submitting a blank name or a minutes value of 0 keeps the form open and stores no record.",
+    "After a successful save, the new timer appears as the last row of the list.",
+    "When the store write fails, the form remains open with the entered name and minutes and shows 'Could not save timer'."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Timers"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Timer list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Timers",
+     "operations": [
+      "create"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Start and count down timer",
+   "userOutcome": "The user starts a timer and watches its remaining time count down to zero.",
+   "trigger": "The user starts a timer that is Not started or Finished.",
+   "behavior": "Starting a timer records the start moment and the end moment (start plus the timer's minutes) and sets its state to Running. While Running, the row shows the remaining time as MM:SS, recomputed from the stored end moment and the current time, updated every second. When the remaining time reaches zero, the state becomes Finished and the row shows 'Finished'. A timer that is already Running cannot be started again. If the state change cannot be saved, the timer stays in its previous state and the row shows 'Could not start timer'.",
+   "failureOutcome": "The start cannot be saved; the timer keeps its previous state and the row shows 'Could not start timer'.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Starting a 9-minute timer at a fixed clock time stores state Running and an end moment 540 seconds later.",
+    "With the clock advanced 60 seconds after start, the row shows '08:00' remaining.",
+    "With the clock advanced to the end moment, the state becomes Finished and the row shows 'Finished'.",
+    "Starting a timer whose state is already Running leaves its stored start and end moments unchanged.",
+    "When the state write fails, the timer keeps its previous state and the row shows 'Could not start timer'."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Timers"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Timer list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Timers",
+     "operations": [
+      "read",
+      "update"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Timers",
+   "purpose": "Cooking timers saved on the device, each with a name, duration, state, and start and end moments.",
+   "sensitivity": "internal",
+   "retentionIntent": "Kept on the device until the user changes it; restored when the app starts.",
+   "storage": "records",
+   "writeMode": "direct",
+   "fields": [
+    {
+     "name": "name",
+     "valueType": "text",
+     "optional": false
+    },
+    {
+     "name": "minutes",
+     "valueType": "whole-number",
+     "optional": false
+    },
+    {
+     "name": "state",
+     "valueType": "text",
+     "optional": false
+    },
+    {
+     "name": "createdAt",
+     "valueType": "date-time",
+     "optional": false
+    },
+    {
+     "name": "startedAt",
+     "valueType": "date-time",
+     "optional": true
+    },
+    {
+     "name": "endsAt",
+     "valueType": "date-time",
+     "optional": true
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [
+  "local-storage"
+ ],
+ "qualityRequirements": [
+  "The remaining time display updates every second while a timer is Running.",
+  "Remaining time is written as MM:SS with two digits for minutes and seconds."
+ ],
+ "productConstraints": [
+  "Timers are stored on the device only; no network access is used.",
+  "A timer duration is a whole number of minutes of at least 1."
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Timer list"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Add timer",
+    "Start and count down timer"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 3,
+   "features": [
+    "Timer list"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}
