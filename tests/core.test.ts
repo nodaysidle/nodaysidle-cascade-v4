@@ -423,7 +423,7 @@ describe("v4 deterministic core", () => {
     const gtk = fixtureCases.find(item => item.presetId === "linux-wayland-gtk4-desktop")!
     const packet = await compilePacket(gtk.blueprint, gtk.presetId)
     const tasks = packet.documents["TASKS.md"]
-    expect(tasks).toContain("Expose three named slots in the shared files")
+    expect(tasks).toContain("Expose exactly these named slots in the shared files")
     expect(tasks).toContain("Your controls mount into the slots exposed by TASK-")
     expect(tasks).toContain("Modify the listed shared files only if the wiring check or a validation command fails")
     const waybar = fixtureCases.find(item => item.presetId === "linux-hyprland-waybar-module")!

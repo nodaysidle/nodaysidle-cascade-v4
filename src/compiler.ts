@@ -1063,13 +1063,35 @@ function gtkClockFeatureIds(blueprint: NormalizedBlueprint, features: readonly G
   return ids
 }
 
-// The detail view of the first main-surface task holds the Edit and Delete controls when a feature declares them.
+// The detail view holds the Edit and Delete controls when a feature declares them.
 function mainDetailControls(features: readonly GraphFeature[]): string {
   const controls = [
     ...(features.some(feature => feature.dataOperations.includes("update")) ? ["an Edit button"] : []),
     ...(features.some(feature => feature.dataOperations.includes("delete")) ? ["a Delete button"] : []),
   ]
   return controls.length ? ` and holds ${controls.join(" and ")}, built here as inert controls that the feature task declaring the operation connects` : ""
+}
+
+const opsOnAny = (feature: GraphFeature): readonly DataOperation[] => feature.dataOperations
+
+// The slots the first main-surface task exposes are the ones the declared operations of the other features need.
+function mainSlotsSentence(features: readonly GraphFeature[]): string {
+  const ops = new Set(features.flatMap(feature => feature.dataOperations))
+  const slots = [
+    "a status area shared by every message the main screen shows (empty state, no match, errors)",
+    ...(ops.has("create") ? ["an add-entry control that opens the entry form shell (the add task builds the form fields and validation; an edit task reuses them)"] : []),
+    ...(ops.has("update") || ops.has("delete") ? ["a per-row action area on every list row", `a detail view for the selected record that shows every stored field${mainDetailControls(features)}, built only if an acceptance criterion of a later task opens a record to edit or delete it`] : []),
+    ...(features.some(feature => feature.surface === "main" && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read")) ? ["a filter area above the list for read-only features that narrow or reorder it"] : []),
+  ]
+  return `Expose exactly these named slots in the shared files, no others: ${slots.join("; ")}. Later feature tasks build their controls in their own files and mount them into these slots, editing only the shared registration files; build no control that no later task names.`
+}
+
+// The slot a later feature task mounts into, from its declared operations.
+function slotFor(owned: readonly GraphFeature[]): string {
+  const ops = new Set(owned.flatMap(feature => feature.dataOperations))
+  if (ops.has("create")) return "the add-entry control"
+  if (ops.has("update") || ops.has("delete")) return "the per-row action area or the detail view, whichever your acceptance criteria describe"
+  return "the filter area or the list region"
 }
 
 // Files several tasks modify, or that one task modifies although the foundation (or its kit) created them: AGENTS.md lists each with its editing tasks.
@@ -1449,6 +1471,14 @@ function buildOwnersAndContracts(
       if (featureOwnerId) addDependency(featureOwnerId, item.ownerId)
     }
   }
+  // An edit reuses the add feature's form and validation, so it builds after it.
+  for (const editor of features) {
+    for (const data of blueprint.domainData) {
+      if (!opsOn(editor, data.name).includes("update")) continue
+      const adder = features.find(candidate => candidate.ownerId !== editor.ownerId && opsOn(candidate, data.name).includes("create"))
+      if (adder) addDependency(editor.ownerId, adder.ownerId)
+    }
+  }
   for (const integration of contracts.filter(item => item.kind === "integration")) {
     const supportingOwners = contracts
       .filter(item => (item.kind === "credential" || item.kind === "permission") && item.featureIds.some(featureId => integration.featureIds.includes(featureId)))
@@ -1645,7 +1675,7 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. Expose three named slots in the shared files: a per-row action area on every list row, an add-entry control, and a detail view for the selected record that shows every stored field${mainDetailControls(features)}; later feature tasks build their controls in their own files and mount them into these slots, editing only the shared registration files.` : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId}: build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? " Content entry files under src/content/ are also yours: create one file per entry the idea names and delete that collection's sample-entry.md; keep the sample entry when the idea names none (see Content Seed Requirements)." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(features)}` : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(ownedFeatures)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${ownedFeatures.some(feature => opsOnAny(feature).includes("update")) && features.some(feature => opsOnAny(feature).includes("create")) ? " Reuse the form fields and validation that the add task exports from its own file; do not duplicate them." : ""}` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? " Content entry files under src/content/ are also yours: create one file per entry the idea names and delete that collection's sample-entry.md; keep the sample entry when the idea names none (see Content Seed Requirements)." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
       // An Astro page or packaging test asserts on the HTML that a production build emits into dist/, so the build runs first.
       validationCommands: unique([
         ...(preset.id === "astro-web" && (draft.kind === "feature" || draft.kind === "packaging") ? ["npm run build"] : []),

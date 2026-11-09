@@ -5,6 +5,14 @@ import type { SemanticBlueprint, SemanticIssue } from "./schema"
 // needs. This is the gate that stops a Wayland packet from promising macOS-only automation.
 export function auditCapabilities(blueprint: SemanticBlueprint, preset: PresetContract): SemanticIssue[] {
   const issues: SemanticIssue[] = []
+  if (preset.id === "astro-web") {
+    const opensFiles = blueprint.features.some(feature => feature.userFileAccess !== "none")
+    blueprint.dataObjects.forEach((item, index) => {
+      if (item.storage === "document" && !opensFiles) {
+        issues.push({ path: `dataObjects[${index}].storage`, rule: "capability.astro-content-storage", message: `Data object '${item.name}' is content of the site; declare it as records. A document is a file the visitor opens or saves, and no feature does that.` })
+      }
+    })
+  }
   if (preset.id === "linux-hyprland-waybar-module") {
     blueprint.dataObjects.forEach((item, index) => {
       if (item.storage === "session" || item.storage === "temporary") {
