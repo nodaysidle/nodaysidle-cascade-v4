@@ -12,7 +12,7 @@ import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers, wa
 import { waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarSourceDetail } from "./waybarContracts"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
-import { TAURI_WIRE_FORMAT, tauriAddHasForm, tauriDocumentInterface, tauriFeatureOps, tauriMainSlotsSentence, tauriStoreInterface, tauriTaskPrompt, type TauriData, type TauriFeatureUse } from "./tauriContracts"
+import { TAURI_WIRE_FORMAT, isCountdown, tauriAddHasForm, tauriDocumentInterface, tauriFeatureOps, tauriMainSlotsSentence, tauriStoreInterface, tauriTaskPrompt, type TauriData, type TauriFeatureUse } from "./tauriContracts"
 
 export const DOCUMENT_NAMES = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS.md"] as const
 export type DocumentName = (typeof DOCUMENT_NAMES)[number]
@@ -1250,20 +1250,21 @@ function sharedScreenView(features: readonly GraphFeature[], presetId: PresetId)
 
 // Some later main-surface feature only reads: it narrows, sorts, or summarises the list from the area above it.
 function hasFilterFeature(features: readonly GraphFeature[], firstMainOwnerId: string | undefined, presetId: PresetId): boolean {
-  return sharedScreenView(features, presetId).some(feature => feature.ownerId !== firstMainOwnerId && feature.surface === "main" && feature.invokedBy === "user-control" && feature.dataOperations.length > 0 && (feature.dataOperations.every(operation => operation === "read") || (presetId === "android-kotlin-compose" && feature.dataOperations.includes("read") && !feature.dataOperations.includes("create") && !feature.dataOperations.includes("delete"))) && (presetId !== "linux-wayland-gtk4-desktop" || feature.narrowsListBy !== "none"))
+  return sharedScreenView(features, presetId).some(feature => feature.ownerId !== firstMainOwnerId && feature.surface === "main" && feature.invokedBy === "user-control" && !(presetId === "tauri2-rust-typescript-desktop" && isCountdown(feature)) && feature.dataOperations.length > 0 && (feature.dataOperations.every(operation => operation === "read") || (presetId === "android-kotlin-compose" && feature.dataOperations.includes("read") && !feature.dataOperations.includes("create") && !feature.dataOperations.includes("delete"))) && (presetId !== "linux-wayland-gtk4-desktop" || feature.narrowsListBy !== "none"))
 }
 
 // Tauri: the per-row action area exists only for a feature that acts on a row without the detail view's Edit button (a mark or toggle, a delete).
 // Delete lives in the detail view when the packet has one (an edit feature builds it), else in the row area.
+// A countdown (a read-only feature with a tick) keeps its Start control and display in the row too.
 const needsRowArea = (features: readonly GraphFeature[]): boolean =>
-  features.some(feature => (feature.dataOperations.includes("delete") && !features.some(other => other.editsRecords)) || (feature.dataOperations.includes("update") && !feature.editsRecords))
+  features.some(feature => (feature.dataOperations.includes("delete") && !features.some(other => other.editsRecords)) || (feature.dataOperations.includes("update") && !feature.editsRecords) || isCountdown(feature))
 
 // The slots the first main-surface task exposes are the ones the declared operations of the other features need.
 // rowOpensEditor (Tauri): a packet with an edit feature always builds the detail view and opens it from the row.
 function mainSlotsSentence(features: readonly GraphFeature[], detailView = true, filterSlot = true, rowOpensEditor = false, android = false, directAdd = false): string {
   const ops = new Set(features.flatMap(feature => feature.dataOperations))
   const changes = ops.has("update") || ops.has("delete")
-  if (rowOpensEditor) return tauriMainSlotsSentence({ create: ops.has("create"), directAdd, entryForm: !directAdd && ops.has("create") && features.some(feature => feature.editsRecords && feature.dataOperations.includes("update")), rowArea: changes && needsRowArea(features), detail: changes && features.some(feature => feature.editsRecords), filter: filterSlot })
+  if (rowOpensEditor) return tauriMainSlotsSentence({ create: ops.has("create"), directAdd, entryForm: !directAdd && ops.has("create") && features.some(feature => feature.editsRecords && feature.dataOperations.includes("update")), rowArea: needsRowArea(features), detail: changes && features.some(feature => feature.editsRecords), filter: filterSlot, countdown: features.some(isCountdown) })
   const slots = [
     android ? "a status area that carries only the empty-list message (the exact text an acceptance signal quotes, else a short plain sentence) and the form errors" : "a status area shared by every message the main screen shows (empty state, no match, errors)",
     ...(ops.has("create") ? [directAdd ? "an add-entry control: a button that the add task connects to the create command (no stored field takes user input, so build no entry form shell)" : android && !detailView ? "the add-entry area on the main screen above the list: the Add button (testTag \"add-entry\") plus the inline form shell, which hosts whichever form (add or edit) is open, one at a time, so opening one closes the other (the add task builds the form fields, validation, and the open or closed state in its own file; an edit task reuses them)" : "an add-entry control that opens the entry form shell (the add task builds the form fields and validation; an edit task reuses them)"] : []),
@@ -1278,7 +1279,8 @@ ${mainDetailControls(features)}, ${rowOpensEditor && features.some(feature => fe
 function tauriSlotHosts(features: readonly GraphFeature[], detailView: boolean, filterSlot: boolean, entryForm = false): string[] {
   const ops = new Set(features.flatMap(feature => feature.dataOperations))
   const changes = ops.has("update") || ops.has("delete")
-  return ["status", ...(ops.has("create") ? ["add"] : []), ...(entryForm ? ["form"] : []), ...(changes && needsRowArea(features) ? ["row-actions"] : []), ...(changes && detailView ? ["detail", "detail-actions"] : []), ...(filterSlot ? ["filter"] : [])]
+  // With an entry form shell the first task builds the Add button itself, so there is no "add" host for a later task.
+  return ["status", ...(ops.has("create") && !entryForm ? ["add"] : []), ...(entryForm ? ["form"] : []), ...(needsRowArea(features) ? ["row-actions"] : []), ...(changes && detailView ? ["detail", "detail-actions"] : []), ...(filterSlot ? ["filter"] : [])]
 }
 
 // The slot a later feature task mounts into, from its declared operations.
@@ -1287,6 +1289,7 @@ function slotFor(owned: readonly GraphFeature[], presetId: PresetId, detailView 
   const ops = new Set(owned.flatMap(feature => feature.dataOperations))
   if (!ops.size && presetId === "tauri2-rust-typescript-desktop") return "no named slot: your own controls, if any (start and stop, an export button), sit in the main content area"
   if (ops.has("create")) return "the add-entry control"
+  if (presetId === "tauri2-rust-typescript-desktop" && owned.length > 0 && owned.every(isCountdown)) return "the per-row action area (its Start control and the row's countdown display)"
   if (owned.some(feature => feature.editsRecords)) return detailView ? (presetId === "tauri2-rust-typescript-desktop" ? 'the detail view\'s "detail-actions" slot (its Edit control)' : "the detail view (its Edit control)") : "the per-row action area"
   if (presetId === "tauri2-rust-typescript-desktop" && ops.has("delete") && !ops.has("update")) return detailView ? 'the detail view\'s "detail-actions" slot (the list rows have no delete control)' : "the per-row action area"
   if (ops.has("update") || ops.has("delete")) return detailView && ops.has("delete") ? "the per-row action area or the detail view, whichever your acceptance criteria describe" : "the per-row action area"
@@ -1982,9 +1985,12 @@ function refineTauriPhases(phases: readonly GraphPhase[], owners: readonly Graph
         detailView,
         slotHosts,
         filters,
+        countdownTask: features.some(isCountdown) ? allTasks.find(candidate => candidate.featureIds.some(id => features.some(feature => feature.id === id && isCountdown(feature))))?.id : undefined,
         ownFiles: kind === "foundation" ? task.filesToCreate.filter(file => !kitPaths.includes(file)) : undefined,
       })
-      return extra ? { ...task, prompt: `${task.prompt} ${extra}` } : task
+      // With an entry form shell the first main task owns the Add button: the add task's slot is the shell's form host.
+      const prompt = entryForm && task !== firstMain ? task.prompt.replace("(the add-entry control)", '(the "form" host of the entry form shell; the first main task builds the Add button)') : task.prompt
+      return extra ? { ...task, prompt: `${prompt} ${extra}` } : { ...task, prompt }
     }),
   }))
 }

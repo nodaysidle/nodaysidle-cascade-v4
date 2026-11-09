@@ -1,0 +1,346 @@
+{
+ "productName": "Study Cards",
+ "summary": "Study Cards is a local flash-card app where a user adds cards with a question and an answer, edits them, searches cards by question, and deletes a card after confirming. Cards are stored on the device and restored after restart.",
+ "targetUsers": [
+  "Students and self-learners who memorize question-and-answer pairs",
+  "Anyone who wants a simple on-device flash-card collection"
+ ],
+ "goals": [
+  "Keep a personal collection of question-and-answer flash cards on the device",
+  "Let the user add, edit, search, and delete cards",
+  "Restore the saved card collection after restart"
+ ],
+ "nonGoals": [
+  "Spaced-repetition scheduling or quiz sessions",
+  "Sharing or syncing cards across devices",
+  "Importing or exporting card files"
+ ],
+ "features": [
+  {
+   "name": "Card list",
+   "userOutcome": "See all saved flash cards and pick one to inspect",
+   "trigger": "The app opens, or the user returns to the card list",
+   "behavior": "Shows every saved card as a row with its question and answer, ordered newest created first. Selecting a row shows that card read-only with an Edit button. When no cards exist the list shows 'No cards yet'. The list loads saved cards from the device when the app starts; if that load fails, the list shows 'Cards could not be loaded' and stays empty.",
+   "failureOutcome": "Saved cards cannot be read at startup, so the list shows 'Cards could not be loaded' and stays empty",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With two saved cards, the list shows both rows ordered newest created first",
+    "Selecting a row shows that card's question and answer read-only with an Edit button",
+    "With no saved cards, the list shows 'No cards yet'",
+    "When the store read fails, the list shows 'Cards could not be loaded' and contains no rows"
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Flash cards"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Flash cards",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "launch",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Add card",
+   "userOutcome": "Save a new flash card with a question and an answer",
+   "trigger": "The user chooses to add a card",
+   "behavior": "Opens a form with a required question field and a required answer field. The form checks that both fields are non-empty before saving; saving stores the card with its creation time and returns to the card list, where the new card appears first.",
+   "failureOutcome": "The card cannot be written to the device, so the form stays open with the entered question and answer and shows 'Card could not be saved'",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Submitting a question and answer stores a card that reads back from the store with those exact values",
+    "Submitting with an empty question or empty answer does not store a card",
+    "After a successful save the new card appears first in the card list",
+    "When the store write fails, no card is added and the form keeps the entered values"
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Flash cards"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Card list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Flash cards",
+     "operations": [
+      "create"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Edit card",
+   "userOutcome": "Change the question or answer of an existing card",
+   "trigger": "The user presses Edit on a selected card",
+   "behavior": "Opens a form pre-filled with the card's question and answer. The form checks that both fields are non-empty before saving; saving updates the stored card and returns to the card list, where the card shows its new values.",
+   "failureOutcome": "The change cannot be written to the device, so the form stays open with the edited values and shows 'Card could not be saved'",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "The edit form opens pre-filled with the selected card's question and answer",
+    "Saving changed values updates the stored card so it reads back with the new question and answer",
+    "Submitting an empty question or empty answer does not change the stored card",
+    "When the store write fails, the stored card keeps its previous values"
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Flash cards"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Card list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Flash cards",
+     "operations": [
+      "read",
+      "edit"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Search cards by question",
+   "userOutcome": "Narrow the card list to cards whose question matches typed text",
+   "trigger": "The user types in the search field above the card list",
+   "behavior": "Filters the card list to cards whose question contains the typed text, ignoring letter case. The search field starts empty, which shows all cards. Clearing the search field returns to showing all cards. When no card matches, the list shows 'No matching cards'.",
+   "failureOutcome": "The typed text cannot be applied, so the list keeps showing the previous results",
+   "failureRecovery": "fallback",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With an empty search field the list shows all saved cards",
+    "Typing text shows only cards whose question contains that text, ignoring letter case",
+    "Typing text that matches no question shows 'No matching cards'",
+    "Clearing the search field shows all saved cards again"
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Flash cards"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Card list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Flash cards",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "text",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Delete card",
+   "userOutcome": "Remove a card from the collection after confirming",
+   "trigger": "The user chooses to delete the selected card",
+   "behavior": "Asks for confirmation before removing the card. Confirming removes the card from the device and returns to the card list without it; cancelling keeps the card unchanged.",
+   "failureOutcome": "The card cannot be removed from the device, so the card stays in the list and 'Card could not be deleted' is shown",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Choosing delete shows a confirmation prompt and the card remains stored until it is confirmed",
+    "Confirming removes the card so it no longer reads back from the store and no longer appears in the list",
+    "Cancelling the confirmation leaves the card stored and listed",
+    "When the store delete fails, the card remains stored and listed"
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Flash cards"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Card list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Flash cards",
+     "operations": [
+      "delete"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Flash cards",
+   "purpose": "The user's saved question-and-answer flash cards",
+   "sensitivity": "personal",
+   "retentionIntent": "Kept on the device until the user deletes a card",
+   "storage": "records",
+   "writeMode": "direct",
+   "fields": [
+    {
+     "name": "question",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null
+    },
+    {
+     "name": "answer",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null
+    },
+    {
+     "name": "created at",
+     "valueType": "date-time",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [
+  "local-storage"
+ ],
+ "qualityRequirements": [
+  "Card list, add, edit, search, and delete work fully offline on the device"
+ ],
+ "productConstraints": [
+  "Cards are stored only on the device and are not synced or shared"
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Card list"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Add card",
+    "Edit card",
+    "Search cards by question",
+    "Delete card"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 3,
+   "features": [
+    "Card list",
+    "Add card",
+    "Edit card",
+    "Delete card"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

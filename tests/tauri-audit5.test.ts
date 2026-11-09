@@ -84,7 +84,7 @@ describe("Tauri audit round 5: contact book", () => {
     expect(packet.failures).toEqual([])
     const tasks = packet.documents["TASKS.md"]
     const list = task(tasks, "TASK-04-CONTACT-LIST")
-    expect(list).toContain('slots.host("status"), slots.host("add"), slots.host("form"), slots.host("detail"), slots.host("detail-actions"), slots.host("filter")')
+    expect(list).toContain('slots.host("status"), slots.host("form"), slots.host("detail"), slots.host("detail-actions"), slots.host("filter")')
     expect(list).not.toContain("row-actions")
     expect(list).not.toContain("inert")
     expect(list).toContain('slots.run(store.get().form)')

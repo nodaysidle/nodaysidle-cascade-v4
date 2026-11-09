@@ -1,0 +1,336 @@
+{
+ "productName": "Break Timer",
+ "summary": "Break Timer keeps a list of named break reminders, each with a duration in minutes. The user adds reminders, starts one to watch its remaining time count down, and deletes a reminder after confirming. Reminders are stored on the device and restored after restart.",
+ "targetUsers": [
+  "People who take short breaks during focused work",
+  "Students pacing study sessions",
+  "Remote workers who need reminders to step away from the screen"
+ ],
+ "goals": [
+  "Keep a persistent list of named break reminders with a duration in minutes",
+  "Let the user start a reminder and watch the remaining time count down",
+  "Let the user delete a reminder only after confirming",
+  "Restore saved reminders after the app restarts"
+ ],
+ "nonGoals": [
+  "Tracking break history or statistics",
+  "Scheduling recurring reminders or notifications",
+  "Syncing reminders across devices"
+ ],
+ "features": [
+  {
+   "name": "Reminder list",
+   "userOutcome": "The user sees all saved break reminders with their names and durations.",
+   "trigger": "The app opens or the user returns to the main screen.",
+   "behavior": "Shows every saved reminder as a row with its name and its duration written as a whole number of minutes followed by ' min' (for example '5 min'). Rows are ordered newest created first. Selecting a row shows that reminder read-only with an Edit button; Edit opens the edit form. When no reminders exist, the list shows the text 'No reminders yet'. The list loads saved reminders when the app starts; if that load fails, one message 'Could not load reminders' is shown and the list stays empty.",
+   "failureOutcome": "Saved reminders cannot be read at startup, so the list stays empty and shows 'Could not load reminders'.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With two saved reminders, the list shows both names and durations formatted as '<minutes> min', newest created first.",
+    "With no saved reminders, the list shows 'No reminders yet'.",
+    "Selecting a row shows the reminder read-only and an Edit button; pressing Edit opens the edit form.",
+    "When the store read fails, the list is empty and the text 'Could not load reminders' is shown."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Break reminders"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Break reminders",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "launch",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Add reminder",
+   "userOutcome": "The user adds a new break reminder with a name and a duration in minutes.",
+   "trigger": "The user chooses to add a reminder from the main screen.",
+   "behavior": "Opens a form with a required name field and a required duration field entered as a whole number of minutes. The form checks that the name is not blank and that the duration is a whole number of at least 1; a value below 1 or a blank name is rejected and the form stays open. On save, the reminder is written to the device store and appears in the list. If the write fails, the form stays open with the entered values and no reminder is added.",
+   "failureOutcome": "The new reminder cannot be saved, so the form stays open with the entered values and the list is unchanged.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Saving a reminder named 'Stretch' with 5 minutes writes a record whose name is 'Stretch' and duration is 5, and the list then shows 'Stretch' with '5 min'.",
+    "A duration of 0 or a blank name is rejected and no record is written.",
+    "When the store write fails, no record is added and the form still shows the entered name and duration."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Break reminders"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Reminder list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Break reminders",
+     "operations": [
+      "create"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Edit reminder",
+   "userOutcome": "The user changes the name or duration of an existing reminder.",
+   "trigger": "The user presses Edit on a selected reminder.",
+   "behavior": "Opens the same form as adding, pre-filled with the reminder's name and duration. The form checks that the name is not blank and that the duration is a whole number of at least 1. On save, the stored record is updated and the list shows the new values. If the write fails, the stored record keeps its previous values and the form stays open.",
+   "failureOutcome": "The change cannot be saved, so the stored reminder keeps its previous name and duration.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Editing a reminder's duration from 5 to 10 and saving makes the stored record read back with duration 10 and the list shows '10 min'.",
+    "A blank name or a duration below 1 is rejected and the stored record is unchanged.",
+    "When the store write fails, the record read back still has its previous name and duration."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Break reminders"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Reminder list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Break reminders",
+     "operations": [
+      "edit"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Start countdown",
+   "userOutcome": "The user starts a reminder and watches its remaining time count down to zero.",
+   "trigger": "The user presses Start on a reminder.",
+   "behavior": "Starts a countdown from the reminder's duration in minutes and shows the remaining time as minutes and seconds written MM:SS, updating every second while the app is open. When the remaining time reaches 00:00 the countdown stops and the display shows 'Time is up'. Pressing Start again on the same reminder restarts the countdown from its full duration. Only one countdown runs at a time; starting another reminder replaces the running countdown.",
+   "failureOutcome": "The countdown cannot start because no reminder is selected, so the display stays at the idle state.",
+   "failureRecovery": "fallback",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Starting a 5-minute reminder shows '05:00' and, after the injected clock advances 1 second, shows '04:59'.",
+    "When the injected clock advances past the full duration, the display shows '00:00' and 'Time is up'.",
+    "Starting a second reminder while one is running replaces the first countdown with the second reminder's full duration."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Break reminders"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Reminder list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Break reminders",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": 1,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Delete reminder",
+   "userOutcome": "The user removes a reminder from the list after confirming.",
+   "trigger": "The user chooses to delete a reminder.",
+   "behavior": "Shows a confirmation asking whether to delete the reminder. Confirming removes the record from the device store and the row disappears from the list; cancelling leaves the reminder unchanged. If the delete fails, the reminder stays in the list.",
+   "failureOutcome": "The reminder cannot be removed, so it stays in the list.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Confirming deletion of a reminder removes its record so a store read returns no record with that name.",
+    "Cancelling the confirmation leaves the record in the store and the row in the list.",
+    "When the store delete fails, the record is still present and the row remains in the list."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Break reminders"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Reminder list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Break reminders",
+     "operations": [
+      "delete"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Break reminders",
+   "purpose": "Stores each break reminder's name and duration so the list is restored after restart.",
+   "sensitivity": "internal",
+   "retentionIntent": "Kept on the device until the user deletes the reminder.",
+   "storage": "records",
+   "writeMode": "atomic-replace",
+   "fields": [
+    {
+     "name": "name",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null
+    },
+    {
+     "name": "duration minutes",
+     "valueType": "whole-number",
+     "optional": false,
+     "min": 1,
+     "max": null,
+     "initial": null
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [
+  "local-storage"
+ ],
+ "qualityRequirements": [
+  "The countdown display updates once per second while the app is open."
+ ],
+ "productConstraints": [
+  "A reminder's duration is a whole number of minutes of at least 1.",
+  "Only one countdown runs at a time."
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Reminder list",
+    "Add reminder"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Add reminder",
+    "Start countdown",
+    "Delete reminder"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 3,
+   "features": [
+    "Reminder list",
+    "Add reminder",
+    "Edit reminder",
+    "Delete reminder"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}
