@@ -7,7 +7,7 @@ import { compilePacket, type CompiledPacket } from "../src/compiler"
 import { bareGtkBlueprint, bareWaybarBlueprint, fixtureCases, lanternBooksBlueprint, tidePageBlueprint, tideTickBlueprint } from "./fixtures/blueprints"
 import { medicineBlueprint } from "./fixtures/medicine"
 import { pantryBlueprint } from "./fixtures/pantry"
-import { airQualityBlueprint, allSourcesBlueprint, freeSpaceBlueprint, netSpeedBlueprint, sunTimesBlueprint } from "./fixtures/waybarSources"
+import { airQualityBlueprint, allSourcesBlueprint, diskReadBlueprint, freeSpaceBlueprint, netSpeedBlueprint, sunTimesBlueprint, unitLabelBlueprint } from "./fixtures/waybarSources"
 
 const describeBuild = process.env.CASCADE_KIT_BUILD ? describe : describe.skip
 
@@ -84,7 +84,7 @@ describeBuild("v4 starter kits compile and pass their own tests", () => {
   }, 900_000)
 
   it("Waybar module kit with system sources, units, and the shutdown loop", async () => {
-    for (const blueprint of [netSpeedBlueprint, allSourcesBlueprint, airQualityBlueprint, freeSpaceBlueprint, sunTimesBlueprint]) {
+    for (const blueprint of [netSpeedBlueprint, allSourcesBlueprint, airQualityBlueprint, freeSpaceBlueprint, sunTimesBlueprint, diskReadBlueprint, unitLabelBlueprint]) {
       const root = materialize(await compilePacket(blueprint, "linux-hyprland-waybar-module"))
       try {
         run("cargo", ["fmt", "--check"], root, { TMPDIR: temporary })

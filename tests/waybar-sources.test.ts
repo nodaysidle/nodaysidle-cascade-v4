@@ -216,7 +216,7 @@ describe("Waybar system sources, units, and one failure rule", () => {
       expect(text(packet, "src/module.rs")).toContain("pub fn refresh_with(")
       expect(text(packet, "src/module.rs")).toContain("pub fn stored_output(")
       expect(task(packet, "TASK-06-SCHEDULED-SUNSET-REFRESH")).toContain("Also replace stored_output in src/module.rs")
-      expect(trd).toContain("the function request_url (it takes the base, the scheme and host")
+      expect(trd).toContain("pub fn request_url(origin: &str, value: &str) -> String")
       expect(trd).toContain("reading an unset key returns the error that names the key")
     })
 

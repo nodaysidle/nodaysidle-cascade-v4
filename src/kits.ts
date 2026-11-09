@@ -750,7 +750,7 @@ function waybarKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, op
   const launches = launchers.pages.length > 0 || launchers.notifies
   const parts = waybarKitParts(blueprint)
   const thresholds = blueprint.features.flatMap(feature => feature.thresholds)
-  const systemFiles = [...waybarSystemKit(parts.sources, crate), ...(parts.localTime ? waybarLocalTimeKit(crate) : [])]
+  const systemFiles = [...waybarSystemKit(parts.sources, crate, parts.units), ...(parts.localTime ? waybarLocalTimeKit(crate) : [])]
   const extraDeps = [...(parts.disk ? ['nix = { version = "0.30", default-features = false, features = ["fs"] }'] : []), ...(parts.localTime ? ['chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }'] : [])].join("\n")
   const platformMods = systemFiles.filter(item => item.name.startsWith("src/platform/")).map(item => item.name.slice("src/platform/".length, -3))
   const helperNames = [...(records ? ["sqlite.rs"] : []), ...platformMods.map(name => `${name}.rs`), ...(secrets ? ["credentials.rs"] : []), ...(http ? ["http.rs"] : []), ...(launches ? ["launcher.rs"] : [])]

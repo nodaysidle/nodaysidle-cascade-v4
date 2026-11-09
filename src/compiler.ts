@@ -18,7 +18,7 @@ export const DOCUMENT_NAMES = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS
 export type DocumentName = (typeof DOCUMENT_NAMES)[number]
 export type ContractKind = "interface" | "data" | "integration" | "lifecycle" | "persistence" | "credential" | "permission" | "recovery" | "security" | "packaging"
 
-export type SystemSource = "none" | "network-received" | "network-sent" | "load-average" | "memory" | "swap" | "battery" | "disk-space" | "temperature"
+export type SystemSource = "none" | "network-received" | "network-sent" | "load-average" | "memory" | "swap" | "battery" | "disk-space" | "disk-read" | "temperature"
 export type InvokedBy = "user-control" | "click" | "schedule" | "launch" | "shortcut"
 export type DataOperation = "create" | "read" | "update" | "delete"
 export interface DataField {
@@ -70,6 +70,8 @@ export interface NormalizedBlueprint {
     readonly systemSource: SystemSource
     readonly thresholds: NonNullable<SemanticBlueprint["features"][number]["thresholds"]>
     readonly labelTemplate: string
+    readonly unit: string
+    readonly valueDecimals: number | null
     readonly runsAtField: SemanticBlueprint["features"][number]["runsAtField"]
     readonly scheduledNotification: { readonly titleText: string; readonly notificationBody: string } | null
     readonly resourceIds: readonly string[]
@@ -87,7 +89,7 @@ export interface NormalizedBlueprint {
     readonly webPage: string
     readonly requestValueFrom: string
     readonly requestValueType: "text" | "number"
-    readonly responseFields: readonly DataField[]
+    readonly responseFields: readonly (DataField & { readonly path: string })[]
     readonly failureBehavior: string
     readonly recovery: string
   }[]
@@ -170,6 +172,8 @@ export interface GraphFeature {
   readonly systemSource: SystemSource
   readonly thresholds: NormalizedBlueprint["features"][number]["thresholds"]
   readonly labelTemplate: string
+  readonly unit: string
+  readonly valueDecimals: number | null
   readonly runsAtField: SemanticBlueprint["features"][number]["runsAtField"]
   readonly scheduledNotification: { readonly titleText: string; readonly notificationBody: string } | null
   readonly resourceIds: readonly string[]
@@ -595,6 +599,8 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       systemSource: feature.systemSource,
       thresholds: feature.thresholds ?? [],
       labelTemplate: (feature.labelTemplate ?? "").trim(),
+      unit: (feature.unit ?? "").trim(),
+      valueDecimals: feature.valueDecimals ?? null,
       runsAtField: feature.runsAtField,
       scheduledNotification: feature.scheduledNotification ?? null,
       resourceIds: [],
@@ -635,7 +641,7 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       webPage: item.webPage.trim(),
       requestValueFrom: cleanMeaning(item.requestValueFrom),
       requestValueType: item.requestValueType ?? "text",
-      responseFields: item.responseFields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional })).filter(field => field.name),
+      responseFields: item.responseFields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional, path: (field.path ?? "").trim() })).filter(field => field.name),
       failureBehavior: "Return a privacy-safe authentication, rate, transport, timeout, filtered, or provider failure without raw response content.",
       recovery: "Preserve recoverable local input and allow only an explicit retry or explicit service change.",
     }
@@ -1455,7 +1461,7 @@ function buildOwnersAndContracts(
       integrationFeatureIds(service, features),
       ownerId,
       `${service.purpose} ${preset.integrationBoundary}`,
-      [...(service.endpoint ? [`Endpoint: ${service.endpoint}`] : []), ...(service.webPage ? [`Web page opened for the user: ${service.webPage}`] : []), ...(preset.id === "linux-hyprland-waybar-module" ? [...waybarRequestDetail(service, blueprint.domainData), ...waybarPageDetail(service, blueprint.domainData)] : []), ...(service.responseFields.length ? [`Response values read (anything else is ignored): ${service.responseFields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`] : []), ...(preset.id === "linux-hyprland-waybar-module" ? waybarResponseDetail(service) : []), `Data sent: ${service.dataSent.join("; ") || "No product data beyond the explicit request."}`, `Credential requirement: ${service.credentialRequirement}`, `Preset boundary: ${preset.platform}`, `Framework boundary: ${preset.integrationBoundary}`],
+      [...(service.endpoint ? [`Endpoint: ${service.endpoint}`] : []), ...(service.webPage ? [`Web page opened for the user: ${service.webPage}`] : []), ...(preset.id === "linux-hyprland-waybar-module" ? [...waybarRequestDetail(service, blueprint.domainData), ...waybarPageDetail(service, blueprint.domainData)] : []), ...(service.responseFields.length ? [`Response values read (anything else is ignored): ${service.responseFields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""}${field.path ? `, read at ${field.path}` : ""})`).join("; ")}.`] : []), ...(preset.id === "linux-hyprland-waybar-module" ? waybarResponseDetail(service) : []), `Data sent: ${service.dataSent.join("; ") || "No product data beyond the explicit request."}`, `Credential requirement: ${service.credentialRequirement}`, `Preset boundary: ${preset.platform}`, `Framework boundary: ${preset.integrationBoundary}`],
       service.failureBehavior,
       [service.recovery],
     ))
@@ -2073,6 +2079,8 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       systemSource: feature.systemSource,
       thresholds: feature.thresholds,
       labelTemplate: feature.labelTemplate,
+      unit: feature.unit,
+      valueDecimals: feature.valueDecimals,
       runsAtField: feature.runsAtField,
       scheduledNotification: feature.scheduledNotification,
       resourceIds: feature.resourceIds,

@@ -7,7 +7,7 @@ const meaningList = z.array(compactMeaning).max(8)
 const requiredMeaningList = meaningList.min(1)
 
 // Every operating-system source a bar-module feature can read; waybarContracts.ts and waybarKit.ts must cover each one (tests/waybar-sources.test.ts iterates this list).
-export const SYSTEM_SOURCES = ["none", "network-received", "network-sent", "load-average", "memory", "swap", "battery", "disk-space", "temperature"] as const
+export const SYSTEM_SOURCES = ["none", "network-received", "network-sent", "load-average", "memory", "swap", "battery", "disk-space", "disk-read", "temperature"] as const
 export const PlatformNeedSchema = z.enum([
   "audio-input",
   "camera",
@@ -88,6 +88,10 @@ const FeatureSchema = z.strictObject({
   thresholds: z.array(z.strictObject({ state: z.enum(["warning", "critical"]), comparison: z.enum(["above", "below"]), value: z.number().min(-1e15).max(1e15) })).max(4).optional(),
   // The exact module label for a fresh reading, with {value} standing for the formatted reading (for example "{value}" or "Sunset {value}"); empty for a feature that does not compose the label. Only a bar-module preset uses it.
   labelTemplate: z.string().max(80).optional(),
+  // The unit symbol the idea shows next to the label's value ("km/h", "MB/s", "%", "°C"); empty when the label shows no unit. A size or rate unit fixes the unit the reading is scaled to (the units rule does not choose); labelTemplate must contain it. Only a bar-module preset uses it.
+  unit: z.string().max(24).optional(),
+  // Exact number of decimals the label's value is shown with (12.0 is "12.0" when 1); null when the units rule or the stored number decides. Only a bar-module preset uses it.
+  valueDecimals: z.number().int().min(0).max(4).nullable().optional(),
   // A reminder whose time of day is a stored record's field: the data object, its time field, the text field that titles the notification, and the constant notification body (quoted in acceptanceSignals); null otherwise.
   // True when the feature shows the current time of day (a clock, a world-clock list), so it must re-read the time while the app is open; leave unset otherwise.
   showsCurrentTime: z.boolean().optional(),
@@ -151,7 +155,8 @@ const ExternalServiceSchema = z.strictObject({
   requestValueFrom: z.string().max(120).default(""),
   // What {value} must be for the endpoint to work: free text (a name or identifier) or one number. The saved-setting field named by requestValueFrom must have the matching valueType.
   requestValueType: z.enum(["text", "number"]).optional(),
-  responseFields: z.array(DataFieldSchema).max(12).default([]),
+  // Each response value carries the documented key path of the value in the JSON body ("current.wind_speed_10m"); only a bar-module preset requires it.
+  responseFields: z.array(DataFieldSchema.extend({ path: z.string().max(120).optional() })).max(12).default([]),
 })
 
 export const MAX_IDEA_SENTENCES = 60

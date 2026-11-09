@@ -16,6 +16,7 @@ const READS: Record<string, { named: string[]; kit: string[] }> = {
   battery: { named: ["BAT*/capacity", "BAT*/status"], kit: ['file("capacity")', 'file("status")'] },
   temperature: { named: ["thermal_zone*/temp"], kit: ['join("temp")'] },
   "disk-space": { named: ['statvfs("/")'], kit: ["statvfs"] },
+  "disk-read": { named: ["/proc/diskstats", "MODULE_DISKSTATS_PATH"], kit: ["DISKSTATS_PATH_ENV", "parse_disk_read"] },
 }
 
 describe("system source lines name every file they read", () => {

@@ -551,7 +551,7 @@ function waybarSpecialize(preset: PresetContract, blueprint: NormalizedBlueprint
   }
   const clickRule = ": a click action that needs the reading reads the stored record through the store, never cache.json, and with no stored record it does nothing and exits non-zero."
   const clickReads = waybarClickReadsRecord(blueprint)
-  const shipped = preset.runtimeArchitecture.map(line => clickReads ? line : line.replace(clickRule, ".")).filter(line => !(line.startsWith("Units are fixed") && !parts.sizes) && !(line.startsWith("Time: ") && !parts.localTime) && !(line.startsWith("A click feature that opens") && !launches.pages.length && !launches.notifies))
+  const shipped = preset.runtimeArchitecture.map(line => clickReads ? line : line.replace(clickRule, ".")).filter(line => !(line.startsWith("Units are fixed") && !parts.units) && !(line.startsWith("Time: ") && !parts.localTime) && !(line.startsWith("A click feature that opens") && !launches.pages.length && !launches.notifies))
   if (blueprint.persistenceNeeds.some(need => need.storage === "records")) return { ...common, runtimeArchitecture: shipped }
   return {
     ...common,
