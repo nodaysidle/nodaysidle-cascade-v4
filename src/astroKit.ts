@@ -94,7 +94,7 @@ function label(name: string): string {
 }
 
 const SHOWN_AS: Record<string, (key: string) => string> = {
-  "long-text": key => `{entry.data.${key}.split(/\\n\\s*\\n/).map((paragraph: string) => <p>{paragraph}</p>)}`,
+  "long-text": key => `{entry.data.${key}}`,
   flag: key => `{entry.data.${key} ? "Yes" : "No"}`,
   date: key => `{entry.data.${key}.toISOString().slice(0, 10)}`,
   "date-time": key => `{entry.data.${key}.toISOString()}`,
