@@ -1,5 +1,6 @@
 import { pascal, type DataField, type NormalizedBlueprint } from "./compiler"
 import type { ProjectIdentity } from "./presets"
+import type { DataValueType } from "./schema"
 import { ASTRO_BUDGET_TEXT, ASTRO_PERFORMANCE_BUDGET, astroCollections, astroDateNotes, fieldKey, astroNavLinks, placeAstroFeatures, type AstroCollection } from "./astroWeb"
 
 export interface AstroKitFile {
@@ -13,7 +14,7 @@ function file(path: string, content: string): AstroKitFile {
   return { path, content: content.trimStart() }
 }
 
-const ZOD_FOR: Record<string, string> = {
+const ZOD_FOR: Record<DataValueType, string> = {
   text: "z.string()",
   "long-text": "z.string()",
   number: "z.number()",
@@ -21,10 +22,11 @@ const ZOD_FOR: Record<string, string> = {
   flag: "z.boolean()",
   date: "z.coerce.date()",
   "date-time": "z.coerce.date()",
+  time: "z.string()",
   "text-list": "z.array(z.string())",
   reference: "z.string()",
 }
-const SEED_FOR: Record<string, string> = {
+const SEED_FOR: Record<DataValueType, string> = {
   text: "Sample text",
   "long-text": "Sample text",
   number: "1",
@@ -32,6 +34,7 @@ const SEED_FOR: Record<string, string> = {
   flag: "true",
   date: "2026-01-01",
   "date-time": "2026-01-01",
+  time: "09:00",
   "text-list": "[Sample item]",
   reference: "sample-reference",
 }

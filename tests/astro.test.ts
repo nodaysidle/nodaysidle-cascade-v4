@@ -259,4 +259,15 @@ describe("Astro packets for a site with several record types", () => {
     for (const key of ["notifications", "microphone", "camera", "location", "network"]) expect(manifest.preset.capabilities[key], key).toBe(false)
     expect(manifest.preset.capabilities.fileAccess).toBe("none")
   })
+
+  it("gives every declared value type a schema type and a seed value in the kit", async () => {
+    const { DataValueTypeSchema } = await import("../src/schema")
+    const base = fixtureCases.find(item => item.presetId === "astro-web")!.blueprint
+    for (const valueType of DataValueTypeSchema.options) {
+      const records = { name: "Entries", purpose: "Entries of the site.", sensitivity: "public" as const, retentionIntent: "Kept in the repository.", storage: "records" as const, writeMode: "direct" as const, singleRecord: false, fields: [{ name: "Value", valueType, optional: false }] }
+      const packet = await compilePacket({ ...base, dataObjects: [records], features: base.features.map(feature => ({ ...feature, usesData: ["Entries"], dataOperations: [] })) }, "astro-web")
+      const files = packet.kit.map(file => file.content).join("\n")
+      expect(files, valueType).not.toContain("undefined")
+    }
+  })
 })
