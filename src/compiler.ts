@@ -352,6 +352,11 @@ function fnv1a(value: string): number {
   return hash
 }
 
+// Sorting by UTF-16 code units, never the system locale: task order and chosen wording must not depend on the machine.
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
+}
+
 function semanticKey(value: string): string {
   const key = nameKey(value)
   const trimmed = value.trim()
@@ -858,7 +863,7 @@ function resolveRequiredOwners(features: readonly GraphFeature[]): GraphFeature[
   return features.map(feature => {
     const requiredOwnerIds: string[] = []
     for (const capability of feature.requiredCapabilities) {
-      const ownerIds = [...(providers.get(capability) ?? [])].sort((left, right) => left.localeCompare(right))
+      const ownerIds = [...(providers.get(capability) ?? [])].sort(compareCodeUnits)
       if (!ownerIds.length) {
         throw graphFailure("graph.references", feature.id, `${feature.id} requires capability ${capability}, but no implementation owner provides it. Add one provider or remove the requirement before rendering.`)
       }
@@ -892,12 +897,12 @@ function lowerAcceptanceOwnership(sourceFeatures: readonly GraphFeature[]): {
   const directByFeature = new Map<string, string[]>()
   for (const feature of sourceFeatures) {
     const direct = uniqueStrings(feature.acceptanceOutcomes.filter(criterion => !sharedKeys.has(semanticKey(criterion))))
-      .sort((left, right) => semanticKey(left).localeCompare(semanticKey(right)))
+      .sort((left, right) => compareCodeUnits(semanticKey(left), semanticKey(right)))
     directByFeature.set(feature.id, direct.length ? direct : [`${feature.name} produces its declared output without claiming another feature's behavior.`])
   }
 
   const acceptance: GraphAcceptance[] = []
-  for (const feature of [...sourceFeatures].sort((left, right) => left.id.localeCompare(right.id))) {
+  for (const feature of [...sourceFeatures].sort((left, right) => compareCodeUnits(left.id, right.id))) {
     for (const [index, criterion] of directByFeature.get(feature.id)!.entries()) {
       acceptance.push({
         id: `ACC-${feature.id.replace(/^FEAT-/, "")}-${String(index + 1).padStart(2, "0")}`,
@@ -910,13 +915,13 @@ function lowerAcceptanceOwnership(sourceFeatures: readonly GraphFeature[]): {
   }
   const shared = [...groups]
     .filter(([key]) => sharedKeys.has(key))
-    .sort(([left], [right]) => left.localeCompare(right))
+    .sort(([left], [right]) => compareCodeUnits(left, right))
   for (const [index, [key, group]] of shared.entries()) {
     acceptance.push({
       id: `ACC-INTEGRATION-${String(index + 1).padStart(2, "0")}-${fnv1a(key).toString(16).padStart(8, "0").toUpperCase()}`,
       kind: "integration",
-      criterion: [...group.criteria].sort((left, right) => left.localeCompare(right))[0]!,
-      featureIds: unique(group.featureIds).sort((left, right) => left.localeCompare(right)),
+      criterion: [...group.criteria].sort(compareCodeUnits)[0]!,
+      featureIds: unique(group.featureIds).sort(compareCodeUnits),
       ownerId: "OWN-PACKAGING",
     })
   }
@@ -1750,13 +1755,13 @@ function buildOwnersAndContracts(
 
   const prepared = beforePackaging.map(draft => ({
     ...draft,
-    dependencyIds: [...dependencyIds.get(draft.id)!].sort((left, right) => left.localeCompare(right)),
+    dependencyIds: [...dependencyIds.get(draft.id)!].sort(compareCodeUnits),
   }))
   const packagingDraft: OwnerDraft = {
     id: "OWN-PACKAGING",
     name: "Packaging",
     kind: "packaging",
-    dependencyIds: prepared.map(draft => draft.id).sort((left, right) => left.localeCompare(right)),
+    dependencyIds: prepared.map(draft => draft.id).sort(compareCodeUnits),
   }
   return { ownerDrafts: [...prepared, packagingDraft], contracts }
 }
@@ -1778,9 +1783,9 @@ function topologicalOwnerDrafts(drafts: readonly OwnerDraft[]): OwnerDraft[] {
   while (ordered.length < drafts.length) {
     const next = drafts
       .filter(draft => !emitted.has(draft.id) && draft.dependencyIds.every(dependencyId => emitted.has(dependencyId)))
-      .sort((left, right) => left.id.localeCompare(right.id))[0]
+      .sort((left, right) => compareCodeUnits(left.id, right.id))[0]
     if (!next) {
-      const unresolved = drafts.filter(draft => !emitted.has(draft.id)).map(draft => draft.id).sort((left, right) => left.localeCompare(right)).join(", ")
+      const unresolved = drafts.filter(draft => !emitted.has(draft.id)).map(draft => draft.id).sort(compareCodeUnits).join(", ")
       throw graphFailure("graph.cycles", "owners", `Owner dependency cycle prevents rendering: ${unresolved}. Remove one semantic capability or contract dependency to make the graph acyclic.`)
     }
     ordered.push(next)

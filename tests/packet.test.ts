@@ -21,6 +21,22 @@ describe("packet determinism and verify", () => {
     expect(Object.values(first.documents).join("\n").replaceAll("one entry or undefined", "")).not.toContain("undefined")
   })
 
+  it("does not depend on the system locale's string order", async () => {
+    const original = String.prototype.localeCompare
+    const render = async () => Promise.all(fixtureCases.map(async ({ presetId, blueprint }) => {
+      const packet = await compilePacket(blueprint, presetId)
+      return [...Object.values(packet.documents), ...packet.kit.map(file => file.content)].join("\n")
+    }))
+    const normal = await render()
+    // A locale that orders everything backwards.
+    String.prototype.localeCompare = function (this: string, other: string) { return -original.call(this, other) }
+    try {
+      expect(await render()).toEqual(normal)
+    } finally {
+      String.prototype.localeCompare = original
+    }
+  })
+
   it.each(fixtureCases)("$presetId / $blueprint.productName exports exactly packetForExport plus blueprint.json", async ({ presetId, blueprint }) => {
     const packet = await compilePacket(blueprint, presetId)
     const folder = writePacketAtomic(packet, blueprint, presetId, {}, tempRoot())
