@@ -38,10 +38,10 @@ export const pantryBlueprint: SemanticBlueprint = {
   ],
   dataObjects: [
     {
-      name: "Grocery items", purpose: "The items on hand with quantity and expiry.", sensitivity: "personal", retentionIntent: "Keep until the user removes the app data.", storage: "records", writeMode: "direct",
+      name: "Grocery items", purpose: "The items on hand with quantity and expiry.", sensitivity: "personal", retentionIntent: "Keep until the user removes the app data.", storage: "records", writeMode: "direct", singleRecord: false,
       fields: [{ name: "Name", valueType: "text", optional: false }, { name: "Quantity", valueType: "whole-number", optional: false }, { name: "Expiry", valueType: "date-time", optional: false }, { name: "Used", valueType: "flag", optional: false }],
     },
-    { name: "Reminder preferences", purpose: "Whether the daily reminder is enabled and the notification permission state.", sensitivity: "internal", retentionIntent: "Keep until the user changes it.", storage: "settings", writeMode: "direct", fields: [] },
+    { name: "Reminder preferences", purpose: "Whether the daily reminder is enabled and the notification permission state.", sensitivity: "internal", retentionIntent: "Keep until the user changes it.", storage: "settings", writeMode: "direct", singleRecord: false, fields: [] },
   ],
   externalServices: [],
   platformNeeds: ["local-storage", "notifications", "background-execution"],

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest"
 import { compilePacket, type CompiledPacket } from "../src/compiler"
 import { bareGtkBlueprint, bareWaybarBlueprint, fixtureCases, tidePageBlueprint, tideTickBlueprint } from "./fixtures/blueprints"
 import { pantryBlueprint } from "./fixtures/pantry"
+import { airQualityBlueprint, allSourcesBlueprint, netSpeedBlueprint } from "./fixtures/waybarSources"
 
 const describeBuild = process.env.CASCADE_KIT_BUILD ? describe : describe.skip
 
@@ -78,6 +79,19 @@ describeBuild("v4 starter kits compile and pass their own tests", () => {
       run("cargo", ["test"], root, { CARGO_TARGET_DIR: target, TMPDIR: temporary })
     } finally {
       rmSync(root, { recursive: true, force: true })
+    }
+  }, 900_000)
+
+  it("Waybar module kit with system sources, units, and the shutdown loop", async () => {
+    for (const blueprint of [netSpeedBlueprint, allSourcesBlueprint, airQualityBlueprint]) {
+      const root = materialize(await compilePacket(blueprint, "linux-hyprland-waybar-module"))
+      try {
+        run("cargo", ["fmt", "--check"], root, { TMPDIR: temporary })
+        run("cargo", ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"], root, { CARGO_TARGET_DIR: target, TMPDIR: temporary })
+        run("cargo", ["test"], root, { CARGO_TARGET_DIR: target, TMPDIR: temporary })
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
     }
   }, 900_000)
 

@@ -78,6 +78,8 @@ const FeatureSchema = z.strictObject({
   runsEverySeconds: z.number().int().min(1).max(604800).nullable().default(null),
   // A fixed local time of day the feature runs, as HH:MM; null otherwise.
   runsDailyAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().default(null),
+  // The operating-system source the feature reads a measurement from; none when it reads no system counter. Only a bar-module preset accepts a value other than none.
+  systemSource: z.enum(["none", "network-received", "network-sent", "load-average", "memory", "battery"]).default("none"),
 })
 
 export const DataStorageSchema = z.enum(["settings", "records", "document", "app-files", "secret", "temporary", "session"])
@@ -101,6 +103,8 @@ const DataObjectSchema = z.strictObject({
   writeMode: DataWriteModeSchema,
   // The stored shape: one entry per value the app keeps for this object (records and documents).
   fields: z.array(DataFieldSchema).max(12).default([]),
+  // True when the app keeps exactly one record of this object and updates it in place (for example the latest reading).
+  singleRecord: z.boolean().default(false),
 })
 
 const ExternalServiceSchema = z.strictObject({
@@ -112,6 +116,8 @@ const ExternalServiceSchema = z.strictObject({
   endpoint: z.string().max(300).default(""),
   // The service's human-readable web page, only when a feature opens it for the user; otherwise empty.
   webPage: z.string().max(300).default(""),
+  // The name of a saved-setting field whose value replaces {value} in endpoint and webPage (for example a city or station identifier); empty when neither contains {value}.
+  requestValueFrom: z.string().max(120).default(""),
   responseFields: z.array(DataFieldSchema).max(12).default([]),
 })
 
@@ -521,6 +527,43 @@ function buildOrderIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
 }
 
 // A stored record or document needs a declared shape, or every task invents its own.
+// A credential-looking query parameter in an endpoint that claims to need none.
+const CREDENTIAL_QUERY = /[?&](?:token|api[_-]?key|apikey|key|appid|access[_-]?token|auth)=/i
+
+function serviceRequestIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
+  const issues: SemanticIssue[] = []
+  const settingFields = new Set(blueprint.dataObjects.filter(item => item.storage === "settings").flatMap(item => item.fields.map(field => referenceKey(field.name))))
+  blueprint.externalServices.forEach((item, index) => {
+    const path = `externalServices[${index}]`
+    if (!item.credentialRequired && CREDENTIAL_QUERY.test(item.endpoint)) {
+      issues.push({ path: `${path}.credentialRequired`, rule: "semantic.credential-in-endpoint", message: `Service '${item.name}' puts a token or key in its endpoint but declares credentialRequired false; set it to true, or name an endpoint that works with no registration.` })
+    }
+    const templated = item.endpoint.includes("{value}") || item.webPage.includes("{value}")
+    const source = item.requestValueFrom.trim()
+    if (templated && source === "") {
+      issues.push({ path: `${path}.requestValueFrom`, rule: "semantic.request-value-source", message: `Service '${item.name}' uses {value} in its endpoint or web page; requestValueFrom must name the saved-setting field that supplies it.` })
+    }
+    if (source !== "" && !templated) {
+      issues.push({ path: `${path}.requestValueFrom`, rule: "semantic.request-value-unused", message: `Service '${item.name}' names requestValueFrom '${source}' but neither its endpoint nor its web page contains {value}.` })
+    }
+    if (source === "") return
+    if (!settingFields.has(referenceKey(source))) {
+      issues.push({ path: `${path}.requestValueFrom`, rule: "semantic.request-value-unknown", message: `Service '${item.name}' takes {value} from '${source}', which is not a field of a settings dataObject.` })
+      return
+    }
+    // A stored reading must say which setting value it was fetched for, or a changed setting shows another place's value.
+    for (const feature of blueprint.features.filter(candidate => candidate.usesServices.some(name => referenceKey(name) === referenceKey(item.name)))) {
+      for (const name of feature.usesData) {
+        const data = blueprint.dataObjects.findIndex(candidate => referenceKey(candidate.name) === referenceKey(name) && candidate.storage === "records")
+        if (data >= 0 && !blueprint.dataObjects[data]!.fields.some(field => referenceKey(field.name) === referenceKey(source))) {
+          issues.push({ path: `dataObjects[${data}].fields`, rule: "semantic.record-missing-request-value", message: `Records '${name}' hold what '${item.name}' returned for the saved setting '${source}'; add a field named '${source}' so a changed setting is never shown another value.` })
+        }
+      }
+    }
+  })
+  return issues
+}
+
 function dataShapeIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
   const issues: SemanticIssue[] = []
   blueprint.externalServices.forEach((item, index) => {
@@ -531,6 +574,7 @@ function dataShapeIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
       issues.push({ path: `externalServices[${index}].responseFields`, rule: "semantic.missing-service-response", message: `Service '${item.name}' must declare the response values the app reads.` })
     }
   })
+  issues.push(...serviceRequestIssues(blueprint))
   blueprint.features.forEach((feature, index) => {
     if (feature.runsEverySeconds !== null && feature.runsDailyAt !== null) {
       issues.push({ path: `features[${index}]`, rule: "semantic.two-schedules", message: `Feature '${feature.name}' declares both an interval and a daily time.` })
@@ -634,7 +678,7 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "For every dataObject stored as records or document, list its fields: one entry per value the app keeps (name and valueType: text, long-text, number, whole-number, flag, date for a calendar day with no time of day, date-time for a moment in time, text-list, reference). Do not list an id; the compiler adds one. Other storage kinds may leave fields empty.",
     "Never invent a keyboard shortcut, key combination, command name, or menu path. Say 'a global shortcut' or 'a keyboard shortcut' unless the idea itself names the keys.",
     "For a feature that runs by itself, set runsEverySeconds to the exact interval the idea states in seconds (30 minutes is 1800), or runsDailyAt to the stated local time as HH:MM; otherwise leave both null. Mark a record field optional only when a value can legitimately be missing, for example the end time of something still running.",
-    "For every external service, set endpoint to the real, documented HTTPS URL of a public API that fits the purpose, and list the response values the app reads in responseFields. Use only an API you are confident exists; the app never needs an API key unless credentialRequired is true.",
+    "For every external service, set endpoint to the real, documented HTTPS URL of a public API that fits the purpose, and list the response values the app reads in responseFields. Use only an API you are confident exists; the app never needs an API key unless credentialRequired is true, so name only an endpoint that works with no registration unless you set credentialRequired true. When the endpoint or webPage needs a value the user saved (a city, station, or account identifier), write {value} in it and set requestValueFrom to the name of the settings field holding it; the records that keep the fetched result must then include a field with that same name.",
     "Do not create a feature for restoring data after a restart or for loading data when the app starts: persistence and restoring belong to the feature that shows or uses the data. Write failure outcomes and acceptance signals as conditions the finished app can show or a test can assert; never describe an error message for something the stack cannot produce at run time.",
     ...(input.presetNotes ?? []),
     "Coverage is checked structurally. Before finalizing, map every numbered idea sentence in ideaCoverage, then define only the features those mappings name. If a feature is listed by no sentence, remove it. If a sentence asks for behavior, map at least one feature to it. Never add a feature to make the design feel complete.",

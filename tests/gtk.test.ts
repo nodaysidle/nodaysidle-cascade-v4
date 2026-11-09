@@ -11,7 +11,7 @@ const kitFile = (packet: Awaited<ReturnType<typeof compilePacket>>, name: string
 // The same product with a settings object and a background feature, to show the optional parts come back.
 function withSettingsAndBackground(): SemanticBlueprint {
   const blueprint = structuredClone(snippetLibraryBlueprint)
-  blueprint.dataObjects.push({ name: "Preferences", purpose: "The user's display choices.", sensitivity: "personal", retentionIntent: "Keep until reset.", storage: "settings", writeMode: "atomic-replace", fields: [{ name: "Sort order", valueType: "text", optional: false }] })
+  blueprint.dataObjects.push({ name: "Preferences", purpose: "The user's display choices.", sensitivity: "personal", retentionIntent: "Keep until reset.", storage: "settings", writeMode: "atomic-replace", singleRecord: false, fields: [{ name: "Sort order", valueType: "text", optional: false }] })
   blueprint.features[0]!.usesData = ["Snippets", "Preferences"]
   blueprint.features[0]!.dataOperations = [{ data: "Snippets", operations: ["read"] }, { data: "Preferences", operations: ["read", "update"] }]
   blueprint.features[0]!.usesPlatformNeeds = ["local-storage", "background-execution"]

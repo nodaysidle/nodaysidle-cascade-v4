@@ -25,6 +25,7 @@ function feature(name: string, behavior: string, acceptance: string, uses: Parti
     dataOperations: [],
     runsEverySeconds: null,
     runsDailyAt: null,
+    systemSource: "none",
     ...uses,
   }
 }
@@ -46,12 +47,12 @@ export const focusLedgerBlueprint: SemanticBlueprint = {
     feature("Week export", "Write one week of entries as a Markdown file at a path the user chooses.", "The chosen file lists the week's entries.", { usesData: ["Time entries", "Week report"], dataOperations: [{ data: "Time entries", operations: ["read"] }, { data: "Week report", operations: ["create"] }], userFileAccess: "saves", buildsOn: ["Today totals"] }),
   ],
   dataObjects: [
-    { name: "Time entries", purpose: "One entry per timer run.", sensitivity: "personal", retentionIntent: "Keep until the user changes it.", storage: "records", writeMode: "direct", fields: [
+    { name: "Time entries", purpose: "One entry per timer run.", sensitivity: "personal", retentionIntent: "Keep until the user changes it.", storage: "records", writeMode: "direct", singleRecord: false, fields: [
       { name: "Task name", valueType: "text", optional: false },
       { name: "Started at", valueType: "date-time", optional: false },
       { name: "Ended at", valueType: "date-time", optional: true },
     ] },
-    { name: "Week report", purpose: "The Markdown file the user chooses.", sensitivity: "personal", retentionIntent: "Owned by the user after it is written.", storage: "document", writeMode: "atomic-replace", fields: [] },
+    { name: "Week report", purpose: "The Markdown file the user chooses.", sensitivity: "personal", retentionIntent: "Owned by the user after it is written.", storage: "document", writeMode: "atomic-replace", singleRecord: false, fields: [] },
   ],
   externalServices: [],
   platformNeeds: ["local-storage", "global-hotkey"],
