@@ -111,7 +111,7 @@ function screenMapSection(graph: ProjectGraph): string[] {
   const rows = surfaces.flatMap(surface => {
     const features = graph.features.filter(feature => feature.surface === surface)
     return features.length
-      ? [`- ${surface}: ${features.map(feature => `${feature.name} (${feature.id})`).join("; ")}`]
+      ? [`${surface}: ${features.map(feature => `${feature.name} (${feature.id})`).join("; ")}`]
       : []
   })
   return rows.length ? [section("Screen Map", bullets(rows))] : []

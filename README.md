@@ -151,4 +151,4 @@ kit instead of inventing plumbing, and report every command and acceptance resul
 
 V4.0 implements the core, CLI, Tauri desktop app, GTK4 kit, Waybar kit, Tauri kit, Astro kit, Android
 kit, and all five preset contracts. The live runs under `/tmp/v4-live-final` (or a new run of
-`scripts/live-presets.ts` + `scripts/live-astro.ts`) are the evidence set.
+`scripts/live-presets.ts`) are the evidence set.

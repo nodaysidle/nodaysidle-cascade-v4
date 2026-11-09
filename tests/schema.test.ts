@@ -33,6 +33,12 @@ describe("v4 provider schema and intake", () => {
     expect(auditSemanticIntake(mismatch).some(issue => issue.rule === "semantic.clipboard-undeclared")).toBe(true)
   })
 
+  it("tells the provider when the preset has no tray surface", () => {
+    expect(buildBlueprintInstructions({ idea: "One sentence.", trayAvailable: false })).toContain("Set usesTray to false for every feature")
+    expect(buildBlueprintInstructions({ idea: "One sentence.", trayAvailable: true })).not.toContain("Set usesTray to false for every feature")
+    expect(buildBlueprintInstructions({ idea: "One sentence." })).not.toContain("Set usesTray to false for every feature")
+  })
+
   it("prompt is coverage-first and forbids settings as features", () => {
     const prompt = buildBlueprintInstructions({ idea: "One sentence." })
     expect(prompt).toContain("Coverage is checked structurally")

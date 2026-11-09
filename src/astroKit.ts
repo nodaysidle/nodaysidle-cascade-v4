@@ -60,6 +60,8 @@ ${sitemap ? 'import sitemap from "@astrojs/sitemap"\n' : ""}
 const site = process.env.SITE_URL
 
 export default defineConfig({
+  // shortcut: no image optimizer, so a markdown build never needs the native sharp binary; switch to the default service when the site ships raster images.
+  image: { service: { entrypoint: "astro/assets/services/noop" } },
   ${sitemap ? "...(site ? { site, integrations: [sitemap()] } : {})," : "..." + "(site ? { site } : {}),"}
 })
 `),

@@ -79,8 +79,7 @@ npm run kit:check                 # builds all five kits; slow
 npm run tauri -- build --bundles deb
 npm run install:app               # Linux install + Omarchy menu/bar plugin
 CASCADE_LIVE_PROBE=1 npm run probe:live
-npx tsx scripts/live-presets.ts   # live packets for four presets; needs both keys
-npx tsx scripts/live-astro.ts     # live Astro packet; needs both keys
+npx tsx scripts/live-presets.ts [preset-id]   # one live idea per preset (all five); needs both keys; CASCADE_LIVE_ROOT sets the output folder
 ```
 
 ## Current verified state
@@ -97,17 +96,11 @@ npx tsx scripts/live-astro.ts     # live Astro packet; needs both keys
 
 ## Where the remaining problems are
 
-### 1. Omarchy bar widget is enabled but not visibly rendering
+### 1. Omarchy bar widget: works
 
-- Menu entry works: `omarchy menu summon apps.cascade-v4`.
-- Bar plugin installed at `~/.config/omarchy/plugins/nodaysidle.cascade-v4`, manifest validates,
-  `omarchy plugin enable` says enabled, `omarchy bar move ... right` says moved.
-- `omarchy-shell shell listPlugins` still reports `"active": false`, and screenshots show no C4 icon.
-- Shell log warning: `Module path ".../plugins/nodaysidle.cascade-v4" is outside of the config
-  folder.` This is likely a Quickshell plugin-scanner path issue. Compare with a working third-party
-  bar widget (`reidenxerx.clipboard-shelf`, `colinmcrae.wrc-badge`) and inspect
-  `/usr/share/omarchy/shell/plugins/bar/Bar.qml` and `README.md`. Do not break the user's existing
-  bar; test with `omarchy-shell shell listPlugins` and a screenshot.
+`listPlugins` reports `"active": false` for every enabled widget (even first-party Clock), so that flag
+is not a signal. The C4 widget renders in the bar (left of the clock, 2026-11-09 screenshot), and
+`omarchy menu summon apps.cascade-v4` opens the app. Nothing to fix.
 
 ### 2. Remaining contract-quality gaps from live audits
 
@@ -132,6 +125,28 @@ The live audits found these; some are fixed, some need a compiler pass:
   so its docs and kit match the current commands.
 - All presets: `CON-PLATFORM-FILES` and a `Launch check:` line are added to runtime wiring; verify
   they render in every live packet.
+
+### 2b. Open quality findings from the 2026-11-09 document audit (five live packets, read by hand)
+
+Fixed this session: Waybar kit helpers conditional on declared storage/secret/service; task prompts split
+into "Create only these files" / "Modify only these files"; dead macOS branches removed; GTK Downloads/move
+rules removed (they came from one test idea); `cargo test --test` names use the file stem; kit READMEs no
+longer hard-code TASK-08; doubled Screen Map bullet; metainfo summary cut at a word; Waybar main.rs and kit
+Rust files are rustfmt-stable for any project name; Astro kit builds without the native sharp binary; Waybar
+prompt tells the provider that a bar module is not a tray.
+
+Still open (compiler, ranked):
+1. Astro: no route for an events-style surface; the home listing has no owning task; 404 text and nav not owned.
+2. Android: the kit is a Habit tracker (Habit* entities); no task converts it; reminder Worker, manifest
+   permission, and screens have no owner file.
+3. Tauri: dependency order (shortcut/edit tasks run before the timer task); no command/schema table; global
+   shortcut accelerator uses macOS "Option"; `npm run tauri -- build` builds all bundles despite linuxPackaging.
+4. All presets: irrelevant stack boilerplate in contracts (form/fetch text on a site with no forms, retry rules
+   that contradict declared automatic retries, "namcap pass" with no command), and filler task criteria
+   ("implement exactly as rendered in TRD.md"). Gate boilerplate on declared features.
+5. Waybar: kit default refresh 900 s conflicts with the declared interval; click action vocabulary undefined;
+   persistence vs cache split unstated; no declared saved-harbor input.
+6. GTK: desktop file name differs from the application id.
 
 ### 3. Not implemented yet
 
@@ -218,7 +233,7 @@ PHASE 1 — AUDIT (read-only first)
    not confirmed when the handoff was written.
 3. Inspect /tmp/v4-live-final2/<preset>/<slug> for all five presets. Run
    npm run cascade -- verify --packet <dir> for every one. If those folders are gone, regenerate
-   from the live blueprints or run scripts/live-presets.ts and scripts/live-astro.ts with the
+   from the live blueprints or run scripts/live-presets.ts with the
    DEEPSEEK_API_KEY and TYPESAFE_API_KEY already available.
 4. Do NOT trust the validation ledger. For each live packet, read PRD.md, ARD.md, TRD.md, TASKS.md,
    AGENTS.md, blueprint.json, and kit/. Check by hand:

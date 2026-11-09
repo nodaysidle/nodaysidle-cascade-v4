@@ -4,7 +4,7 @@ import {
   type DocumentName,
   type ProjectGraph,
 } from "./compiler"
-import { PRESET_IDS, PRESETS, USER_SELECTED_FILE_PLACEMENT, type PresetContract } from "./presets"
+import { PRESET_IDS, PRESETS, type PresetContract } from "./presets"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 
 export interface AuditFailure {
@@ -370,23 +370,11 @@ function collectGraphFailures(graph: ProjectGraph): AuditFailure[] {
     }
   }
 
-
-  const nativeMac = graph.presetId.startsWith("native-macos")
   const credentialContracts = graph.contracts.filter(contract => contract.kind === "credential" || (["data", "persistence"] as const).includes(contract.kind as "data" | "persistence") && credentialLike(`${contract.id} ${contract.name}`))
   for (const item of credentialContracts) {
     const text = contractText(graph, item.id)
     if (item.ownerId !== "OWN-CREDENTIAL-VAULT") {
       failures.push(failure("contract.persistence-ownership", item.id, `${item.id} must be owned by OWN-CREDENTIAL-VAULT, not ${item.ownerId}.`))
-    }
-    if (nativeMac) {
-      const missing = missingMarkers(text, ["macOS Keychain only", `${graph.identity.bundleId}.credentials`])
-      const positiveForbiddenPlacement = text.split("\n").some(line =>
-        /\b(?:SQLite|UserDefaults|files?|logs?|generated output)\b/i.test(line)
-        && /\b(?:store|persist|serialize|migrate|placement|write)\b/i.test(line)
-        && !/\b(?:never|forbidden|must not|do not)\b/i.test(line))
-      if (missing.length || positiveForbiddenPlacement) {
-        failures.push(failure("contract.persistence-placement", item.id, `${item.id} must place credentials only in macOS Keychain and explicitly forbid every generic store.`))
-      }
     }
   }
 
@@ -398,41 +386,8 @@ function collectGraphFailures(graph: ProjectGraph): AuditFailure[] {
     if (storage === "app-files" && placement !== `Placement: ${PRESETS[graph.presetId].persistence.appFilesPlacement(graph.identity)}`) {
       failures.push(failure("contract.persistence-placement", item.id, `${item.id} must place app-owned files in the preset's app data folder.`))
     }
-    if (storage === "document" && nativeMac && placement !== `Placement: ${USER_SELECTED_FILE_PLACEMENT}`) {
-      failures.push(failure("contract.persistence-placement", item.id, `${item.id} must place user documents only at user-selected paths.`))
-    }
   }
 
-  for (const item of nativeMac ? graph.contracts.filter(contract => contract.kind === "persistence") : []) {
-    const placement = item.details.find(detail => detail.startsWith("Placement:")) ?? ""
-    const storage = persistenceStorage(graph, item.name)
-    if (storage === "settings" && (!/\bUserDefaults\b/.test(placement) || /\bSQLite\b/.test(placement))) {
-      failures.push(failure("contract.persistence-placement", item.id, `${item.id} must place lightweight settings only in UserDefaults.`))
-    }
-    if (storage === "records" && (!/\bSQLite\b/.test(placement) || /\bUserDefaults\b/.test(placement))) {
-      failures.push(failure("contract.persistence-placement", item.id, `${item.id} must place records only in SQLite.`))
-    }
-    if (!item.details.some(detail => detail.startsWith("Placement:"))) continue
-    const decision = item.decision
-    const decisionSqlite = /\bSQLite\b/.test(decision)
-    const placementSqlite = /\bSQLite\b/.test(placement)
-    const placementMemory = /not written to disk/i.test(placement)
-    const decisionMemory = /not written to disk/i.test(decision)
-    if (decisionSqlite !== placementSqlite || (placementMemory && !decisionMemory) || (!placementMemory && decisionMemory)) {
-      failures.push(failure("contract.persistence-placement", item.id, `${item.id} persistence decision names a different store than its placement.`))
-    }
-  }
-
-
-  if (graph.presetId.startsWith("native-macos")) {
-    const packagingOwners = graph.owners.filter(owner => owner.id === "OWN-PACKAGING")
-    const packagingTask = graph.phases.flatMap(phase => phase.tasks).find(task => task.ownerIds.includes("OWN-PACKAGING"))
-    const packaging = contractText(graph, "CON-PACKAGING-RELEASE")
-    const missing = missingMarkers(packaging, ["Scripts/package_app.sh", "Resources/Info.plist", "Resources/App.entitlements", "Resources/AppIcon.icns", "CFBundleIdentifier", "arm64", "Contents/MacOS", "codesign --verify --deep --strict", "LaunchServices"])
-    if (packagingOwners.length !== 1 || packagingOwners[0]?.implementationFile !== "Scripts/package_app.sh" || graph.owners.some(owner => owner.implementationFile.endsWith("Packaging.swift")) || !packagingTask?.filesToCreate.includes("Resources/Info.plist") || missing.length) {
-      failures.push(failure("contract.packaging", "OWN-PACKAGING", `Native packaging must have one package_app.sh authority and complete owned resources: ${missing.join(", ") || "ownership conflict"}.`))
-    }
-  }
   if (!graph.validationCommands.length) failures.push(failure("validation.commands", "graph", "Final validation commands are missing."))
   for (const command of graph.validationCommands) {
     if (!isRootValidationCommand(command)) failures.push(failure("validation.commands", command, "Validation command is not executable from the project root."))
@@ -546,7 +501,6 @@ export function auditPacket(
   }
 
   const packetCredentialContracts = graph.contracts.filter(contract => contract.kind === "credential" || (["data", "persistence"] as const).includes(contract.kind as "data" | "persistence") && credentialLike(`${contract.id} ${contract.name}`))
-  const packetPersistenceContracts = graph.contracts.filter(contract => contract.kind === "persistence")
   const placementDocuments = ["TRD.md"] as const
   for (const name of DOCUMENT_NAMES) {
     const markdown = documents[name] ?? ""
@@ -561,19 +515,6 @@ export function auditPacket(
     for (const item of packetCredentialContracts) {
       const credentialText = markdownContractText(markdown, item.id)
       if (!credentialText.includes("OWN-CREDENTIAL-VAULT")) failures.push(failure("contract.persistence-ownership", name, `${name} does not render ${item.id} as CredentialVault-owned.`))
-      if (graph.presetId.startsWith("native-macos") && (!credentialText.includes("macOS Keychain only") || !credentialText.includes(`${graph.identity.bundleId}.credentials`))) {
-        failures.push(failure("contract.persistence-placement", name, `${name} does not render ${item.id} as Keychain-only.`))
-      }
-    }
-    for (const item of graph.presetId.startsWith("native-macos") ? packetPersistenceContracts : []) {
-      const persistenceText = markdownContractText(markdown, item.id)
-      const storage = persistenceStorage(graph, item.name)
-      if (storage === "settings" && (!persistenceText.includes("Placement: UserDefaults") || persistenceText.includes("Placement: SQLite"))) {
-        failures.push(failure("contract.persistence-placement", name, `${name} renders conflicting placement for ${item.id}.`))
-      }
-      if (storage === "records" && (!persistenceText.includes("Placement: SQLite") || persistenceText.includes("Placement: UserDefaults"))) {
-        failures.push(failure("contract.persistence-placement", name, `${name} renders conflicting placement for ${item.id}.`))
-      }
     }
   }
 

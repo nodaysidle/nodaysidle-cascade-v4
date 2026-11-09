@@ -582,8 +582,8 @@ exec "$binary" "$@"
 `),
     file("README.md", `# ${appName} starter kit
 
-Copy the foundation files listed in TASKS.md before TASK-01. Copy packaging-owned files when TASK-08
-starts. The kit is a real Android project with:
+Copy the foundation files listed in TASKS.md before TASK-01. Copy packaging-owned files when the packaging
+task starts. The kit is a real Android project with:
 
 - Compose Material 3 and edge-to-edge in MainActivity.
 - Navigation 3 with serializable NavKey routes.

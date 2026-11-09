@@ -229,7 +229,7 @@ function providerRequest(input: GeneratePacketInput, repair?: RepairContext): Pr
     apiKey: input.apiKey,
     model: input.model,
     ...PROVIDER_SETTINGS,
-    instructions: buildBlueprintInstructions({ idea: input.idea }),
+    instructions: buildBlueprintInstructions({ idea: input.idea, trayAvailable: PRESETS[input.presetId].capabilities.tray }),
     input: repair ? buildRepairInput(repair) : BLUEPRINT_INPUT,
   }
 }

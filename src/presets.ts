@@ -184,7 +184,7 @@ const linuxGtkPermissionPatterns: Readonly<Record<PermissionCapability, string>>
   microphone: "Use PipeWire or GStreamer through the XDG desktop portal; request capture only from an explicit recording action and release every stream on stop.",
   accessibility: "Use GTK4 and AT-SPI for the app's own accessibility. The app cannot control another application on Wayland; a feature that needs that is outside this preset.",
   notifications: "Use gio::Notification through the freedesktop notification service; when no daemon is present, keep in-app status and do not retry in a loop.",
-  filesystem: "Read only the user's downloads directory (dirs::download_dir(), falling back to $HOME/Downloads) and files or folders chosen in org.freedesktop.portal.FileChooser; never scan another user folder.",
+  filesystem: "Read and write only the app's XDG config, data, and runtime directories and files or folders chosen in org.freedesktop.portal.FileChooser; never scan another user folder.",
   network: "Use reqwest with rustls and HTTPS only; Linux has no network permission, so the boundary is the declared service list.",
   camera: "Use PipeWire or GStreamer through the portal after an explicit action; release the stream on stop.",
   location: "Use GeoClue2 through the portal only while the feature is visible; manual entry remains available when denied.",
@@ -263,13 +263,13 @@ function gtkOwnerFiles(input: OwnerFileInput): OwnerFiles {
     return {
       implementationFile: `src/features/${segment}.rs`,
       focusedTestFile: `tests/${segment}_tests.rs`,
-      focusedTestCommand: `cargo test --test ${input.slug}_tests`,
+      focusedTestCommand: `cargo test --test ${segment}_tests`,
     }
   }
   return {
     implementationFile: `src/platform/${segment}.rs`,
     focusedTestFile: `tests/platform_${segment}_tests.rs`,
-    focusedTestCommand: `cargo test --test platform_${input.slug}_tests`,
+    focusedTestCommand: `cargo test --test platform_${segment}_tests`,
   }
 }
 
@@ -286,13 +286,13 @@ function waybarOwnerFiles(input: OwnerFileInput): OwnerFiles {
     return {
       implementationFile: `src/features/${segment}.rs`,
       focusedTestFile: `tests/${segment}_tests.rs`,
-      focusedTestCommand: `cargo test --test ${input.slug}_tests`,
+      focusedTestCommand: `cargo test --test ${segment}_tests`,
     }
   }
   return {
     implementationFile: `src/platform/${segment}.rs`,
     focusedTestFile: `tests/platform_${segment}_tests.rs`,
-    focusedTestCommand: `cargo test --test platform_${input.slug}_tests`,
+    focusedTestCommand: `cargo test --test platform_${segment}_tests`,
   }
 }
 
@@ -386,7 +386,7 @@ const linuxGtk: PresetContract = {
     "Use one AdwApplication with the locked application ID and one AdwApplicationWindow; AdwHeaderBar is the title bar and AdwNavigationView owns item, about, and not-found pages.",
     "One AppState lives on the GTK main thread; async work runs on a tokio runtime and returns to the main context through glib::MainContext::spawn_local. No blocking I/O runs on the main thread.",
     "Rust platform owners implement atomic settings, SQLite records, XDG paths, Secret Service credentials, notifications, and the HTTPS client; features depend on their traits.",
-    "Resolve the user's downloads directory with dirs::download_dir(), falling back to $HOME/Downloads. Named destination folders are child directories of that downloads directory; creating a name creates Downloads/{name}, rejects duplicate names, and never scans another user folder. Moves use fs::rename and fall back to copy, fsync, and remove only when rename returns EXDEV.",
+    "Read and write only the app's XDG config, data, and runtime directories and paths chosen in org.freedesktop.portal.FileChooser; never scan another user folder. A file the app replaces is written to a temporary file in the same directory and renamed over the destination.",
   ],
   integrationBoundary: "Use one reqwest client with rustls inside each integration owner; HTTPS only, typed serde DTOs, timeouts, and privacy-safe errors. Never pass a raw response body to a view.",
   recoveryRules: [
@@ -403,8 +403,8 @@ const linuxGtk: PresetContract = {
     documentPlacement: USER_SELECTED_FILE_PLACEMENT,
   },
   credentialPlacement: "Store credentials through the Secret Service (GNOME Keyring or KWallet) with the locked application ID as service and a deterministic account name; fail closed if no Secret Service is available.",
-  fileBoundary: "Read and write only the user's downloads directory and files or folders the user chooses in the desktop portal; never scan another user folder.",
-  fileBoundaryDetails: ["Downloads directory: dirs::download_dir(), falling back to $HOME/Downloads.", "Named destination folders are child directories of the downloads directory; duplicate names are rejected.", "A move uses fs::rename; on EXDEV it copies, syncs, and removes the source only after the destination is complete.", "Every path outside this boundary is rejected and leaves the filesystem unchanged."],
+  fileBoundary: "Read and write only the app's XDG config, data, and runtime directories and files or folders the user chooses in the desktop portal; never scan another user folder.",
+  fileBoundaryDetails: ["Settings: $XDG_CONFIG_HOME/{app-id}/config.json.", "Records and app-owned files: $XDG_DATA_HOME/{app-id}/.", "User-chosen paths come only from org.freedesktop.portal.FileChooser or a path the app saved to reopen.", "Every path outside this boundary is rejected and leaves the filesystem unchanged."],
   launchCheck: identity => `GDK_BACKEND=wayland ./scripts/package.sh --install, then launch ~/.local/bin/${identity.slug} and inspect every window.`,
   permissionPatterns: linuxGtkPermissionPatterns,
   lifecycleRules: [
@@ -504,7 +504,7 @@ const linuxWaybar: PresetContract = {
     "The binary is a Waybar custom module: with no arguments or --once it prints exactly one JSON object on stdout and exits 0; logs go to stderr only.",
     "A declared background feature may run with --service under a systemd user unit; the Waybar exec path reads the cached value and never blocks the bar.",
     "Click actions run the same binary with --action toggle; no key grabs, no window, and no clipboard watcher.",
-    "The Waybar fragment polls the cached value at its preset interval; the systemd service refreshes the source on the feature's stated interval. The service default is 900 seconds for a 15-minute feature, not the fragment poll interval.",
+    "The Waybar fragment polls the cached value at its preset interval; the systemd service refreshes the source on the feature's stated interval. The service refresh interval is the feature's stated interval in seconds, not the fragment poll interval; the kit's starting refresh_seconds default (900) and the kit test that asserts it must be changed to that stated interval.",
   ],
   integrationBoundary: "Use one reqwest client with rustls inside each integration owner; HTTPS only, typed serde DTOs, timeouts, and privacy-safe errors. The module output never contains a credential or raw response body.",
   recoveryRules: [

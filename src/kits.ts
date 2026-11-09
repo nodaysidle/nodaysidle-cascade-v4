@@ -17,6 +17,13 @@ function crateName(slug: string): string {
   return slug.replaceAll("-", "_")
 }
 
+// AppStream wants one short sentence; cut at a word boundary, never mid-word.
+function shortSummary(text: string): string {
+  const sentence = text.split(/(?<=[.!?])\s/)[0]!.replace(/[.!?]$/, "")
+  if (sentence.length <= 80) return sentence
+  return sentence.slice(0, 80).replace(/\s+\S*$/, "")
+}
+
 function xmlEscape(value: string): string {
   return value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&apos;" })[character]!)
 }
@@ -30,7 +37,7 @@ function gtkKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint): KitF
 # Starter kit
 
 Copy the foundation files listed in TASKS.md before TASK-01. Copy a packaging-owned file (PKGBUILD,
-scripts/package.sh, resources/, LICENSE) when TASK-08 starts, using the kit content as the starting
+scripts/package.sh, resources/, LICENSE) when the packaging task starts, using the kit content as the starting
 point. Keep every helper listed here and extend it; do not replace the composition root, the storage
 helpers, or the error path with a test double.
 
@@ -232,16 +239,6 @@ pub fn database_path() -> PathBuf {
 pub fn app_files_dir() -> PathBuf {
     data_dir().join("files")
 }
-
-pub fn downloads_dir() -> PathBuf {
-    dirs::download_dir()
-        .or_else(|| dirs::home_dir().map(|home| home.join("Downloads")))
-        .unwrap_or_else(|| PathBuf::from("Downloads"))
-}
-
-pub fn named_folder(name: &str) -> PathBuf {
-    downloads_dir().join(name)
-}
 `),
     file("src/platform/mod.rs", String.raw`
 pub mod atomic_file;
@@ -429,7 +426,7 @@ StartupWMClass=${identity.bundleId}
 <component type="desktop-application">
   <id>${identity.bundleId}</id>
   <name>${identity.projectName}</name>
-  <summary>${xmlEscape(blueprint.productDefinition).slice(0, 80)}</summary>
+  <summary>${xmlEscape(shortSummary(blueprint.productDefinition))}</summary>
   <description>
     <p>${xmlEscape(blueprint.productDefinition)}</p>
   </description>
@@ -547,12 +544,22 @@ function waybarKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, op
   const service = true
   const refresh = options.refreshSeconds === "60" || options.refreshSeconds === "5" ? options.refreshSeconds : "15"
   const tooltip = options.tooltip === false ? false : true
+  const records = blueprint.persistenceNeeds.some(need => need.storage === "records")
+  const secrets = blueprint.externalServices.some(item => item.credentialRequirement !== "none")
+    || blueprint.domainData.some(item => item.storage === "secret")
+  const http = blueprint.externalServices.length > 0 || blueprint.platformNeeds.includes("network")
+  const helperNames = [...(records ? ["sqlite.rs"] : []), ...(secrets ? ["credentials.rs"] : []), ...(http ? ["http.rs"] : [])]
+  const optionalDeps = [
+    ...(records ? ['rusqlite = { version = "0.41", features = ["bundled"] }'] : []),
+    ...(secrets ? ['keyring = "4.2"'] : []),
+    ...(http ? ['reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }'] : []),
+  ].join("\n")
   return [
     file("README.md", String.raw`
 # Starter kit
 
 Copy the foundation files listed in TASKS.md before TASK-01. Copy a packaging-owned file (PKGBUILD,
-scripts/package.sh, resources/, LICENSE) when TASK-08 starts, using the kit content as the starting
+scripts/package.sh, resources/, LICENSE) when the packaging task starts, using the kit content as the starting
 point. Keep every helper listed here and extend it; do not replace the composition root or the module
 output path with a test double.
 
@@ -560,8 +567,7 @@ Shipped helpers:
 - src/lib.rs, src/main.rs: CLI entry with --once, --action, and --service.
 - src/module.rs: one JSON object on stdout and the systemd refresh loop.
 - src/config.rs, src/paths.rs: atomic JSON settings under XDG config.
-- src/platform/atomic_file.rs, sqlite.rs, credentials.rs, http.rs: the same platform boundaries as
-  the desktop kit.
+- src/platform/atomic_file.rs${helperNames.map(name => ", " + name).join("")}: only the platform boundaries this blueprint declares.
 - resources/waybar/config.jsonc and style.css: the module fragment.
 - tests/contract_tests.rs, tests/module_output_tests.rs: storage and output-shape tests.
 `),
@@ -599,9 +605,7 @@ rust-version = "1.85"
 clap = { version = "4.6", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rusqlite = { version = "0.41", features = ["bundled"] }
-keyring = "4.2"
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+${optionalDeps}
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 dirs = "7"
 thiserror = "2"
@@ -622,6 +626,8 @@ pub mod platform;
     file("src/main.rs", String.raw`
 use clap::Parser;
 
+use ${crate}::module;
+
 #[derive(Parser)]
 struct Arguments {
     #[arg(long)]
@@ -635,14 +641,12 @@ struct Arguments {
 fn main() {
     let arguments = Arguments::parse();
     if arguments.service {
-        ${crate}::module::run_service();
+        module::run_service();
         return;
     }
     let _ = arguments.once;
-    println!(
-        "{}",
-        ${crate}::module::render(arguments.action.as_deref())
-    );
+    let output = module::render(arguments.action.as_deref());
+    println!("{output}");
 }
 `),
     file("src/module.rs", String.raw`
@@ -755,20 +759,17 @@ pub fn settings_path() -> PathBuf {
     config_dir().join("config.json")
 }
 
-pub fn database_path() -> PathBuf {
+${records ? `pub fn database_path() -> PathBuf {
     data_dir().join("records.sqlite3")
 }
 
-pub fn cache_path() -> PathBuf {
+` : ""}pub fn cache_path() -> PathBuf {
     runtime_dir().join("cache.json")
 }
 `),
     file("src/platform/mod.rs", String.raw`
 pub mod atomic_file;
-pub mod credentials;
-pub mod http;
-pub mod runtime;
-pub mod sqlite;
+${[...(secrets ? ["pub mod credentials;"] : []), ...(http ? ["pub mod http;"] : []), "pub mod runtime;", ...(records ? ["pub mod sqlite;"] : [])].join("\n")}
 `),
     file("src/platform/atomic_file.rs", String.raw`
 use std::fs;
@@ -785,7 +786,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 `),
-    file("src/platform/sqlite.rs", String.raw`
+    ...(records ? [file("src/platform/sqlite.rs", String.raw`
 use std::path::Path;
 
 use rusqlite::Connection;
@@ -821,8 +822,8 @@ impl Database {
         &self.connection
     }
 }
-`),
-    file("src/platform/credentials.rs", String.raw`
+`)] : []),
+    ...(secrets ? [file("src/platform/credentials.rs", String.raw`
 pub trait SecretStore {
     fn get(&self, account: &str) -> Result<Option<String>, String>;
     fn set(&self, account: &str, value: &str) -> Result<(), String>;
@@ -867,8 +868,8 @@ impl SecretStore for KeyringStore {
         }
     }
 }
-`),
-    file("src/platform/http.rs", String.raw`
+`)] : []),
+    ...(http ? [file("src/platform/http.rs", String.raw`
 use std::time::Duration;
 
 pub fn client() -> reqwest::Client {
@@ -877,7 +878,7 @@ pub fn client() -> reqwest::Client {
         .build()
         .expect("HTTP client construction is infallible for the default configuration")
 }
-`),
+`)] : []),
     file("src/platform/runtime.rs", String.raw`
 use std::sync::OnceLock;
 
@@ -902,8 +903,8 @@ pub fn runtime() -> &'static Runtime {
 use ${crate}::config::Settings;
 use ${crate}::paths;
 use ${crate}::platform::atomic_file;
-use ${crate}::platform::sqlite::Database;
-
+${records ? `use ${crate}::platform::sqlite::Database;
+` : ""}
 #[test]
 fn settings_round_trip_is_atomic() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -914,7 +915,7 @@ fn settings_round_trip_is_atomic() {
     assert_eq!(read, bytes);
 }
 
-#[test]
+${records ? `#[test]
 fn sqlite_sets_user_version() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let path = directory.path().join("records.sqlite3");
@@ -927,7 +928,7 @@ fn sqlite_sets_user_version() {
     drop(database);
 }
 
-#[test]
+` : ""}#[test]
 fn settings_default_is_stable() {
     assert_eq!(Settings::default().refresh_seconds, 900);
     assert!(paths::settings_path().ends_with("config.json"));

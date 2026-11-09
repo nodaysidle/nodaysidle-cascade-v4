@@ -803,9 +803,6 @@ function unique<T>(values: readonly T[]): T[] {
   return [...new Set(values)]
 }
 
-// v4 targets Wayland, Tauri, Astro, and Android only; no macOS preset exists.
-const NATIVE_MAC = false
-
 function compilerIntegrationServices(
   blueprint: NormalizedBlueprint,
 ): NormalizedBlueprint["externalServices"] {
@@ -867,64 +864,16 @@ function persistencePlacement(
   preset: PresetContract,
   identity: ProjectIdentity,
   astroPlan?: AstroRoutePlan,
-  hasCredentials = false,
 ): string {
-  const userDefaultsPlacement = hasCredentials
-    ? "UserDefaults with versioned lightweight keys; API keys are forbidden."
-    : "UserDefaults with versioned lightweight keys."
   if (preset.id === "astro-web" && astroPlan?.usesContentCollections && item.storage === "records" && (item.sensitivity === "public" || item.sensitivity === "internal")) {
     return `src/content/${astroPlan.contentCollection}/ as build-time markdown or MDX compiled through src/content.config.ts.`
   }
   if (preset.id === "astro-web" && astroPlan?.browserPersistence && item.storage === "records") return preset.persistence.recordsPlacement
   if (item.storage === "session") return SESSION_MEMORY_PLACEMENT
   if (item.storage === "app-files") return preset.persistence.appFilesPlacement(identity)
-  if (!NATIVE_MAC) {
-    if (item.storage === "temporary") return preset.persistence.temporaryPlacement
-    if (item.storage === "document") return preset.persistence.documentPlacement
-    return item.storage === "settings" ? preset.persistence.settingsPlacement : preset.persistence.recordsPlacement
-  }
-  switch (item.storage) {
-    case "temporary":
-      return item.writeMode === "atomic-replace"
-        ? ATOMIC_RENAME_SCRATCH_PLACEMENT
-        : `FileManager.default.temporaryDirectory/${identity.bundleId}/ for ephemeral runtime scratch files.`
-    case "document":
-      return preset.persistence.documentPlacement
-    case "settings":
-      return userDefaultsPlacement
-    case "records":
-      return `SQLite at Application Support/${identity.bundleId}/${identity.slug}.sqlite3 under the matching record schema; PRAGMA user_version stores the schema version, and the data store's focused test asserts it after opening the database.`
-  }
-}
-
-// Names only the native stores the blueprint declares, in a fixed order, so the summary never
-// claims a store (SQLite, user-selected files) that no persistence contract uses.
-function nativePersistenceStores(declared: ReadonlySet<string>): string[] {
-  return [
-    declared.has("settings") ? "UserDefaults for lightweight settings" : undefined,
-    declared.has("records") ? "SQLite for durable record collections in Application Support" : undefined,
-    declared.has("document") ? "local filesystem at user-selected paths for document storage" : undefined,
-    declared.has("app-files") ? "app-owned files in Application Support" : undefined,
-  ].filter((store): store is string => store !== undefined)
-}
-
-function joinWithAnd(items: readonly string[]): string {
-  if (items.length < 3) return items.join(" and ")
-  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`
-}
-
-function nativePackagingDetails(preset: PresetContract, identity: ProjectIdentity, platformNeeds: readonly string[] = []): string[] {
-  const micDeclaration = nativeUsageDescriptions(identity, platformNeeds).map(([key, text]) => `, ${key} = "${text}"`).join("")
-  return [
-    `Bundle identity: CFBundleIdentifier = ${identity.bundleId}; CFBundleName = ${identity.projectName}; CFBundleExecutable = ${identity.moduleName}; CFBundleIconFile = AppIcon; CFBundlePackageType = APPL; CFBundleShortVersionString = 1.0.0; CFBundleVersion = 1.`,
-    `Info.plist ownership: Resources/Info.plist declares CFBundleIdentifier, CFBundleExecutable, CFBundleIconFile, LSMinimumSystemVersion = 14.0 (matching Package.swift platforms: [.macOS(.v14)], the floor for @Observable), NSHighResolutionCapable = true${micDeclaration}, and LSUIElement = false.`,
-    "Entitlements ownership: Resources/App.entitlements is the only entitlements source and is an XML plist with an empty dictionary for the local unsandboxed build; com.apple.security.app-sandbox and broad file or automation entitlements are absent, and signing passes this reviewed file explicitly.",
-    "Icon ownership: Resources/AppIcon.icns is the single source icon copied to Contents/Resources/AppIcon.icns and referenced by CFBundleIconFile.",
-    `Architecture: Scripts/package_app.sh runs swift build -c release --arch arm64, rejects a non-arm64 Mach-O executable, and copies .build/arm64-apple-macosx/release/${identity.moduleName}.`,
-    `App assembly: create dist/${identity.projectName}.app/Contents/MacOS and Contents/Resources, copy the executable to Contents/MacOS/${identity.moduleName}, copy Info.plist to Contents/Info.plist, copy AppIcon.icns to Contents/Resources, and write no competing Packaging.swift implementation.`,
-    "Signing: Scripts/package_app.sh signs the assembled bundle once with the selected local or distribution identity and Resources/App.entitlements, then runs codesign --verify --deep --strict and rejects any failure before DMG or install.",
-    `Launch: after the verified rollback and app copy, register the exact bundle with LaunchServices and launch it with open -b ${identity.bundleId}; verify that running bundle identity rather than a path lookalike.`,
-  ]
+  if (item.storage === "temporary") return preset.persistence.temporaryPlacement
+  if (item.storage === "document") return preset.persistence.documentPlacement
+  return item.storage === "settings" ? preset.persistence.settingsPlacement : preset.persistence.recordsPlacement
 }
 
 function contract(
@@ -1105,8 +1054,6 @@ function buildOwnersAndContracts(
         preset,
         identity,
         astroPlan,
-        blueprint.externalServices.some(service => service.credentialRequirement !== "none")
-          || blueprint.domainData.some(data => data.storage === "secret"),
       ).replaceAll("{app-id}", identity.bundleId)
       const memoryResident = /not written to disk/i.test(placement)
       const userDocument = item.storage === "document"
@@ -1118,7 +1065,7 @@ function buildOwnersAndContracts(
             ? "Kept in memory for the session and not written to disk."
             : item.storage === "app-files"
             ? "Persistence: app-owned files kept in the app's own data folder."
-            : item.storage === "document" && !NATIVE_MAC
+            : item.storage === "document"
             ? "Persistence: the document location the user chooses; the app keeps no copy."
             : /\bSQLite\b/.test(placement)
               ? preset.persistence.enabledDecision
@@ -1217,7 +1164,7 @@ function buildOwnersAndContracts(
     features.map(feature => feature.id),
     "OWN-PACKAGING",
     preset.packagingRules.join(" "),
-    [...preset.packagingRules, ...(NATIVE_MAC ? nativePackagingDetails(preset, identity, blueprint.platformNeeds) : []), `Installation: ${preset.installationDecision(identity)}`, `Output artifact: ${preset.outputArtifact}`],
+    [...preset.packagingRules, `Installation: ${preset.installationDecision(identity)}`, `Output artifact: ${preset.outputArtifact}`],
     "A failed build, signature, package, install, or launch check blocks completion.",
     ["Fix the first failing validation command, rebuild the artifact, and rerun every later release gate."],
   ))
@@ -1376,7 +1323,7 @@ function buildPhases(
     focusedTests: [foundationTest],
     acceptanceIds: [],
     acceptanceCriteria: foundationCriteria,
-    prompt: `Create the ${preset.label} foundation with identity ${identity.bundleId}. Use only the locked stack and create every listed file before any later task modifies it.${NATIVE_MAC ? ` ${identity.moduleName}App.swift must strictly declare the @main App scene entry and delegate all application state and commands to ${preset.registrationFile("feature", identity).split("/").pop()}.` : ""}${preset.id === "astro-web" ? " package.json must define npm run check, test, test:a11y, build, and audit:performance before any later validation gate." : ""} Add a contract test that fails on stack or identity drift.`,
+    prompt: `Create the ${preset.label} foundation with identity ${identity.bundleId}. Use only the locked stack and create every listed file before any later task modifies it.${preset.id === "astro-web" ? " package.json must define npm run check, test, test:a11y, build, and audit:performance before any later validation gate." : ""} Add a contract test that fails on stack or identity drift.`,
     validationCommands: preset.foundationValidationCommands
       ?? preset.validationCommands.slice(0, 2).map(command => command(identity)),
   }
@@ -1448,7 +1395,7 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only ${filesToCreate.join("; ")}${filesToModify.length ? ` and modify only ${filesToModify.join("; ")} after its foundation creation` : " and modify no pre-existing source file"}.`,
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}`,
       validationCommands: draft.kind === "packaging"
         ? [files.focusedTestCommand, ...preset.validationCommands.map(command => command(identity))]
         : [files.focusedTestCommand, ...preset.validationCommands.slice(0, 2).map(command => command(identity))],
@@ -1467,26 +1414,6 @@ function buildPhases(
   })
 
   return { owners, phases }
-}
-
-function deriveLockedStack(
-  preset: PresetContract,
-  blueprint: NormalizedBlueprint,
-  credentialServices: readonly NormalizedBlueprint["externalServices"][number][],
-  contracts: readonly GraphContract[],
-): readonly string[] {
-  if (!NATIVE_MAC) return preset.allowedTechnologies
-  const hasCredentials = credentialServices.length > 0 || blueprint.domainData.some(d => d.storage === "secret")
-  const hasSqlite = blueprint.persistenceNeeds.some(p => p.storage === "records")
-  const hasLogin = blueprint.platformNeeds.includes("launch-at-login") || blueprint.platformNeeds.includes("background-execution")
-  const usesApplicationSupport = hasSqlite || contracts.some(item => item.kind === "persistence" && item.details.some(detail => /Application Support/.test(detail.replace(/never in [^.;]*Application Support/g, ""))))
-  return preset.allowedTechnologies.filter(tech => {
-    if (tech === "Keychain" && !hasCredentials) return false
-    if (tech === "SQLite3" && !hasSqlite) return false
-    if (tech === "SMAppService" && !hasLogin) return false
-    if (tech === "Application Support" && !usesApplicationSupport) return false
-    return true
-  })
 }
 
 export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: PresetId, presetOptions: Readonly<Record<string, PresetOptionValue>> = {}): ProjectGraph {
@@ -1548,29 +1475,19 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
   const { owners, phases } = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices, kitFoundationFiles)
   const persistenceEnabled = blueprint.persistenceNeeds.length > 0
   const declaredStorage = new Set(blueprint.persistenceNeeds.map(p => p.storage))
-  const isDocNativeMac = NATIVE_MAC && !declaredStorage.has("records")
-  const nativeStores = NATIVE_MAC ? nativePersistenceStores(declaredStorage) : []
   const persistenceDecision = persistenceEnabled
     ? astroPlan?.usesContentCollections
       ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.enabledDecision
       : astroPlan?.browserPersistence
         ? preset.persistence.enabledDecision
-        : nativeStores.length
-          ? `Persistence: enabled with ${joinWithAnd(nativeStores)}.`
-          : isDocNativeMac
-          ? "Persistence: enabled with UserDefaults for lightweight settings and local filesystem at user-selected paths for document storage."
-          : preset.persistence.enabledDecision
+        : preset.persistence.enabledDecision
     : preset.persistence.disabledDecision
   const persistenceSettings = (astroPlan?.usesContentCollections
     ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.settingsPlacement
     : preset.persistence.settingsPlacement).replaceAll("{app-id}", identity.bundleId)
   const persistenceRecords = (astroPlan?.usesContentCollections
     ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.recordsPlacement.replace("{collection}", astroPlan.contentCollection)
-    : isDocNativeMac
-      ? declaredStorage.has("document") || !declaredStorage.has("app-files")
-        ? USER_SELECTED_FILE_PLACEMENT
-        : "No record collection is declared."
-      : preset.persistence.recordsPlacement).replaceAll("{app-id}", identity.bundleId)
+    : preset.persistence.recordsPlacement).replaceAll("{app-id}", identity.bundleId)
   // Read back from the rendered contract so the summary always matches the per-object placement.
   const appFilesData = blueprint.persistenceNeeds.find(p => p.storage === "app-files")?.data
   const appFilesPlacement = appFilesData
@@ -1595,7 +1512,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     phases,
     foundationFiles: unique([...preset.sourceLayout(identity), ...kitFoundationFiles, ...(astroPlan?.foundationExtras ?? []), ...(astroPlan?.seedContentPaths ?? [])]),
     kitPaths,
-    lockedStack: deriveLockedStack(preset, blueprint, integrationServices.filter(s => s.credentialRequirement !== "none"), contracts),
+    lockedStack: preset.allowedTechnologies,
     forbiddenTechnologies: preset.forbiddenTechnologies,
     testFramework: preset.testFramework,
     persistence: {
