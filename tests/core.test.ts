@@ -5,6 +5,7 @@ import { dirname, join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { exportPacketTo } from "../src/bridge"
 import { DOCUMENT_NAMES, compilePacket } from "../src/compiler"
+import { auditSemanticIntake } from "../src/schema"
 import { PRESETS, PRESET_IDS } from "../src/presets"
 import { bareWaybarBlueprint, fixtureCases } from "./fixtures/blueprints"
 
@@ -151,6 +152,43 @@ describe("v4 deterministic core", () => {
     expect(Object.keys(manifest.documents)).toEqual([...DOCUMENT_NAMES])
     expect(manifest.kit.length).toBe(packet.kit.length)
     expect(manifest.validation.status).toBe("pass")
+  })
+
+  it("orders features by buildsOn, rejects bad build references, and requires stored fields", async () => {
+    const base = fixtureCases.find(item => item.presetId === "linux-wayland-gtk4-desktop")!.blueprint
+    const [first, second, third] = base.features
+    const ordered = { ...base, features: [{ ...first!, buildsOn: [third!.name] }, { ...second!, buildsOn: [] }, { ...third!, buildsOn: [] }] }
+    const packet = await compilePacket(ordered, "linux-wayland-gtk4-desktop")
+    const tasks = packet.documents["TASKS.md"]
+    expect(tasks.indexOf("### TASK-")).toBeGreaterThan(-1)
+    const order = [...tasks.matchAll(/^### (TASK-\d+-[A-Z0-9-]+)/gm)].map(match => match[1]!)
+    const position = (name: string) => order.findIndex(id => id.endsWith(name.toUpperCase().replaceAll(" ", "-")))
+    expect(position(third!.name)).toBeLessThan(position(first!.name))
+    const unknown = auditSemanticIntake({ ...base, features: [{ ...first!, buildsOn: ["No such feature"] }, second!, third!] })
+    expect(unknown.map(issue => issue.rule)).toContain("semantic.unknown-build-dependency")
+    const cycle = auditSemanticIntake({ ...base, features: [{ ...first!, buildsOn: [second!.name] }, { ...second!, buildsOn: [first!.name] }, third!] })
+    expect(cycle.map(issue => issue.rule)).toContain("semantic.build-dependency-cycle")
+    const noFields = auditSemanticIntake({ ...base, dataObjects: base.dataObjects.map(item => ({ ...item, fields: [] })) })
+    expect(noFields.map(issue => issue.rule)).toContain("semantic.missing-data-fields")
+  })
+
+  it("renders stored fields and operations, and promises deletion only when a feature declares it", async () => {
+    const base = fixtureCases.find(item => item.presetId === "linux-wayland-gtk4-desktop")!.blueprint
+    const records = base.dataObjects.find(item => item.storage === "records")!
+    const usesRecords = (feature: (typeof base.features)[number]) => feature.usesData.some(name => name.toLowerCase() === records.name.toLowerCase())
+    const withOps = (operations: ("create" | "read" | "update" | "delete")[]) => ({
+      ...base,
+      dataObjects: base.dataObjects.map(item => item === records ? { ...item, fields: [{ name: "Recipe name", valueType: "text" as const }, { name: "Steps", valueType: "text-list" as const }] } : item),
+      features: base.features.map(feature => usesRecords(feature) ? { ...feature, dataOperations: operations } : feature),
+    })
+    const without = await compilePacket(withOps(["create", "read"]), "linux-wayland-gtk4-desktop")
+    const trd = without.documents["TRD.md"]
+    expect(trd).toContain("Recipe name (short text); Steps (ordered list of text lines)")
+    expect(trd).toContain("Store operations, exactly these and no others: create (")
+    expect(trd).toContain(`No feature deletes ${records.name}`)
+    const withDelete = await compilePacket(withOps(["create", "read", "delete"]), "linux-wayland-gtk4-desktop")
+    expect(withDelete.documents["TRD.md"]).not.toContain(`No feature deletes ${records.name}`)
+    expect(withDelete.documents["TRD.md"]).toContain("only through the feature that declares delete")
   })
 })
 

@@ -67,10 +67,21 @@ const FeatureSchema = z.strictObject({
   usesServices: z.array(shortMeaning).max(8),
   userFileAccess: z.enum(["none", "opens", "saves", "opens-and-saves"]),
   choiceLists: z.array(ChoiceListSchema).max(4),
+  // Other features whose screen or state this feature extends; fixes the build order.
+  buildsOn: z.array(shortMeaning).max(3).default([]),
+  // What this feature does to the data it uses; "delete" is promised only when a feature declares it.
+  dataOperations: z.array(z.enum(["create", "read", "update", "delete"])).max(4).default([]),
 })
 
 export const DataStorageSchema = z.enum(["settings", "records", "document", "app-files", "secret", "temporary", "session"])
 export const DataWriteModeSchema = z.enum(["direct", "atomic-replace"])
+
+export const DataValueTypeSchema = z.enum(["text", "long-text", "number", "whole-number", "flag", "date-time", "text-list", "reference"])
+
+const DataFieldSchema = z.strictObject({
+  name: shortMeaning,
+  valueType: DataValueTypeSchema,
+})
 
 const DataObjectSchema = z.strictObject({
   name: shortMeaning,
@@ -79,6 +90,8 @@ const DataObjectSchema = z.strictObject({
   retentionIntent: compactMeaning,
   storage: DataStorageSchema,
   writeMode: DataWriteModeSchema,
+  // The stored shape: one entry per value the app keeps for this object (records and documents).
+  fields: z.array(DataFieldSchema).max(12).default([]),
 })
 
 const ExternalServiceSchema = z.strictObject({
@@ -116,6 +129,7 @@ export const SemanticBlueprintSchema = z.strictObject({
 export type SemanticBlueprint = z.infer<typeof SemanticBlueprintSchema>
 export type PlatformNeed = z.infer<typeof PlatformNeedSchema>
 export type FeaturePlatformNeed = z.infer<typeof FeaturePlatformNeedSchema>
+export type DataValueType = z.infer<typeof DataValueTypeSchema>
 export type DataStorage = z.infer<typeof DataStorageSchema>
 export type DataWriteMode = z.infer<typeof DataWriteModeSchema>
 export type FeatureRecovery = z.infer<typeof FeatureRecoverySchema>
@@ -459,8 +473,55 @@ function platformNeedIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
   return issues
 }
 
+// A feature may build on another feature (its screen or state). Unknown names, self references, and
+// cycles are provider mistakes the one repair request can fix; they must not reach the graph.
+function buildOrderIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
+  const issues: SemanticIssue[] = []
+  const byKey = new Map(blueprint.features.map((feature, index) => [referenceKey(feature.name), index]))
+  blueprint.features.forEach((feature, index) => {
+    feature.buildsOn.forEach((name, position) => {
+      const path = `features[${index}].buildsOn[${position}]`
+      const target = byKey.get(referenceKey(name))
+      if (target === undefined) issues.push({ path, rule: "semantic.unknown-build-dependency", message: `buildsOn names '${name}', which is not a declared feature.` })
+      else if (target === index) issues.push({ path, rule: "semantic.self-build-dependency", message: `Feature '${feature.name}' cannot build on itself.` })
+    })
+  })
+  const state = new Map<number, "open" | "done">()
+  const visit = (index: number): boolean => {
+    if (state.get(index) === "done") return false
+    if (state.get(index) === "open") return true
+    state.set(index, "open")
+    const cyclic = blueprint.features[index]!.buildsOn.some(name => {
+      const target = byKey.get(referenceKey(name))
+      return target !== undefined && target !== index && visit(target)
+    })
+    state.set(index, "done")
+    return cyclic
+  }
+  blueprint.features.forEach((feature, index) => {
+    if (visit(index)) issues.push({ path: `features[${index}].buildsOn`, rule: "semantic.build-dependency-cycle", message: `Feature '${feature.name}' is part of a buildsOn cycle.` })
+  })
+  return issues
+}
+
+// A stored record or document needs a declared shape, or every task invents its own.
+function dataShapeIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
+  const issues: SemanticIssue[] = []
+  blueprint.dataObjects.forEach((item, index) => {
+    if ((item.storage === "records" || item.storage === "document") && item.fields.length === 0) {
+      issues.push({ path: `dataObjects[${index}].fields`, rule: "semantic.missing-data-fields", message: `Data object '${item.name}' is stored as ${item.storage} and must declare the fields it keeps.` })
+    }
+  })
+  blueprint.features.forEach((feature, index) => {
+    if (feature.dataOperations.length && !feature.usesData.length) {
+      issues.push({ path: `features[${index}].dataOperations`, rule: "semantic.operations-without-data", message: `Feature '${feature.name}' declares data operations but uses no data object.` })
+    }
+  })
+  return issues
+}
+
 export function auditSemanticIntake(blueprint: SemanticBlueprint): SemanticIssue[] {
-  const issues: SemanticIssue[] = [...featureReferenceIssues(blueprint), ...savedFileDocumentIssues(blueprint), ...choiceListIssues(blueprint), ...duplicateNameIssues(blueprint), ...platformNeedIssues(blueprint)]
+  const issues: SemanticIssue[] = [...buildOrderIssues(blueprint), ...dataShapeIssues(blueprint), ...featureReferenceIssues(blueprint), ...savedFileDocumentIssues(blueprint), ...choiceListIssues(blueprint), ...duplicateNameIssues(blueprint), ...platformNeedIssues(blueprint)]
   if (unusableMeaning.test(blueprint.productName)) {
     issues.push({ path: "productName", rule: "semantic.unusable-product", message: "The product name does not contain usable product meaning." })
   }
@@ -537,6 +598,9 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "For every feature, set usesTray to true only when that feature needs a persistent status icon or tray presence; otherwise false. Set clipboardAccess to none, copy, read, or read-write, and set clipboardWatch true only when the feature reads the clipboard repeatedly in the background. List the clipboard platform need exactly when clipboardAccess is not none, and do not list it otherwise. A preset that cannot watch the clipboard rejects clipboardWatch true before compilation.",
     ...(input.backgroundAvailable === false ? ["The selected preset cannot run work while the app is closed. Declare the background-execution platform need only for work that must continue or start while the app is closed; work the user watches while the app is open, such as a copy with progress and a cancel button, is not background execution."] : []),
     ...(input.trayAvailable === false ? ["The selected preset has no tray surface. Set usesTray to false for every feature: the preset's own surface (a bar module, web page, or mobile screen) is not a tray."] : []),
+    "For every feature, set buildsOn to the names of the other features whose screen, list, or state it extends (for example a search or filter feature builds on the feature that shows the list); leave it empty for a feature that stands alone. The first screen a user sees is built by a feature that builds on nothing. Never form a cycle.",
+    "For every feature, set dataOperations to what it does to the data it uses: create, read, update, delete. Declare delete only when the idea explicitly asks the user to remove something; then no other text may promise removal. A dataObject's retentionIntent must not mention deleting or removing unless a feature declares delete.",
+    "For every dataObject stored as records or document, list its fields: one entry per value the app keeps (name and valueType: text, long-text, number, whole-number, flag, date-time, text-list, reference). Do not list an id; the compiler adds one. Other storage kinds may leave fields empty.",
     "Coverage is checked structurally. Before finalizing, map every numbered idea sentence in ideaCoverage, then define only the features those mappings name. If a feature is listed by no sentence, remove it. If a sentence asks for behavior, map at least one feature to it. Never add a feature to make the design feel complete.",
     "For web surfaces, use collection-index for a list page that shows all entries, tag-page for a tag or category page, and search-page for a search results page. Use those values only when the idea asks for those pages.",
     "Every feature acceptance signal must describe a concrete, mechanically verifiable condition (such as state transitions, UI element visibility, disk persistence, error code handling, or measured response under an explicit numerical threshold) that automated unit or integration tests can assert without human subjective impression. Never use subjective or hyperbolic phrases such as 'feels smooth', 'zero latency', 'instantaneous', or 'aesthetic appeal'.",

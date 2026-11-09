@@ -2,7 +2,7 @@ import { auditAgentReadinessGraph, auditMechanicalGraph, auditPacket, auditProje
 import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetOptionValue, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { renderPacket } from "./renderers"
-import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
+import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { kitProjectPaths, nativeUsageDescriptions, presetKit, waybarHelpers } from "./kits"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
@@ -10,6 +10,12 @@ import type { JevAtomicAuditDecision } from "./jev"
 export const DOCUMENT_NAMES = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS.md"] as const
 export type DocumentName = (typeof DOCUMENT_NAMES)[number]
 export type ContractKind = "interface" | "data" | "integration" | "lifecycle" | "persistence" | "credential" | "permission" | "recovery" | "security" | "packaging"
+
+export type DataOperation = "create" | "read" | "update" | "delete"
+export interface DataField {
+  readonly name: string
+  readonly valueType: DataValueType
+}
 
 export interface NormalizedBlueprint {
   readonly projectName: string
@@ -34,6 +40,7 @@ export interface NormalizedBlueprint {
     readonly recoveryExpectations: readonly string[]
     readonly providedCapabilities: readonly string[]
     readonly requiredCapabilities: readonly string[]
+    readonly dataOperations: readonly DataOperation[]
     readonly resourceIds: readonly string[]
     readonly choices: readonly string[]
     readonly surface: FeatureSurface
@@ -53,6 +60,7 @@ export interface NormalizedBlueprint {
     readonly sensitivity: "public" | "internal" | "personal" | "sensitive"
     readonly storage: DataStorage
     readonly writeMode: DataWriteMode
+    readonly fields: readonly DataField[]
   }[]
   readonly privacySecurityRequirements: readonly string[]
   readonly permissionNeeds: readonly {
@@ -107,6 +115,7 @@ export interface GraphFeature {
   readonly recoveryExpectations: readonly string[]
   readonly providedCapabilities: readonly string[]
   readonly requiredCapabilities: readonly string[]
+  readonly dataOperations: readonly DataOperation[]
   readonly resourceIds: readonly string[]
   readonly requiredOwnerIds: readonly string[]
   readonly choices: readonly string[]
@@ -480,8 +489,10 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       acceptanceOutcomes: acceptance.length ? acceptance : [`${name} produces the documented user outcome.`],
       failureBehavior: failure,
       recoveryExpectations: [featureRecovery(name, feature.failureRecovery)],
-      providedCapabilities: [],
-      requiredCapabilities: [],
+      // A feature provides itself, so another feature's buildsOn becomes an owner dependency.
+      providedCapabilities: [slug(name)],
+      requiredCapabilities: unique(feature.buildsOn.map(other => slug(cleanMeaning(other)))),
+      dataOperations: unique(feature.dataOperations),
       resourceIds: [],
       usesPlatformNeeds: unique(feature.usesPlatformNeeds),
       usesData: unique(featureDataUses(source, feature).map(name => dataNameByKey.get(referenceKey(name))!)),
@@ -503,6 +514,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       retentionIntent: cleanMeaning(item.retentionIntent),
       storage: item.storage,
       writeMode: item.writeMode,
+      fields: item.fields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType })).filter(field => field.name),
     }
   }).filter(item => item.name && item.purpose && item.retentionIntent))
   const externalServices = uniqueByName(source.externalServices.map(item => {
@@ -563,7 +575,9 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
         ? `Delete ${item.name} automatically at its stated retention boundary without waiting for a user action, verify it is absent, and report a cleanup failure honestly.`
         : item.storage === "session"
           ? `${item.name} is never written to disk and is discarded when the session ends; verify no file for it exists.`
-          : `Delete ${item.name} only through an explicit user action or the stated retention boundary, and report deletion failure honestly.`,
+          : source.features.some(feature => feature.dataOperations.includes("delete") && featureDataUses(source, feature).some(name => referenceKey(name) === referenceKey(item.name)))
+            ? `Delete ${item.name} only through the feature that declares delete, after an explicit user action, and report deletion failure honestly.`
+            : `No feature deletes ${item.name}; build no delete action for it.`,
       sensitivity: item.sensitivity,
       storage: item.storage,
       writeMode: item.writeMode,
@@ -620,7 +634,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
     })),
     features,
     externalServices,
-    domainData: dataObjects.map(item => ({ name: item.name, meaning: item.purpose, retention: item.retentionIntent, sensitivity: item.sensitivity, storage: item.storage, writeMode: item.writeMode })),
+    domainData: dataObjects.map(item => ({ name: item.name, meaning: item.purpose, retention: item.retentionIntent, sensitivity: item.sensitivity, storage: item.storage, writeMode: item.writeMode, fields: item.fields })),
     privacySecurityRequirements,
     permissionNeeds,
     persistenceNeeds,
@@ -859,6 +873,32 @@ function documentWriteDetail(storage: string, placement: string, preset: PresetC
 const SESSION_MEMORY_PLACEMENT = "Held in memory for the session and not written to disk."
 const ATOMIC_RENAME_SCRATCH_PLACEMENT = "A temporary file in the destination file's own directory, renamed over the destination on success and removed on failure; never in temporaryDirectory or Application Support."
 
+const VALUE_TYPE_LABEL: Record<DataValueType, string> = {
+  text: "short text",
+  "long-text": "long text",
+  number: "number",
+  "whole-number": "whole number",
+  flag: "true/false flag",
+  "date-time": "date and time",
+  "text-list": "ordered list of text lines",
+  reference: "reference to another stored item",
+}
+
+// The stored shape and the exact operations the declared features perform, so every task that
+// touches the store uses one schema and builds no operation nobody asked for.
+function dataShapeDetails(item: NormalizedBlueprint["domainData"][number], features: readonly GraphFeature[]): string[] {
+  if (!item.fields.length) return []
+  const users = features.filter(feature => dataFeatureIds(item.name, features).includes(feature.id))
+  const operations = unique(users.flatMap(feature => feature.dataOperations))
+  const lines = [
+    `Stored fields (one record each, plus a stable generated id): ${item.fields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]})`).join("; ")}.`,
+  ]
+  if (operations.length) {
+    lines.push(`Store operations, exactly these and no others: ${operations.map(operation => `${operation} (${users.filter(feature => feature.dataOperations.includes(operation)).map(feature => feature.id).join(", ")})`).join("; ")}.`)
+  }
+  return lines
+}
+
 function persistencePlacement(
   item: NormalizedBlueprint["persistenceNeeds"][number],
   preset: PresetContract,
@@ -990,7 +1030,7 @@ function buildOwnersAndContracts(
       ? (credentialServices.length
         ? unique(credentialServices.flatMap(service => credentialDetails(preset.id, identity, service.name, service.credentialRequirement)))
         : credentialDetails(preset.id, identity, item.name, "credential"))
-      : [`Retention: ${item.retention}`, `Sensitivity: ${item.sensitivity}`]
+      : [...dataShapeDetails(item, features), `Retention: ${item.retention}`, `Sensitivity: ${item.sensitivity}`]
     contracts.push(contract(
       `CON-DATA-${slug(item.name).toUpperCase()}`,
       "data",
@@ -1452,6 +1492,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       recoveryExpectations: feature.recoveryExpectations,
       providedCapabilities: feature.providedCapabilities,
       requiredCapabilities: feature.requiredCapabilities,
+      dataOperations: feature.dataOperations,
       resourceIds: feature.resourceIds,
       requiredOwnerIds: [],
       choices: feature.choices,

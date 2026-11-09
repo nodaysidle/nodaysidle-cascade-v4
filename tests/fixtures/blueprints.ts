@@ -17,6 +17,8 @@ interface FeatureUses {
   readonly surface?: FeatureSurface
   readonly files?: Feature["userFileAccess"]
   readonly choices?: Feature["choiceLists"]
+  readonly buildsOn?: readonly string[]
+  readonly operations?: Feature["dataOperations"]
 }
 
 function feature(name: string, userOutcome: string, behavior: string, acceptance: string, uses: FeatureUses = {}): Feature {
@@ -37,6 +39,8 @@ function feature(name: string, userOutcome: string, behavior: string, acceptance
     usesServices: [...(uses.services ?? [])],
     userFileAccess: uses.files ?? "none",
     choiceLists: [...(uses.choices ?? [])],
+    buildsOn: [...(uses.buildsOn ?? [])],
+    dataOperations: [...(uses.operations ?? [])],
   }
 }
 
@@ -47,7 +51,7 @@ interface FixtureSeed {
   readonly goals: readonly string[]
   readonly nonGoals: readonly string[]
   readonly features: readonly Feature[]
-  readonly dataObjects?: SemanticBlueprint["dataObjects"]
+  readonly dataObjects?: ReadonlyArray<Omit<SemanticBlueprint["dataObjects"][number], "fields"> & { readonly fields?: SemanticBlueprint["dataObjects"][number]["fields"] }>
   readonly externalServices?: SemanticBlueprint["externalServices"]
   readonly platformNeeds?: SemanticBlueprint["platformNeeds"]
   readonly qualityRequirements?: readonly string[]
@@ -64,7 +68,11 @@ function blueprint(seed: FixtureSeed): SemanticBlueprint {
     features: seed.features.map((item, index) => index === 0
       ? { ...item, usesPlatformNeeds: [...new Set([...item.usesPlatformNeeds, ...(seed.platformNeeds ?? [])])] }
       : item),
-    dataObjects: [...(seed.dataObjects ?? [])],
+    // Stored records and documents declare a minimal shape unless the fixture names one.
+    dataObjects: (seed.dataObjects ?? []).map(item => ({
+      ...item,
+      fields: item.fields ?? (item.storage === "records" || item.storage === "document" ? [{ name: "Title", valueType: "text" as const }] : []),
+    })),
     externalServices: [...(seed.externalServices ?? [])],
     platformNeeds: [...(seed.platformNeeds ?? [])],
     qualityRequirements: [...(seed.qualityRequirements ?? ["Keyboard-operable controls with visible status and accessible labels."])],
@@ -297,7 +305,7 @@ export function tauriEverythingBlueprint(): SemanticBlueprint {
   everything.features[0]!.usesPlatformNeeds = [...everything.features[0]!.usesPlatformNeeds, ...extra]
   everything.features[2]!.userFileAccess = "opens"
   everything.features[2]!.usesData = [...everything.features[2]!.usesData, "Glance preferences"]
-  everything.dataObjects = [...everything.dataObjects, { name: "Glance preferences", purpose: "The unit system and the selected place.", sensitivity: "internal", retentionIntent: "Keep until the user changes it.", storage: "settings", writeMode: "atomic-replace" }]
+  everything.dataObjects = [...everything.dataObjects, { name: "Glance preferences", purpose: "The unit system and the selected place.", sensitivity: "internal", retentionIntent: "Keep until the user changes it.", storage: "settings", writeMode: "atomic-replace", fields: [] }]
   return everything
 }
 
