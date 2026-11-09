@@ -33,8 +33,13 @@ describe("Android form, validation, and notification contracts", () => {
     const packet = await compilePacket(withForm, "android-kotlin-compose")
     expect(packet.failures).toEqual([])
     const trd = packet.documents["TRD.md"]
-    expect(trd).toContain("Bought: a text field in the ISO format yyyy-MM-dd; the add form starts with LocalDate.now(container.clock)")
-    expect(trd).toContain("2026-13-40 and abc are rejected")
+    expect(trd).toContain("Bought: chosen with a Material 3 date picker")
+    expect(trd).toContain("the add form starts with no day selected")
+    expect(trd).toContain('Save rejects it with "Bought is required"')
+    expect(trd).toContain("the Save button is always enabled and never disabled for an invalid form")
+    expect(trd).toContain("^[0-9]+([.][0-9]{1,2})?$")
+    expect(trd).toContain('"Price must have at most 2 decimal places"')
+    expect(trd).toContain('"Price must be at least 0"')
     expect(trd).toContain("Expiry: a text field in the format yyyy-MM-dd HH:mm in clock.zone")
     expect(trd).toContain("Quantity: a whole number matching ^[0-9]{1,9}$")
     expect(trd).toContain("Price: a number matching")
@@ -46,6 +51,7 @@ describe("Android form, validation, and notification contracts", () => {
     expect(trd).toContain("use that quoted label with the same testTag")
     expect(trd).toContain("shows exactly 2")
     const tasks = packet.documents["TASKS.md"]
+    expect(tasks).toContain("is verified by that task; your focused test seeds records through the repository")
     expect(tasks).toContain("Form rules: build the form exactly as the Form, Field rules and Rejection details")
     expect(tasks).toContain('confirm button is labelled "Delete"')
     expect(tasks).toContain("a date as yyyy-MM-dd, a date and time as yyyy-MM-dd HH:mm")
@@ -107,6 +113,7 @@ describe("Android form, validation, and notification contracts", () => {
     expect(trd).toContain('the form shows that one quoted text, once, in the status area (testTag "form-error")')
     expect(trd).toContain("the only exception is a feature whose own behavior says it removes with no confirmation step")
     const tasks = packet.documents["TASKS.md"]
+    expect(tasks).toContain("is verified by that task; your focused test seeds records through the repository")
     expect(tasks).toContain('the write-failure message of a later task\'s save, delete, mark, or toggle')
     expect(tasks).toContain('"summary-row-" plus the record id')
     expect(tasks).toContain("asserted by the packaging focused test as well")
