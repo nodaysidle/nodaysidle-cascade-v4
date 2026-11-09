@@ -1,4 +1,4 @@
-import type { GraphPhase, NormalizedBlueprint } from "./compiler"
+import { allocateStableIds, type GraphContract, type GraphPhase, type NormalizedBlueprint } from "./compiler"
 import { gtkKitFlags, rustKitHelpers } from "./kits"
 import type { PresetContract } from "./presets"
 
@@ -50,15 +50,14 @@ export function gtkSpecialize(preset: PresetContract, blueprint: NormalizedBluep
     fileBoundaryDetails: details(flags.portal),
     appOnlyFileBoundary: { boundary: boundary(false), details: details(false) },
     lifecycleRules: [
-      "Use AdwApplication as the entry point and keep exactly one primary window.",
-      `On window close or SIGTERM, cancel active tasks, ${records ? "close the SQLite connection, " : ""}remove temporary files, and release streams.`,
+      "Use adw::Application as the entry point and keep exactly one primary window.",
+      `On window close or SIGTERM, cancel active tasks, ${records ? "close the SQLite connection by calling DataStore::close on the shared std::sync::Arc handle to the DataStore it is constructed with (its test asserts that a store call after shutdown returns StoreError::Closed), " : ""}remove temporary files, and release streams.`,
       ...(flags.background ? ["Use a systemd user unit only for a declared background feature; no daemon starts otherwise."] : []),
       "Reopen the main window from the launcher; there is no Dock or menu-bar concept.",
     ],
     wiringRules: preset.wiringRules.map(rule => rule.startsWith("Kit helpers that no contract names")
       ? `${secrets || http ? "Kit helpers that no contract names are optional; do not call a credential or HTTP helper only to satisfy the wiring gate. " : ""}Every owner named in TRD.md must be reachable from the production composition root.`
       : flags.settings ? rule : rule.replace("settings are grouped rows with the label on the left and the control on the right, a switch or checkbox on the same line as its label, and a short note under each group; ", "")),
-    completionEvidence: [...preset.completionEvidence, "makepkg --printsrcinfo and the Wayland launch check need an Arch-based host with a Wayland session; on another host the completion report names these gates as not run."],
   }
   if (!flags.background) {
     overrides.packagingRules = preset.packagingRules.map(rule => rule.replace(", and optional systemd unit.", ".").replace(", license, and optional systemd unit.", ", and license."))
@@ -67,22 +66,80 @@ export function gtkSpecialize(preset: PresetContract, blueprint: NormalizedBluep
   return overrides
 }
 
-// Task sentences that need the GTK widgets and the kit's migration: the data owner's first migration and
-// the first main-surface task's slots.
+const SAVE_TOAST = "Could not save the change. Try again."
+const REMOVE_TOAST = "Could not remove the item. Try again."
+
+const SQL_TYPES: Record<string, { rust: string; sql: string; note?: string }> = {
+  text: { rust: "String", sql: "TEXT" },
+  "long-text": { rust: "String", sql: "TEXT" },
+  number: { rust: "f64", sql: "REAL" },
+  "whole-number": { rust: "i64", sql: "INTEGER" },
+  flag: { rust: "bool", sql: "INTEGER", note: "0 or 1" },
+  date: { rust: "String", sql: "TEXT", note: "YYYY-MM-DD" },
+  "date-time": { rust: "i64", sql: "INTEGER", note: "i64 epoch milliseconds, UTC" },
+  "text-list": { rust: "Vec of String", sql: "TEXT", note: "a JSON array" },
+  reference: { rust: "i64", sql: "INTEGER" },
+}
+
+const referenceKey = (name: string): string => name.normalize("NFKC").trim().replace(/\s+/g, " ").replace(/[.]+$/, "").toLocaleLowerCase("en-US")
+
+// The concrete store interface for the SQLite records of one data object: argument and return types, the one
+// typed error, integer widths, and the table and column names, all derived from declared fields.
+export function gtkStoreInterface(item: NormalizedBlueprint["domainData"][number], operations: readonly string[], record: string, base: string): string {
+  const column = (name: string) => name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value"
+  const fields = item.fields.map(field => ({ name: column(field.name), ...SQL_TYPES[field.valueType]!, optional: field.optional }))
+  const rustFields = fields.map(field => `${field.name}: ${field.optional ? `Option of ${field.rust}` : field.rust}`).join(", ")
+  const columns = ["id INTEGER PRIMARY KEY AUTOINCREMENT", ...fields.map(field => `${field.name} ${field.sql}${field.optional ? "" : " NOT NULL"}${field.note ? ` (${field.note})` : ""}`)].join(", ")
+  const signatures = [
+    ...(operations.includes("read") ? [`list(&self) returns Ok with a Vec of ${record}`, `get(&self, id: i64) returns Ok with an Option of ${record}, None when the id is not stored`] : []),
+    ...(operations.includes("create") ? [`insert(&self, new: New${record}) returns Ok with the stored ${record}`] : []),
+    ...(operations.includes("update") ? [`update(&self, record: &${record}) returns Ok with the stored ${record}`] : []),
+    ...(operations.includes("delete") ? ["delete(&self, id: i64) returns Ok with no value"] : []),
+  ]
+  return `Interface: OWN-DATA-STORE defines struct ${record} (id: i64, ${rustFields}), struct New${record} (the same fields without id), the one error enum StoreError that every store trait shares (thiserror; variants Sqlite, NotFound(i64), Closed), and trait ${record}Store with exactly these functions, each returning Err(StoreError) on failure: ${signatures.join("; ")}${operations.includes("update") || operations.includes("delete") ? "; update and delete return StoreError::NotFound for an id that is not stored" : ""}. DataStore in src/platform/datastore.rs implements every store trait over one Database held in a std::sync::Mutex around an Option of Database, is created by DataStore::open(path: &Path) returning Ok with the DataStore or Err(StoreError), and has close(&self) that takes the Database out of the mutex and drops it; every later store call returns StoreError::Closed. Feature tasks call the trait and add no other storage access. DataStore creates table ${base} (${columns}) in its own transactional migration: the kit opens the database at PRAGMA user_version 1 with no tables, so the migration runs when the version is below 2 and sets it to 2; list returns records by descending id unless a feature states another order, and any stated order breaks ties by descending id.`
+}
+
+// The generic write-failure sentences name no surface; on GTK the owning feature task shows a toast.
+export function refineGtkContracts(contracts: readonly GraphContract[]): GraphContract[] {
+  const swap = (text: string): string => text
+    .replace("A failed write leaves the prior durable state valid and the new state visibly unsaved.", `A failed write leaves the prior durable state valid and the owning feature task shows an AdwToast reading "${SAVE_TOAST}" ("${REMOVE_TOAST}" for a removal).`)
+    .replace("Preserve the last valid record and expose a bounded correction or rebuild path.", "Keep the last valid record; a failed add or edit leaves its dialog open, and a failed removal or mark leaves the row in the list.")
+    .replace("Retry through the same atomic boundary without duplicating the record.", "Retry only from an explicit user action.")
+  return contracts.map(item => item.kind === "data" || item.kind === "persistence" ? { ...item, failureBehavior: swap(item.failureBehavior), recovery: item.recovery.map(swap) } : item)
+}
+
+// Task sentences that need the GTK widgets and the kit's migration: the data owner's first migration, the
+// first main-surface task's slots, and each writing feature's form, toast, and clock-parameter rules.
 export function refineGtkPhases(phases: readonly GraphPhase[], blueprint: NormalizedBlueprint): GraphPhase[] {
   const { records } = rustKitHelpers(blueprint)
+  const { clock } = gtkKitFlags(blueprint)
   const operations = new Set(blueprint.features.flatMap(feature => feature.dataOperations))
+  const featureIds = allocateStableIds("FEAT", blueprint.features.map(feature => feature.name))
+  const byId = new Map(blueprint.features.map((feature, index) => [featureIds[index]!, feature]))
+  // A bound that depends on today's date or year needs the date as an argument, so the validator is testable at its limit.
+  const writesNumeric = (feature: NormalizedBlueprint["features"][number]) => blueprint.domainData.some(item =>
+    item.fields.some(field => field.valueType === "number" || field.valueType === "whole-number" || field.valueType === "date")
+    && (feature.operationsByData[referenceKey(item.name)] ?? []).some(operation => operation === "create" || operation === "update"))
   const slotNote = [
-    ...(operations.has("create") ? ["the add-entry control is an Add button in the AdwHeaderBar that opens an AdwDialog with one field per stored field and closes on a successful save"] : []),
+    ...(operations.has("create") ? ["the add-entry control is an Add button in the AdwHeaderBar that opens an empty AdwDialog shell (title, Cancel, a content area and a Save slot) that the add task fills with its form and closes on a successful save"] : []),
+    "the status area is one label or AdwStatusPage under the filter area that shows the empty-state, no-match and load-error messages, one at a time",
     "each list row is an AdwActionRow whose suffix box is the per-row action area",
-    "the detail view is an AdwNavigationPage pushed on an AdwNavigationView that sits inside the ToastOverlay, so Back returns to the list",
+    "the filter area is a GtkSearchEntry above the list",
+    ...(operations.has("update") || operations.has("delete") ? ["activating a row pushes the detail page, an AdwNavigationPage on an AdwNavigationView that sits inside the ToastOverlay, so Back returns to the list; the feature tasks connect the buttons on it"] : []),
   ].join("; ")
   return phases.map(phase => ({
     ...phase,
     tasks: phase.tasks.map(task => {
+      const owned = task.featureIds.flatMap(id => byId.get(id) ?? [])
+      const writes = owned.flatMap(feature => feature.dataOperations).filter(operation => operation !== "read")
+      const firstMain = task.prompt.includes("You are the first main-surface task")
       const notes = [
         ...(records && task.ownerIds[0] === "OWN-DATA-STORE" ? ["The kit's Database::migrate already sets user_version to 1 and creates no table: run the table migration through Database::connection() inside one transaction (unchecked_transaction on the shared connection) when user_version is below 2 and set it to 2. Do not edit src/platform/sqlite.rs."] : []),
-        ...(task.prompt.includes("You are the first main-surface task") ? [`GTK shape of the slots: ${slotNote}.`] : []),
+        ...(firstMain ? [`GTK shape of the slots: ${slotNote}.`] : []),
+        ...(!firstMain && owned.some(feature => feature.dataOperations.includes("create")) ? ["Build the entry form (one input per field the user supplies; a field the app sets itself, such as a flag with a fixed starting value, is not an input) and its display-free validate function in your own file and export both; the dialog shell from the first main-surface task only hosts the form, and an edit task reuses them."] : []),
+        ...(owned.some(writesNumeric) ? [`A validation bound that depends on today's date or year is a parameter of the validate function (for example current_year: i32), never read inside it; src/app.rs supplies it from ${clock ? "the Clock trait" : "glib::DateTime::now_local()"} and tests pass fixed values at and beyond the bound.`] : []),
+        ...(!firstMain && owned.some(feature => feature.surface === "main" && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read")) ? ["Narrow the list through the filter area, and show the no-match message in the shared status area, never in a second message widget."] : []),
+        ...(writes.length ? [`Write failure: when the store returns StoreError, show an AdwToast on the window's ToastOverlay reading "${writes.every(operation => operation === "delete") ? REMOVE_TOAST : SAVE_TOAST}"; ${[...(writes.includes("create") ? ["a failed add keeps its dialog open with the entered values"] : []), ...(writes.includes("update") ? ["a failed edit keeps its form open and a failed mark leaves the row unchanged"] : []), ...(writes.includes("delete") ? ["a failed removal leaves the row in the list"] : [])].join(", ")}.`] : []),
       ]
       return notes.length ? { ...task, prompt: `${task.prompt} ${notes.join(" ")}` } : task
     }),

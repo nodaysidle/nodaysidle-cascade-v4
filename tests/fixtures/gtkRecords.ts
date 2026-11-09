@@ -2,7 +2,7 @@ import type { SemanticBlueprint } from "../../src/schema"
 
 type Feature = SemanticBlueprint["features"][number]
 
-function feature(name: string, behavior: string, acceptance: string, uses: Partial<Feature>): Feature {
+export function feature(name: string, behavior: string, acceptance: string, uses: Partial<Feature>): Feature {
   return {
     name,
     userOutcome: `The user gets ${name.toLowerCase()}.`,
@@ -29,7 +29,7 @@ function feature(name: string, behavior: string, acceptance: string, uses: Parti
   }
 }
 
-const ops = (data: string, ...operations: ("create" | "read" | "update" | "delete")[]) => [{ data, operations }]
+export const ops = (data: string, ...operations: ("create" | "read" | "update" | "delete")[]) => [{ data, operations }]
 
 // Offline records app with no settings, no network, and no secrets; edit and delete come from a detail view.
 export const snippetLibraryBlueprint: SemanticBlueprint = {

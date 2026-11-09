@@ -418,12 +418,12 @@ function androidOwnerFiles(input: OwnerFileInput): OwnerFiles {
 
 const linuxGtk: PresetContract = {
   id: "linux-wayland-gtk4-desktop",
-  providerNotes: ["Write a timing or record-count target (for example a response time for a number of records) only when the idea states one, and then as a bound on a display-free operation such as filtering that many records in memory, never as a whole-screen render time. A length limit on text counts Unicode scalar values of the trimmed text."],
+  providerNotes: ["Write a timing or record-count target (for example a response time for a number of records) only when the idea states one, and then as a bound on a display-free operation such as filtering that many records in memory, never as a whole-screen render time. State it in the acceptance signal of the feature that performs that operation. Give the literal text of every empty-state message, no-match message and action button label that an acceptance signal checks, and state a rejected input as what the user sees (the save control is disabled, or the message shown) plus that the display-free validate function returns an error without calling the store. A length limit on text counts Unicode scalar values of the trimmed text."],
   specialize: gtkSpecialize,
   label: "Linux Wayland GTK4 Desktop",
   platform: "Linux (Wayland; Arch, Omarchy, Hyprland)",
-  implementationMarker: "AdwApplication",
-  allowedTechnologies: ["Rust", "GTK4", "libadwaita", "GLib/GIO", "rusqlite", "reqwest with rustls", "tokio", "keyring (Secret Service)", "serde", "serde_json", "dirs", "thiserror", "tempfile", "tracing", "cargo test", "PKGBUILD"],
+  implementationMarker: "adw::Application",
+  allowedTechnologies: ["Rust", "GTK4", "libadwaita", "GLib/GIO", "rusqlite", "reqwest with rustls", "tokio", "keyring (Secret Service)", "serde", "serde_json", "dirs", "thiserror", "tempfile", "tracing", "tracing-subscriber", "cargo test", "PKGBUILD"],
   forbiddenTechnologies: ["SwiftUI", "AppKit", "Tauri", "Electron", "GTK3", "Qt", "X11-only APIs", "xdotool", "wmctrl", "libappindicator", "webview UI"],
   testFramework: "cargo test, cargo clippy, and a hands-on Wayland launch check",
   sourceLayout: identity => [
@@ -454,7 +454,7 @@ const linuxGtk: PresetContract = {
         : ["src/platform/mod.rs", "src/state.rs", "src/app.rs"],
   runtimeMode: () => "native",
   runtimeArchitecture: [
-    "Use one AdwApplication with the locked application ID and one AdwApplicationWindow; AdwHeaderBar is the title bar of an AdwToolbarView that holds the window content.",
+    "Use one adw::Application with the locked application ID and one AdwApplicationWindow; AdwHeaderBar is the title bar of an AdwToolbarView that holds the window content.",
     "One AppState lives on the GTK main thread; async work runs on a tokio runtime and returns to the main context through glib::MainContext::spawn_local. No blocking I/O runs on the main thread.",
     "Rust platform owners implement atomic file writes and XDG paths, plus SQLite records, Secret Service credentials, notifications, and the HTTPS client only where a contract names them; features depend on their traits.",
     "Read and write only the app's XDG config, data, and runtime directories and paths chosen in org.freedesktop.portal.FileChooser; never scan another user folder. A file the app replaces is written to a temporary file in the same directory and renamed over the destination.",
@@ -479,7 +479,7 @@ const linuxGtk: PresetContract = {
   launchCheck: identity => `./scripts/package.sh --install, then run GDK_BACKEND=wayland ~/.local/bin/${identity.slug} and inspect every window.`,
   permissionPatterns: linuxGtkPermissionPatterns,
   lifecycleRules: [
-    "Use AdwApplication as the entry point and keep exactly one primary window.",
+    "Use adw::Application as the entry point and keep exactly one primary window.",
     "On window close or SIGTERM, cancel active tasks, close the SQLite connection, remove temporary files, and release streams.",
     "Use a systemd user unit only for a declared background feature; no daemon starts otherwise.",
     "Reopen the main window from the launcher; there is no Dock or menu-bar concept.",
@@ -493,8 +493,8 @@ const linuxGtk: PresetContract = {
     () => "cargo build --release",
     identity => `desktop-file-validate resources/${identity.bundleId}.desktop`,
     identity => `appstreamcli validate resources/${identity.bundleId}.metainfo.xml`,
-    () => "makepkg --printsrcinfo",
   ],
+  deviceGates: { rule: "Arch host only: makepkg --printsrcinfo and the Wayland launch check need an Arch-based host with a Wayland session; on another host the completion report names these gates as not run and reports PARTIAL.", commands: ["makepkg --printsrcinfo"] },
   packagingRules: [
     "scripts/package.sh is the sole packaging authority for local proof: release build, install to ~/.local, desktop entry, icon, metainfo, and optional systemd unit.",
     "PKGBUILD is the Arch distribution authority: cargo build --release, install binary, desktop entry, icon, metainfo, license, and optional systemd unit.",

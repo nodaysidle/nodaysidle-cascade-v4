@@ -43,7 +43,7 @@ point. Keep every helper listed here and extend it; do not replace the compositi
 helpers, or the error path with a test double.
 
 Shipped helpers:
-- src/lib.rs, src/main.rs, src/app.rs: AdwApplication entry and one window.
+- src/lib.rs, src/main.rs, src/app.rs: adw::Application entry and one window.
 - src/state.rs: AppState.
 ${settings ? "- src/config.rs, src/paths.rs: atomic JSON settings under XDG config.\n" : "- src/paths.rs: XDG data and runtime paths. This product declares no settings, so there is no settings file or settings type.\n"}- src/platform/atomic_file.rs: same-directory temporary file and rename.
 ${clock ? "- src/platform/clock.rs: the Clock trait and SystemClock; owners take time only through a Clock they are given.\n" : ""}${records ? "- src/platform/sqlite.rs: SQLite with PRAGMA user_version.\n" : ""}${secrets ? "- src/platform/credentials.rs: Secret Service through the keyring crate.\n" : ""}${http ? "- src/platform/http.rs: one reqwest client.\n" : ""}- src/platform/runtime.rs: one shared tokio runtime for async work.
