@@ -5,7 +5,8 @@ import type { NormalizedBlueprint } from "./compiler"
 import type { FeatureSurface } from "./schema"
 import { gtkSpecialize } from "./gtkContracts"
 import { tauriSpecialize } from "./tauriContracts"
-import { WAYBAR_COMPOSITION_ROOT, WAYBAR_FAILURE_RULE, WAYBAR_PROVIDER_NOTES, WAYBAR_RUNTIME_STORY, WAYBAR_UNIT_CONVENTION } from "./waybarContracts"
+import { WAYBAR_COMPOSITION_ROOT, WAYBAR_EMPTY_LABEL, WAYBAR_FAILURE_RULE, WAYBAR_PROVIDER_NOTES, WAYBAR_RUNTIME_STORY, WAYBAR_TIME_CONVENTION, WAYBAR_UNITS_KIT, WAYBAR_UNIT_CONVENTION, waybarKitParts } from "./waybarContracts"
+import { waybarLaunchers } from "./kits"
 
 export const PRESET_IDS = [
   "linux-wayland-gtk4-desktop",
@@ -539,11 +540,15 @@ const linuxGtk: PresetContract = {
 
 // Without a records data object the packet describes no SQLite file, record line, or SQLite shutdown step, and the persisted values are the settings file alone.
 function waybarSpecialize(preset: PresetContract, blueprint: NormalizedBlueprint): Partial<PresetContract> {
-  if (blueprint.persistenceNeeds.some(need => need.storage === "records")) return {}
+  // The Units and Time conventions name kit files, so they appear only when the kit ships those files.
+  const parts = waybarKitParts(blueprint)
+  const launches = waybarLaunchers(blueprint)
+  const shipped = preset.runtimeArchitecture.filter(line => !(line.startsWith("Units are fixed") && !parts.sizes) && !(line.startsWith("Time: ") && !parts.localTime) && !(line.startsWith("A click feature that opens") && !launches.pages.length && !launches.notifies))
+  if (blueprint.persistenceNeeds.some(need => need.storage === "records")) return { runtimeArchitecture: shipped }
   return {
     persistence: { ...preset.persistence, recordsPlacement: "None: no data object declares records, so no database file is created." },
-    runtimeArchitecture: preset.runtimeArchitecture.map(line => line.replace("persisted records (SQLite records and the JSON settings file,", "persisted values (the JSON settings file,").replace(" A setting is a key in the values map of config.json only (no SQLite table for it) and a record is SQLite only (no config key for it).", "")),
-    lifecycleRules: preset.lifecycleRules.map(rule => rule.replace("close the SQLite connection and ", "")),
+    runtimeArchitecture: shipped.map(line => line.replace("persisted records (SQLite records and the JSON settings file,", "persisted values (the JSON settings file,").replace(" A setting is a key in the values map of config.json only (no SQLite table for it) and a record is SQLite only (no config key for it).", "")),
+    lifecycleRules: preset.lifecycleRules.map(rule => rule.replace(" (a store is opened inside each pass and dropped at its end)", "")),
     fileBoundaryDetails: preset.fileBoundaryDetails?.filter(detail => !detail.startsWith("Records:")),
   }
 }
@@ -554,7 +559,7 @@ const linuxWaybar: PresetContract = {
   label: "Hyprland Waybar Module",
   platform: "Linux (Wayland; Hyprland; Waybar)",
   implementationMarker: "custom/",
-  allowedTechnologies: ["Rust", "Waybar custom module JSON", "serde", "serde_json", "clap", "dirs", "thiserror", "tempfile", "rusqlite", "reqwest with rustls", "tokio", "keyring (Secret Service)", "signal-hook (SIGTERM flag)", "xdg-open (xdg-utils)", "notify-send (libnotify)", "systemd user units", "cargo test", "PKGBUILD"],
+  allowedTechnologies: ["Rust", "Waybar custom module JSON", "serde", "serde_json", "clap", "dirs", "thiserror", "tempfile", "rusqlite", "reqwest with rustls", "tokio", "keyring (Secret Service)", "signal-hook (SIGTERM flag)", "nix (statvfs)", "chrono (local time zone)", "xdg-open (xdg-utils)", "notify-send (libnotify)", "systemd user units", "cargo test", "PKGBUILD"],
   forbiddenTechnologies: ["GTK windows", "Qt windows", "Tauri", "Electron", "X11-only APIs", "xdotool", "libappindicator", "background clipboard watching"],
   testFramework: "cargo test, JSON output schema tests, and a hands-on Waybar launch check",
   sourceLayout: identity => [
@@ -593,10 +598,11 @@ const linuxWaybar: PresetContract = {
     "The command line is exactly: no argument or --once (print one JSON object), --service (the refresh loop), --action click or --action refresh, and --set KEY=VALUE (save one declared setting into the config store). An unknown action or key exits 2 with a message on stderr. The Waybar fragment (resources/waybar/config.jsonc, copied from the kit) binds on-click to --action click only, and only when a feature declares invokedBy click; that feature owns the click hook in src/module.rs. Right and middle click stay unbound unless a feature declares them. There is no window, no key grab, and no clipboard watcher.",
     "Two different intervals: the Waybar fragment interval (preset option refreshSeconds) is how often Waybar re-runs the exec path to re-read the cache and never fetches; the service refresh interval is the refreshing feature's declared runsEverySeconds (the Schedule line in its interface contract), and settings.refresh_seconds in src/config.rs defaults to it (900 only when no feature declares a schedule) with the kit test asserting the same value.",
     WAYBAR_RUNTIME_STORY,
-    `Units: ${WAYBAR_UNIT_CONVENTION}`,
+    `${WAYBAR_UNIT_CONVENTION}${WAYBAR_UNITS_KIT}`,
+    `${WAYBAR_TIME_CONVENTION}`,
     "Source of truth: persisted records (SQLite records and the JSON settings file, per each data object's declared storage) are authoritative; cache.json under $XDG_RUNTIME_DIR is only a derived render of the final label text, written by the --service loop and read by --once, and no feature reads it as data. A setting is a key in the values map of config.json only (no SQLite table for it) and a record is SQLite only (no config key for it).",
-    "Display: the label format and any stale wording come only from the declared acceptance criteria of the owning features; where they name no stale wording, the one constant STALE_SUFFIX in src/module.rs is appended to the label and the class becomes stale. No other marker is invented.",
-    "Classes: the output class is exactly one of normal, warning, critical, stale, empty, each coloured in resources/waybar/style.css. render_with sets it. Before the first successful refresh the class is empty and the text is settings.text. A reading is stale when the last refresh failed or it is older than twice the service interval: the class is stale, the text keeps the last value plus the stale marker, and stale wins over warning and critical, so the severity colour is not shown while stale. Otherwise the class is normal, or warning or critical from the raw ModuleOutput.value (not the rounded label) only when a feature's acceptance criteria state thresholds (amber is warning, red is critical); with no stated thresholds it is always normal.",
+    `Display: the label is the labelTemplate of the one feature that composes it, with {value} replaced by the formatted reading; the stale marker is the one constant STALE_SUFFIX in src/module.rs, appended to the label when the class becomes stale (stale is derived when the module renders, never stored). The empty label is always ${WAYBAR_EMPTY_LABEL}, the kit default of Settings.text. No other marker is invented.`,
+    `Classes: the output class is exactly one of normal, warning, critical, stale, empty, each coloured in resources/waybar/style.css. render_with sets it. Before the first successful refresh the class is empty and the text is settings.text (default ${WAYBAR_EMPTY_LABEL}). A reading is stale when the last refresh failed or it is older than twice the service interval: the class is stale, the text keeps the last value plus the stale marker, and stale wins over warning and critical, so the severity colour is not shown while stale. Otherwise the class is normal, or warning (amber) or critical (red) from the raw ModuleOutput.value (not the rounded label) against THRESHOLDS in src/module.rs, which the kit generates from the thresholds a feature declares (strictly above or strictly below, critical wins); with no declared thresholds it is always normal.`,
     "A click feature that opens a declared service web page runs xdg-open through std::process::Command behind an injectable Launcher trait (src/platform/launcher.rs) and the Arch package depends on xdg-utils; a click feature that sends a notification runs notify-send the same way and the package depends on libnotify.",
   ],
   integrationBoundary: "Use one reqwest client with rustls inside each integration owner; HTTPS only, typed serde DTOs, timeouts, and privacy-safe errors. The module output never contains a credential or raw response body.",
@@ -628,7 +634,7 @@ const linuxWaybar: PresetContract = {
   lifecycleRules: [
     "The Waybar exec path is stateless per invocation and exits after one JSON object.",
     "A declared background feature runs under a systemd user unit with Restart=on-failure.",
-    "The cache is written atomically on every refresh; on SIGTERM the service loop (module::serve_until in src/module.rs, owned by OWN-LIFECYCLE-COORDINATOR) finishes the current pass, then close the SQLite connection and remove temporary files.",
+    "The cache is written atomically on every refresh; on SIGTERM the service loop (module::serve_until in src/module.rs, owned by OWN-LIFECYCLE-COORDINATOR) finishes the current pass (a store is opened inside each pass and dropped at its end), then removes the temporary files.",
     "The installer copies the Waybar fragment and systemd unit; it does not edit other Waybar modules.",
   ],
   accessibilityRules: ["Waybar owns rendering; use text, tooltip, and class fields so state is never color-only, and keep text short enough for a bar."],
@@ -638,10 +644,8 @@ const linuxWaybar: PresetContract = {
     () => "cargo clippy --all-targets --all-features -- -D warnings",
     () => "cargo test",
     () => "cargo build --release",
-    () => "./scripts/package.sh --install",
-    identity => `systemd-analyze verify resources/systemd/${identity.slug}.service`,
-    () => "makepkg --printsrcinfo",
   ],
+  deviceGates: { rule: "Local-only gates: ./scripts/package.sh --install, systemd-analyze verify, and makepkg --printsrcinfo install and start a real user service and need a user systemd session and an Arch-based host; in a sandbox or CI the completion report names them as not run and reports PARTIAL with the reason. Run them in this order, because systemd-analyze verify fails until the binary is installed.", commands: ["./scripts/package.sh --install", "systemd-analyze verify resources/systemd/{slug}.service", "makepkg --printsrcinfo"] },
   packagingRules: [
     "scripts/package.sh is the sole packaging authority for local proof: release build copied to dist/ under the project slug; with --install also the binary under ~/.local/bin, Waybar fragment under ~/.config/waybar, systemd unit under ~/.config/systemd/user, daemon-reload, and systemctl --user enable --now of the unit.",
     "PKGBUILD is the Arch distribution authority: install binary under /usr/bin, Waybar fragment (exec path rewritten to /usr/bin), style fragment, systemd unit (exec path rewritten to /usr/bin), and license; its depends list holds only what the locked stack needs at run time.",

@@ -8,7 +8,7 @@ import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { gtkStoreInterface, refineGtkContracts, refineGtkPhases } from "./gtkContracts"
 import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarRoles, waybarTaskNotes } from "./kits"
-import { waybarLifecycleNote, waybarPageDetail, waybarRequestDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarSourceDetail } from "./waybarContracts"
+import { waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarSourceDetail } from "./waybarContracts"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
 import { TAURI_WIRE_FORMAT, tauriDocumentInterface, tauriFeatureOps, tauriStoreInterface, tauriTaskPrompt, type TauriData, type TauriFeatureUse } from "./tauriContracts"
@@ -17,7 +17,7 @@ export const DOCUMENT_NAMES = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS
 export type DocumentName = (typeof DOCUMENT_NAMES)[number]
 export type ContractKind = "interface" | "data" | "integration" | "lifecycle" | "persistence" | "credential" | "permission" | "recovery" | "security" | "packaging"
 
-export type SystemSource = "none" | "network-received" | "network-sent" | "load-average" | "memory" | "battery"
+export type SystemSource = "none" | "network-received" | "network-sent" | "load-average" | "memory" | "battery" | "disk-space"
 export type InvokedBy = "user-control" | "click" | "schedule" | "launch" | "shortcut"
 export type DataOperation = "create" | "read" | "update" | "delete"
 export interface DataField {
@@ -57,6 +57,8 @@ export interface NormalizedBlueprint {
     readonly runsEverySeconds: number | null
     readonly runsDailyAt: string | null
     readonly systemSource: SystemSource
+    readonly thresholds: NonNullable<SemanticBlueprint["features"][number]["thresholds"]>
+    readonly labelTemplate: string
     readonly runsAtField: SemanticBlueprint["features"][number]["runsAtField"]
     readonly resourceIds: readonly string[]
     readonly choices: readonly string[]
@@ -71,6 +73,7 @@ export interface NormalizedBlueprint {
     readonly endpoint: string
     readonly webPage: string
     readonly requestValueFrom: string
+    readonly requestValueType: "text" | "number"
     readonly responseFields: readonly DataField[]
     readonly failureBehavior: string
     readonly recovery: string
@@ -146,6 +149,8 @@ export interface GraphFeature {
   readonly runsEverySeconds: number | null
   readonly runsDailyAt: string | null
   readonly systemSource: SystemSource
+  readonly thresholds: NormalizedBlueprint["features"][number]["thresholds"]
+  readonly labelTemplate: string
   readonly runsAtField: SemanticBlueprint["features"][number]["runsAtField"]
   readonly resourceIds: readonly string[]
   readonly requiredOwnerIds: readonly string[]
@@ -562,6 +567,8 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,
       systemSource: feature.systemSource,
+      thresholds: feature.thresholds ?? [],
+      labelTemplate: (feature.labelTemplate ?? "").trim(),
       runsAtField: feature.runsAtField,
       resourceIds: [],
       usesPlatformNeeds: unique(feature.usesPlatformNeeds),
@@ -598,6 +605,7 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       endpoint: item.endpoint.trim(),
       webPage: item.webPage.trim(),
       requestValueFrom: cleanMeaning(item.requestValueFrom),
+      requestValueType: item.requestValueType ?? "text",
       responseFields: item.responseFields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional })).filter(field => field.name),
       failureBehavior: "Return a privacy-safe authentication, rate, transport, timeout, filtered, or provider failure without raw response content.",
       recovery: "Preserve recoverable local input and allow only an explicit retry or explicit service change.",
@@ -997,7 +1005,7 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
   if (operations.length) {
     lines.push(`Store operations, exactly these and no others: ${operations.map(operation => `${operation} (${users.filter(feature => operationsOf(feature).includes(operation)).map(feature => feature.id).join(", ")})`).join("; ")}.`)
     lines.push(storeInterfaceDetail(presetId, item, operations))
-    if (presetId === "linux-hyprland-waybar-module") lines.push(...waybarSingleRecordDetail(item))
+    if (presetId === "linux-hyprland-waybar-module") lines.push(...waybarSingleRecordDetail(item, operations))
   } else if (presetId === "astro-web") {
     lines.push(storeInterfaceDetail(presetId, item, operations))
   }
@@ -1243,7 +1251,7 @@ function buildOwnersAndContracts(
   const contracts: GraphContract[] = []
   for (const feature of features) {
     const key = feature.id.replace(/^FEAT-/, "")
-    const interfaceDetails = [`Inputs: ${feature.inputs.join("; ")}`, `Outputs: ${feature.outputs.join("; ")}`, ...feature.choices.map(choice => `Choices: ${choice}`), ...(feature.runsEverySeconds !== null ? [`Schedule: runs by itself every ${feature.runsEverySeconds} seconds; this exact value is the default that code and tests use.`] : []), ...(feature.runsDailyAt !== null ? [`Schedule: runs by itself every day at ${feature.runsDailyAt} local time.`] : []), ...waybarSourceDetail(feature.systemSource)]
+    const interfaceDetails = [`Inputs: ${feature.inputs.join("; ")}`, `Outputs: ${feature.outputs.join("; ")}`, ...feature.choices.map(choice => `Choices: ${choice}`), ...(feature.runsEverySeconds !== null ? [`Schedule: runs by itself every ${feature.runsEverySeconds} seconds; this exact value is the default that code and tests use.`] : []), ...(feature.runsDailyAt !== null ? [`Schedule: runs by itself every day at ${feature.runsDailyAt} local time.`] : []), ...waybarSourceDetail(feature.systemSource), ...(preset.id === "linux-hyprland-waybar-module" ? waybarFeatureDetail(feature) : [])]
     contracts.push(contract(
       `CON-${key}-INTERFACE`,
       "interface",
@@ -1856,7 +1864,8 @@ function lockedStackFor(preset: PresetContract, blueprint: NormalizedBlueprint):
   if (preset.id !== "linux-hyprland-waybar-module" && preset.id !== "linux-wayland-gtk4-desktop") return preset.allowedTechnologies
   const { records, secrets, http } = rustKitHelpers(blueprint)
   const launchers = preset.id === "linux-hyprland-waybar-module" ? waybarLaunchers(blueprint) : { pages: [], notifies: false }
-  const omitted = new Set([...(records ? [] : ["rusqlite"]), ...(secrets ? [] : ["keyring (Secret Service)"]), ...(http ? [] : ["reqwest with rustls"]), ...(launchers.pages.length ? [] : ["xdg-open (xdg-utils)"]), ...(launchers.notifies ? [] : ["notify-send (libnotify)"])])
+  const parts = preset.id === "linux-hyprland-waybar-module" ? waybarKitParts(blueprint) : { disk: false, localTime: false }
+  const omitted = new Set([...(parts.disk ? [] : ["nix (statvfs)"]), ...(parts.localTime ? [] : ["chrono (local time zone)"]), ...(records ? [] : ["rusqlite"]), ...(secrets ? [] : ["keyring (Secret Service)"]), ...(http ? [] : ["reqwest with rustls"]), ...(launchers.pages.length ? [] : ["xdg-open (xdg-utils)"]), ...(launchers.notifies ? [] : ["notify-send (libnotify)"])])
   return preset.allowedTechnologies.filter(technology => !omitted.has(technology))
 }
 
@@ -1898,6 +1907,8 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,
       systemSource: feature.systemSource,
+      thresholds: feature.thresholds,
+      labelTemplate: feature.labelTemplate,
       runsAtField: feature.runsAtField,
       resourceIds: feature.resourceIds,
       requiredOwnerIds: [],
@@ -1973,7 +1984,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     features,
     acceptance,
     requirements,
-    contracts: presetId === "linux-wayland-gtk4-desktop" ? refineGtkContracts(contracts) : contracts,
+    contracts: presetId === "linux-wayland-gtk4-desktop" ? refineGtkContracts(contracts) : presetId === "linux-hyprland-waybar-module" ? refineWaybarContracts(contracts) : contracts,
     owners,
     phases,
     foundationFiles: unique([...preset.sourceLayout(identity), ...kitFoundationFiles, ...(astroPlan?.foundationExtras ?? []), ...(astroPlan?.seedContentPaths ?? [])]),
@@ -1991,7 +2002,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     signingDecision: preset.signingDecision(identity),
     installationDecision: preset.installationDecision(identity),
     validationCommands: preset.validationCommands.map(command => command(identity)),
-    ...(preset.deviceGates ? { deviceValidation: preset.deviceGates } : {}),
+    ...(preset.deviceGates ? { deviceValidation: { ...preset.deviceGates, commands: preset.deviceGates.commands.map(command => command.replace("{slug}", identity.slug)) } } : {}),
     packagingRules: preset.packagingRules,
     lifecycleRules: preset.lifecycleRules,
     accessibilityRules: preset.accessibilityRules,
