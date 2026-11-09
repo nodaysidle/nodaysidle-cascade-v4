@@ -159,7 +159,7 @@ describe("Astro packets for a site with several record types", () => {
     expect(seed).toContain("Sample content")
     expect(packet.documents["TASKS.md"]).toContain("keep its sample entry unchanged and invent nothing; the site owner replaces it")
     const data = packet.graph.phases.flatMap(phase => phase.tasks).find(task => task.ownerIds.includes("OWN-DATA-STORE"))!
-    expect(data.prompt).toContain("create one file per entry the idea names, named with a two-digit numeric prefix in the order the idea lists them (01-, 02-), and delete that collection's 01-sample-entry.md")
+    expect(data.prompt).toContain("create one file per named entry, named with a two-digit numeric prefix in the order the idea lists them (01-, 02-), and delete that collection's sample entries")
   })
 
   it("states the content catalog interface and tests pages over the build", async () => {
@@ -226,7 +226,11 @@ describe("Astro packets for a site with several record types", () => {
     for (const name of ["FeaturedBook", "ReadingEvent", "OpeningHours"]) expect(catalog).toContain(`export async function list${name}Entries()`)
     expect(packet.graph.foundationFiles).not.toContain("src/lib/contentcatalog.ts")
     expect(kitFile(packet, "README.md")).toContain("src/lib/contentcatalog.ts")
-    for (const label of ["Title", "Author", "Short note"]) expect(page).toContain(`<dt>${label}</dt>`)
+    // The title is the h1, so it gets no second row; labels are words, not field keys; long text is split into paragraphs.
+    for (const label of ["Author", "Short note"]) expect(page).toContain(`<dt>${label}</dt>`)
+    expect(page).not.toContain("<dt>Title</dt>")
+    expect(page).toContain("split(/\\n\\s*\\n/)")
+    expect(page).toContain("description={entry.data.shortNote}")
     const events = { ...lanternBooksBlueprint, features: lanternBooksBlueprint.features.map(feature => feature.name === "Book page" ? { ...feature, usesData: ["Reading event"], dataOperations: [{ data: "Reading event", operations: ["read" as const] }] } : feature) }
     const eventPage = kitFile(await compilePacket(events, "astro-web"), "src/pages/reading-event/[slug].astro")!
     expect(eventPage).toContain("entry.data.startsAt.toISOString()")
@@ -269,5 +273,71 @@ describe("Astro packets for a site with several record types", () => {
       const files = packet.kit.map(file => file.content).join("\n")
       expect(files, valueType).not.toContain("undefined")
     }
+  })
+
+  describe("an idea that states a count of entries but names none", () => {
+    const withCount = (count: number | null) => ({ ...lanternBooksBlueprint, dataObjects: lanternBooksBlueprint.dataObjects.map(item => item.name === "Featured book" ? { ...item, entryCount: count } : item) })
+
+    it("seeds exactly that many numbered sample entries and states the count in every place a task reads", async () => {
+      const packet = await compilePacket(withCount(5), "astro-web")
+      const names = [1, 2, 3, 4, 5].map(index => `0${index}-sample-entry.md`)
+      for (const name of names) {
+        expect(kitFile(packet, `src/content/featured-book/${name}`), name).toContain("Sample content")
+        expect(packet.graph.foundationFiles).toContain(`src/content/featured-book/${name}`)
+      }
+      expect(kitFile(packet, "src/content/featured-book/06-sample-entry.md")).toBeUndefined()
+      expect(kitFile(packet, "src/content/featured-book/03-sample-entry.md")).toContain("title: Sample text 3")
+      expect(kitFile(packet, "src/content/reading-event/02-sample-entry.md")).toBeUndefined()
+      const tasks = packet.documents["TASKS.md"]
+      expect(tasks).toContain("holds exactly 5 numbered sample entries")
+      expect(tasks).toContain("never requires a real name")
+      const data = packet.graph.phases.flatMap(phase => phase.tasks).find(task => task.ownerIds.includes("OWN-DATA-STORE"))!
+      expect(data.prompt).toContain("already holds exactly 5 numbered sample entries")
+      expect(data.prompt).toContain("add or delete none")
+    })
+
+    it("keeps one plain sample and a file-count test rule when no count is stated", async () => {
+      for (const count of [null, undefined]) {
+        const packet = await compilePacket(withCount(count as number | null), "astro-web")
+        expect(kitFile(packet, "src/content/featured-book/02-sample-entry.md")).toBeUndefined()
+        expect(kitFile(packet, "src/content/featured-book/01-sample-entry.md")).toContain("title: Sample text\n")
+        expect(packet.documents["TASKS.md"]).toContain("compare against the number of files in its src/content folder, never a fixed number")
+        expect(packet.documents["TASKS.md"]).not.toContain("numbered sample entries (")
+      }
+    })
+
+    it("rejects a count on anything but records, and tells the provider how to set it", async () => {
+      const { auditSemanticIntake, buildBlueprintInstructions, providerJsonSchema } = await import("../src/schema")
+      const base = lanternBooksBlueprint
+      const settings = { ...base.dataObjects[0]!, storage: "settings" as const, entryCount: 3 }
+      const issues = auditSemanticIntake({ ...base, dataObjects: [settings, ...base.dataObjects.slice(1)] })
+      expect(issues.map(issue => issue.rule)).toContain("semantic.entry-count-storage")
+      expect(buildBlueprintInstructions({ idea: "Five wild flowers." })).toContain("entryCount")
+      expect(JSON.stringify(providerJsonSchema)).toContain("entryCount")
+    })
+  })
+
+  it("makes the static-site boilerplate say what applies, and asserts the no-forms constraint in the packaging test", async () => {
+    const packet = await compilePacket(lanternBooksBlueprint, "astro-web")
+    const trd = packet.documents["TRD.md"]
+    expect(trd).not.toContain("last safe state")
+    expect(trd).not.toContain("signature, package, install")
+    expect(trd).toContain("A failed build or validation command blocks completion.")
+    expect(trd).toContain("no built page contains a form, input, or textarea element")
+    expect(packet.documents["TASKS.md"]).toContain("Then run npm install once")
+  })
+
+  it("enforces HH:MM in the kit schema, lists README.md among the copied kit files, and starts feature pages from their kit shell", async () => {
+    const base = fixtureCases.find(item => item.presetId === "astro-web")!.blueprint
+    const stalls = { name: "Stalls", purpose: "The market stalls.", sensitivity: "public" as const, retentionIntent: "Kept in the repository.", storage: "records" as const, writeMode: "direct" as const, singleRecord: false, entryCount: null, fields: [{ name: "Name", valueType: "text" as const, optional: false }, { name: "Opens at", valueType: "time" as const, optional: false }] }
+    const packet = await compilePacket({ ...base, dataObjects: [stalls], features: base.features.map(feature => ({ ...feature, usesData: ["Stalls"], dataOperations: [{ data: "Stalls", operations: ["read" as const] }] })) }, "astro-web")
+    expect(kitFile(packet, "src/content.config.ts")).toContain("opensAt: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/)")
+    expect(kitFile(packet, "src/content/stalls/01-sample-entry.md")).toContain('opensAt: "09:00"')
+    expect(packet.documents["TRD.md"]).toContain("HH:MM, 24-hour")
+    expect(kitFile(packet, "README.md")).toMatch(/- README\.md\n/)
+    const lantern = (await compilePacket(lanternBooksBlueprint, "astro-web")).graph.phases.flatMap(phase => phase.tasks)
+    const about = lantern.find(task => task.ownerIds.includes("OWN-ABOUT-PAGE"))!
+    expect(about.prompt).toContain("Start from kit/src/pages/about.astro, a shell with the layout and one h1")
+    expect(about.prompt).toContain("through listOpeningHoursEntries() from src/lib/contentcatalog.ts")
   })
 })

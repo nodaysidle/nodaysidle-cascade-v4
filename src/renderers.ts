@@ -1,4 +1,4 @@
-import { ASTRO_DESIGN_TOKENS, fieldKey } from "./astroWeb"
+import { ASTRO_DESIGN_TOKENS, fieldKey, seedFileNames } from "./astroWeb"
 import { DOCUMENT_NAMES, sharedModifyEditors, type DocumentName, type DocumentPacket, type GraphContract, type GraphFeature, type GraphTask, type ProjectGraph } from "./compiler"
 
 function bullets(values: readonly string[]): string {
@@ -59,9 +59,12 @@ function contentSeedSection(graph: ProjectGraph): string[] {
   const seedLines = graph.astroPlan.collections.map(item => `Entries of ${item.dataName || "the collection"} live in src/content/${item.name}/, one file per entry named by its slug. Frontmatter holds exactly ${item.fields.map(field => `${fieldKey(field.name)}${field.optional ? " (optional)" : ""}`).join(", ")}, spelled exactly like this in src/content.config.ts, the starter seed and every page; the body holds any longer text of the entry. ${meaning.get(item.dataName) ?? ""}`.trim())
   return [section("Content Seed Requirements", bullets([
     ...seedLines,
-    `Starter sample entries, one per collection (the collection loads them, so pages build and lists are not empty): ${graph.astroPlan.seedContentPaths.join(", ")}. Their values are placeholders, not facts.`,
-    "When the idea supplies no entries for a collection, keep its sample entry unchanged and invent nothing; the site owner replaces it with real entries after delivery, and no task rewrites it. When the idea names entries, OWN-DATA-STORE creates one file per named entry and deletes that collection's sample entry. Test fixtures live only under tests/.",
-    "A long-text field renders as paragraphs split on blank lines; the markdown body renders only on a detail page.",
+    `Starter sample entries (the collection loads them, so pages build and lists are not empty): ${graph.astroPlan.seedContentPaths.join(", ")}. Their values are placeholders, not facts.`,
+    ...graph.astroPlan.collections.filter(item => item.entryCount).map(item => `The idea states ${item.entryCount} ${item.dataName || "entries"} and names none of them, so src/content/${item.name}/ holds exactly ${item.entryCount} numbered sample entries (${seedFileNames(item).join(", ")}): keep all ${item.entryCount} unchanged, invent no names, and add or delete none. Any criterion that says exactly ${item.entryCount} is met by these ${item.entryCount} files.`),
+    "When the idea supplies no entries and states no count for a collection, keep its sample entry unchanged and invent nothing; the site owner replaces it with real entries after delivery, and no task rewrites it. When the idea names entries, OWN-DATA-STORE creates one file per named entry and deletes that collection's sample entries. Test fixtures live only under tests/.",
+    "Page-level tests assert on the HTML in dist/ for the entries that exist. For a collection with a stated count they assert that exact count and that each seeded entry id has its page and list item; for any other collection they compare against the number of files in its src/content folder, never a fixed number. A test reads the expected values from the content files and never requires a real name.",
+    ...(graph.astroPlan.collections.some(item => item.fields.some(field => field.valueType === "time")) ? ["A time-of-day field is written HH:MM, 24-hour, in the local time of the place the site describes (no timezone is stored); src/content.config.ts rejects any other spelling, so a malformed time fails npm run build. Pages show the value as written, and a pair of times reads from-to as HH:MM–HH:MM."] : []),
+    "A long-text field renders as paragraphs split on blank lines (one p element per paragraph) on the detail page; the markdown body renders only on a detail page.",
     "Order: the content files carry no order field, so every list is in ascending entry id (the file name without extension, compared as text) unless the feature behavior names a sort by one of its own declared fields, which the page then applies to the list it reads. Entry files are named with a two-digit numeric prefix (01-, 02-, ...) so the file order is the order the owner wants; a new entry takes the next prefix.",
   ]))]
 }
@@ -87,7 +90,7 @@ function kitRules(graph: ProjectGraph): string[] {
   const ownedKit = graph.kitPaths.filter(path => !graph.foundationFiles.includes(path))
   return [
     ...(foundationKit.length
-      ? [`Before TASK-01, copy these kit files to the same path in the project root: ${foundationKit.join(", ")}. Keep every behavior kit/README.md lists and keep the kit tests passing.`]
+      ? [`Before TASK-01, copy these kit files to the same path in the project root: ${foundationKit.join(", ")}. Keep every behavior kit/README.md lists and keep the kit tests passing.${graph.presetId === "astro-web" ? " Then run npm install once, so astro and vitest exist before any validation command. npm run test:a11y checks that every internal link resolves, so it passes only once every route exists and is run in the packaging task; a list page may link to a detail route that a later task builds." : ""}`]
       : []),
     ...(ownedKit.length
       ? [`Do not copy these kit files before their owning task. When the task lists one in Files to create, start from the kit content instead of inventing it: ${ownedKit.join(", ")}.`]

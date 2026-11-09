@@ -1,7 +1,7 @@
 import { pascal, type DataField, type NormalizedBlueprint } from "./compiler"
 import type { ProjectIdentity } from "./presets"
 import type { DataValueType } from "./schema"
-import { ASTRO_BUDGET_TEXT, ASTRO_PERFORMANCE_BUDGET, astroCollections, astroDateNotes, fieldKey, astroNavLinks, placeAstroFeatures, type AstroCollection } from "./astroWeb"
+import { ASTRO_BUDGET_TEXT, ASTRO_PERFORMANCE_BUDGET, astroCollections, astroDateNotes, fieldKey, astroNavLinks, placeAstroFeatures, seedFileNames, type AstroCollection } from "./astroWeb"
 
 export interface AstroKitFile {
   readonly path: string
@@ -22,7 +22,7 @@ const ZOD_FOR: Record<DataValueType, string> = {
   flag: "z.boolean()",
   date: "z.coerce.date()",
   "date-time": "z.coerce.date()",
-  time: "z.string()",
+  time: "z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/)",
   "text-list": "z.array(z.string())",
   reference: "z.string()",
 }
@@ -34,7 +34,7 @@ const SEED_FOR: Record<DataValueType, string> = {
   flag: "true",
   date: "2026-01-01",
   "date-time": "2026-01-01",
-  time: "09:00",
+  time: "\"09:00\"",
   "text-list": "[Sample item]",
   reference: "sample-reference",
 }
@@ -47,7 +47,7 @@ function esc(text: string): string {
 // Keys the detail page reads: the first declared text field is the title; the first long text (or second text) field is the description.
 function pageKeys(fields: readonly DataField[]): { title: string; description?: string } {
   const title = fields.find(field => field.valueType === "text") ?? fields[0]!
-  const description = fields.find(field => field.valueType === "long-text" || (field.valueType === "text" && field !== title))
+  const description = fields.find(field => field.valueType === "long-text") ?? fields.find(field => field.valueType === "text" && field !== title)
   return { title: fieldKey(title.name), ...(description ? { description: fieldKey(description.name) } : {}) }
 }
 
@@ -87,7 +87,14 @@ export async function get${name}Entry(id: string) {
   }).join("")}`
 }
 
+// "foodKind" and "Food kind" both read "Food kind" as a visitor-facing label.
+function label(name: string): string {
+  const words = name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").trim().toLowerCase()
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 const SHOWN_AS: Record<string, (key: string) => string> = {
+  "long-text": key => `{entry.data.${key}.split(/\\n\\s*\\n/).map((paragraph: string) => <p>{paragraph}</p>)}`,
   flag: key => `{entry.data.${key} ? "Yes" : "No"}`,
   date: key => `{entry.data.${key}.toISOString().slice(0, 10)}`,
   "date-time": key => `{entry.data.${key}.toISOString()}`,
@@ -99,10 +106,12 @@ const SHOWN_AS: Record<string, (key: string) => string> = {
 function detailPage(item: AstroCollection): string {
   const keys = pageKeys(item.fields)
   const list = item.dataName ? `list${pascal(item.dataName)}Entries` : ""
-  const fields = item.fields.map(field => {
+  // The title is the h1, so it gets no second row.
+  const titled = item.fields.find(field => fieldKey(field.name) === keys.title)
+  const fields = item.fields.filter(field => field !== titled).map(field => {
     const key = fieldKey(field.name)
     const shown = (SHOWN_AS[field.valueType] ?? ((name: string) => `{entry.data.${name}}`))(key)
-    const row = `<dt>${esc(field.name)}</dt><dd>${shown}</dd>`
+    const row = `<dt>${esc(label(field.name))}</dt><dd>${shown}</dd>`
     return field.optional ? `      {entry.data.${key} !== undefined && <>${row}</>}` : `      ${row}`
   })
   return `---
@@ -247,12 +256,16 @@ export function astroKit(identity: ProjectIdentity, blueprint: NormalizedBluepri
   const catalog = collections.some(item => item.dataName) ? [file(CATALOG_PATH, contentCatalog(collections))] : []
   const content = collections.length ? [
     file("src/content.config.ts", contentConfig(collections)),
-    ...collections.map(item => file(`src/content/${item.name}/01-sample-entry.md`, `---
-${item.fields.map(field => `${fieldKey(field.name)}: ${SEED_FOR[field.valueType]}`).join("\n")}
+    ...collections.flatMap(item => seedFileNames(item).map((name, index) => {
+      // A counted collection numbers its samples so every entry differs; a lone sample keeps the plain placeholder values.
+      const mark = item.entryCount ? ` ${index + 1}` : ""
+      return file(`src/content/${item.name}/${name}`, `---
+${item.fields.map(field => `${fieldKey(field.name)}: ${field.valueType === "text" || field.valueType === "long-text" ? SEED_FOR[field.valueType] + mark : SEED_FOR[field.valueType]}`).join("\n")}
 ---
 
-Sample content. Keep it when the idea supplies no entries; the site owner replaces it with real entries after delivery.
-`)),
+Sample content${mark}. Keep it when the idea supplies no entries; the site owner replaces it with real entries after delivery.
+`)
+    })),
   ] : []
   // Only pages copied before TASK-01 may be required here; a shell or detail page belongs to the task that owns it.
   const pageFiles = ["src/pages/index.astro", "src/pages/404.astro"]
@@ -404,14 +417,14 @@ describe("contract", () => {
 
 Tested starting code for the static Astro site in TRD.md. Before TASK-01, copy every file in the first list below from kit/ to the same path in the project root and keep every behavior listed here. Do not copy the second list early: the task that owns each page lists it under Files to create and starts from this content.
 
-${files.filter(item => !ownedFiles.includes(item.path)).map(item => `- ${item.path}`).join("\n")}
+${[...files.filter(item => !ownedFiles.includes(item.path)).map(item => `- ${item.path}`), "- README.md"].join("\n")}
 ${ownedFiles.length ? `\nStart from these in the owning task (not copied before it):\n\n${ownedFiles.map(path => `- ${path}`).join("\n")}\n` : ""}
 ## Behavior to keep
 
 - Routes shell: src/pages/index.astro is one h1 with the product name and a place for the main-surface feature component. It carries no product copy; the feature tasks fill it. ${nav.length ? `Declared page routes (each a shell with one h1): ${nav.map(link => link.href).join(", ")}.` : "No other static page route is declared."}
 - src/pages/404.astro is the not-found page: neutral text and a link home, unless a not-found-page feature declares it, in which case that feature's task owns its text.
 - src/layouts/BaseLayout.astro imports ../styles/global.css, links every declared page route in the primary nav (add a link when a task adds a static route), and gives every page a title and meta description. Every page has exactly one h1; a feature component never adds a second.
-${collections.length ? `- src/content.config.ts exports one collection per stored data object (${collections.map(item => item.name).join(", ")}), each with a schema of that object's declared fields. Each collection starts with one sample-entry.md of placeholder values: keep it when the idea supplies no entries (the site owner replaces it later), and delete it only when real entries exist.
+${collections.length ? `- src/content.config.ts exports one collection per stored data object (${collections.map(item => item.name).join(", ")}), each with a schema of that object's declared fields. Each collection starts with one sample-entry.md of placeholder values (a collection whose idea states a count but names no entries starts with exactly that many numbered sample entries): keep them when the idea supplies no entries (the site owner replaces them later), and delete them only when real entries exist.
 - Only a collection behind an item-page feature has a [slug] route; every other page reads its own collection (through src/lib/contentcatalog.ts once its task has created it). Frontmatter keys are the camelCase field keys in content.config.ts, used identically in the seeds, the pages and the documents.` : "- The site declares no stored content collection."}
 ${astroDateNotes(features, collections).map(note => `- ${note}\n`).join("")}- Scripts: npm run check (astro check), npm test (vitest, without the two production-build checks), npm run build, npm run test:a11y and npm run audit:performance. The last two read dist/ and fail when it is missing, so run npm run build first.
 - tests/accessibility.test.ts checks every built page for html lang, one h1, a title, a meta description, alt text on every image, and resolving internal links. It is structural; keyboard and contrast review stay manual.

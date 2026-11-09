@@ -88,6 +88,8 @@ export interface NormalizedBlueprint {
     readonly writeMode: DataWriteMode
     readonly fields: readonly DataField[]
     readonly singleRecord: boolean
+    // How many entries the idea states when it names none; null otherwise.
+    readonly entryCount: number | null
   }[]
   readonly privacySecurityRequirements: readonly string[]
   readonly permissionNeeds: readonly {
@@ -596,6 +598,7 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       writeMode: item.writeMode,
       fields: item.fields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional })).filter(field => field.name),
       singleRecord: item.singleRecord,
+      entryCount: item.entryCount ?? null,
     }
   }).filter(item => item.name && item.purpose && item.retentionIntent))
   const externalServices = uniqueByName(source.externalServices.map(item => {
@@ -726,7 +729,7 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
     })),
     features,
     externalServices,
-    domainData: dataObjects.map(item => ({ name: item.name, meaning: item.purpose, retention: item.retentionIntent, sensitivity: item.sensitivity, storage: item.storage, writeMode: item.writeMode, fields: item.fields, singleRecord: item.singleRecord })),
+    domainData: dataObjects.map(item => ({ name: item.name, meaning: item.purpose, retention: item.retentionIntent, sensitivity: item.sensitivity, storage: item.storage, writeMode: item.writeMode, fields: item.fields, singleRecord: item.singleRecord, entryCount: item.entryCount })),
     privacySecurityRequirements,
     permissionNeeds,
     persistenceNeeds,
@@ -1223,6 +1226,8 @@ function buildOwnersAndContracts(
   const credentialOwnerFeatureIds = unique(credentialServices.flatMap(service => integrationFeatureIds(service, features)))
   const hasCredentialDomainData = blueprint.domainData.some(item => item.storage === "secret")
   const coreDrafts: OwnerDraft[] = []
+  // A static content site has no operation, state, signature, or install step for the generic failure wording to describe.
+  const staticAstro = preset.id === "astro-web" && !!astroPlan?.staticSite
   if (credentialServices.length || hasCredentialDomainData) {
     coreDrafts.push({ id: "OWN-CREDENTIAL-VAULT", name: "CredentialVault", kind: "credential", dependencyIds: [] })
   }
@@ -1358,8 +1363,8 @@ function buildOwnersAndContracts(
     lifecycleOwnerId,
     preset.lifecycleRules.join(" "),
     preset.lifecycleRules,
-    "A preset lifecycle invariant failure blocks completion and leaves the last safe state active.",
-    ["Restore the last safe lifecycle state, release partial resources, and rerun the focused lifecycle checks."],
+    staticAstro ? "A failed build or lifecycle check blocks completion." : "A preset lifecycle invariant failure blocks completion and leaves the last safe state active.",
+    staticAstro ? ["Fix the first failing check and rebuild."] : ["Restore the last safe lifecycle state, release partial resources, and rerun the focused lifecycle checks."],
   ))
 
   if (blueprint.persistenceNeeds.length) {
@@ -1480,8 +1485,8 @@ function buildOwnersAndContracts(
     "OWN-PACKAGING",
     blueprint.privacySecurityRequirements.join(" "),
     blueprint.privacySecurityRequirements,
-    "A privacy or security invariant failure stops the affected operation before data crosses the boundary.",
-    ["Restore the last safe state and require explicit user action before retrying."],
+    staticAstro ? "A built page that contains a form, input, or textarea fails the packaging test and blocks completion." : "A privacy or security invariant failure stops the affected operation before data crosses the boundary.",
+    staticAstro ? ["Remove the element and rebuild; the site collects no data, so nothing else needs restoring."] : ["Restore the last safe state and require explicit user action before retrying."],
   ))
 
   contracts.push(contract(
@@ -1492,7 +1497,7 @@ function buildOwnersAndContracts(
     "OWN-PACKAGING",
     preset.packagingRules.join(" "),
     [...preset.packagingRules, `Installation: ${preset.installationDecision(identity)}`, `Output artifact: ${preset.outputArtifact}`],
-    "A failed build, signature, package, install, or launch check blocks completion.",
+    staticAstro ? "A failed build or validation command blocks completion." : "A failed build, signature, package, install, or launch check blocks completion.",
     ["Fix the first failing validation command, rebuild the artifact, and rerun every later release gate."],
   ))
 
@@ -1778,7 +1783,7 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(sharedScreenView(features, preset.id), detailView, filterSlot, preset.id === "tauri2-rust-typescript-desktop")}` : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.length > 0 && ownedFeatures.every(feature => feature.invokedBy === "schedule") ? " This feature runs by itself and adds no control to the main screen: it mounts into no slot." : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") && !ownedFeatures.every(feature => feature.invokedBy === "schedule") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(sharedScreenView(ownedFeatures, preset.id), preset.id, detailView)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${sharedScreenView(ownedFeatures, preset.id).some(feature => (preset.id === "tauri2-rust-typescript-desktop" ? feature.editsRecords : true) && opsOnAny(feature).includes("update")) && sharedScreenView(features, preset.id).some(feature => opsOnAny(feature).includes("create")) ? ` If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them${preset.id === "tauri2-rust-typescript-desktop" ? "" : "; a single mark or toggle action needs no form"}.` : ""}` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? " Content entry files under src/content/ are also yours: create one file per entry the idea names, named with a two-digit numeric prefix in the order the idea lists them (01-, 02-), and delete that collection's 01-sample-entry.md; keep the sample entry when the idea names none (see Content Seed Requirements)." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "lifecycle" && blueprint ? waybarLifecycleNote(blueprint) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(sharedScreenView(features, preset.id), detailView, filterSlot, preset.id === "tauri2-rust-typescript-desktop")}` : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.length > 0 && ownedFeatures.every(feature => feature.invokedBy === "schedule") ? " This feature runs by itself and adds no control to the main screen: it mounts into no slot." : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") && !ownedFeatures.every(feature => feature.invokedBy === "schedule") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(sharedScreenView(ownedFeatures, preset.id), preset.id, detailView)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${sharedScreenView(ownedFeatures, preset.id).some(feature => (preset.id === "tauri2-rust-typescript-desktop" ? feature.editsRecords : true) && opsOnAny(feature).includes("update")) && sharedScreenView(features, preset.id).some(feature => opsOnAny(feature).includes("create")) ? ` If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them${preset.id === "tauri2-rust-typescript-desktop" ? "" : "; a single mark or toggle action needs no form"}.` : ""}` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "feature" && ownedFeature && placement?.kind === "page" && kitPaths.includes(placement.pageFile) ? ` Start from kit/${placement.pageFile}, a shell with the layout and one h1${(astroPlan?.collections ?? []).filter(item => item.dataName && ownedFeature.resourceIds.includes(`data:${dataKey(item.dataName)}`)).map(item => `; it reads ${item.dataName} only through list${pascal(item.dataName)}Entries() from src/lib/contentcatalog.ts and renders the declared fields (long text as paragraphs split on blank lines)`).join("")}.` : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? ` Content entry files under src/content/ are also yours, in addition to the create-only list above: ${astroPlan.collections.filter(item => item.entryCount).map(item => `src/content/${item.name}/ already holds exactly ${item.entryCount} numbered sample entries (the idea states that count and names none): keep all ${item.entryCount}, invent no names, add or delete none; `).join("")}for a collection whose idea names entries, create one file per named entry, named with a two-digit numeric prefix in the order the idea lists them (01-, 02-), and delete that collection's sample entries; keep the sample entry when the idea names none (see Content Seed Requirements).` : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "lifecycle" && blueprint ? waybarLifecycleNote(blueprint) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
       // An Astro page or packaging test asserts on the HTML that a production build emits into dist/, so the build runs first.
       validationCommands: unique([
         ...(preset.id === "astro-web" && (draft.kind === "feature" || draft.kind === "packaging") ? ["npm run build"] : []),
