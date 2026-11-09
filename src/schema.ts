@@ -72,6 +72,8 @@ const FeatureSchema = z.strictObject({
   buildsOn: z.array(shortMeaning).max(3).default([]),
   // What this feature does to the data it uses; "delete" is promised only when a feature declares it.
   dataOperations: z.array(z.strictObject({ data: shortMeaning, operations: z.array(z.enum(["create", "read", "update", "edit", "delete"])).min(1).max(5) })).max(8).default([]),
+  // How a read-only feature narrows the main list: text (type to search), flag (an on/off toggle such as only-not-done), sort (reorder); none for every other feature.
+  narrowsListBy: z.enum(["none", "text", "flag", "sort"]).optional(),
   // What starts the feature: the user through a control, a click on the bar module, its own schedule, app launch, or a global shortcut.
   invokedBy: z.enum(["user-control", "click", "schedule", "launch", "shortcut"]).default("user-control"),
   // How often the feature runs by itself; null when the user triggers it. Give the exact interval the idea states.
@@ -651,6 +653,10 @@ function dataShapeIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
         issues.push({ path: `features[${index}].dataOperations[${position}].data`, rule: "semantic.operations-without-data", message: `Feature '${feature.name}' declares operations on '${entry.data}', which is not in its usesData.` })
       }
     })
+    const operations = feature.dataOperations.flatMap(entry => entry.operations)
+    if ((feature.narrowsListBy ?? "none") !== "none" && (!operations.length || operations.some(operation => operation !== "read") || feature.invokedBy !== "user-control")) {
+      issues.push({ path: `features[${index}].narrowsListBy`, rule: "semantic.narrow-not-read-only", message: `Feature '${feature.name}' sets narrowsListBy ${feature.narrowsListBy} but is not a user-started feature that only reads data; set narrowsListBy to none, or declare only the read operation and invokedBy user-control.` })
+    }
   })
   return issues
 }

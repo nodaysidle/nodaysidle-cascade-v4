@@ -54,6 +54,7 @@ export interface NormalizedBlueprint {
     readonly dataOperations: readonly DataOperation[]
     readonly operationsByData: Readonly<Record<string, readonly DataOperation[]>>
     readonly editsRecords: boolean
+    readonly narrowsListBy: "none" | "text" | "flag" | "sort"
     readonly showsCurrentTime?: boolean
     readonly invokedBy: InvokedBy
     readonly runsEverySeconds: number | null
@@ -150,6 +151,7 @@ export interface GraphFeature {
   readonly dataOperations: readonly DataOperation[]
   readonly operationsByData: Readonly<Record<string, readonly DataOperation[]>>
   readonly editsRecords: boolean
+  readonly narrowsListBy: "none" | "text" | "flag" | "sort"
   readonly showsCurrentTime?: boolean
   readonly invokedBy: InvokedBy
   readonly runsEverySeconds: number | null
@@ -570,6 +572,7 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       dataOperations: unique(feature.dataOperations.flatMap(entry => entry.operations.map(operation => operation === "edit" ? "update" as const : operation))),
       operationsByData: Object.fromEntries(feature.dataOperations.map(entry => [referenceKey(entry.data), unique(entry.operations.map(operation => operation === "edit" ? "update" as const : operation))])),
       editsRecords: feature.dataOperations.some(entry => entry.operations.includes("edit")),
+      narrowsListBy: feature.narrowsListBy ?? "none",
       showsCurrentTime: feature.showsCurrentTime === true,
       invokedBy: feature.invokedBy,
       runsEverySeconds: feature.runsEverySeconds,
@@ -1777,7 +1780,7 @@ function buildPhases(
     const routeExtras = placement?.kind === "page" && placement.pageFile !== files.implementationFile ? [placement.pageFile] : []
     // Android exposes a detail view (and an edit that reuses the add form) only when a feature declares the item-page surface.
     // A filter slot is exposed only when a feature other than the first main-surface one narrows or reorders the list (reads only, user-started).
-    const filterSlot = features.some(feature => feature.ownerId !== firstMainOwnerId && feature.surface === "main" && feature.invokedBy === "user-control" && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read"))
+    const filterSlot = features.some(feature => feature.ownerId !== firstMainOwnerId && feature.surface === "main" && feature.invokedBy === "user-control" && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read") && (preset.id !== "linux-wayland-gtk4-desktop" || feature.narrowsListBy !== "none"))
     const detailView = preset.id === "android-kotlin-compose" || preset.id === "linux-wayland-gtk4-desktop" ? features.some(feature => feature.surface === "item-page") : preset.id === "tauri2-rust-typescript-desktop" ? features.some(feature => feature.editsRecords) : features.some(feature => feature.editsRecords || feature.dataOperations.includes("delete"))
     const androidExtras = preset.id === "android-kotlin-compose" && blueprint
       ? androidTaskExtras({
@@ -1969,6 +1972,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       dataOperations: feature.dataOperations,
       operationsByData: feature.operationsByData,
       editsRecords: feature.editsRecords,
+      narrowsListBy: feature.narrowsListBy,
       showsCurrentTime: feature.showsCurrentTime,
       invokedBy: feature.invokedBy,
       runsEverySeconds: feature.runsEverySeconds,

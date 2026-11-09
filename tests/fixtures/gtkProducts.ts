@@ -21,7 +21,7 @@ export const wineCellarBlueprint: SemanticBlueprint = {
     feature("Add bottle", "Add a bottle with a required name and a vintage year that is a whole number between 1800 and the current calendar year.", "A valid bottle appears in the list.", { usesData: ["Bottles"], dataOperations: ops("Bottles", "create"), buildsOn: ["Bottle list"] }),
     feature("Edit bottle", "Edit a bottle from its detail view with the same rules as adding.", "An edited bottle shows the new values.", { usesData: ["Bottles"], dataOperations: ops("Bottles", "read", "edit"), buildsOn: ["Bottle list"] }),
     feature("Remove bottle", "Remove a bottle from its detail view.", "A removed bottle leaves the list.", { usesData: ["Bottles"], dataOperations: ops("Bottles", "delete"), buildsOn: ["Bottle list"] }),
-    feature("Search bottles", "A search field narrows the list to bottles whose name contains the text; a no-match message shows when nothing matches.", "Searching shows the matching rows.", { usesData: ["Bottles"], dataOperations: ops("Bottles", "read"), buildsOn: ["Bottle list"] }),
+    feature("Search bottles", "A search field narrows the list to bottles whose name contains the text; a no-match message shows when nothing matches.", "Searching shows the matching rows.", { usesData: ["Bottles"], dataOperations: ops("Bottles", "read"), narrowsListBy: "text", buildsOn: ["Bottle list"] }),
   ],
   dataObjects: [
     { name: "Bottles", purpose: "One record per bottle.", sensitivity: "personal", retentionIntent: "Keep until the user removes it.", storage: "records", writeMode: "direct", singleRecord: false, fields: [
@@ -52,4 +52,27 @@ export const giftIdeasBlueprint: SemanticBlueprint = {
     ] },
   ],
   ideaCoverage: [{ sentence: 1, features: ["Unbought idea list", "Add gift idea", "Mark idea bought"], outsideFeatures: "none" }],
+}
+
+// A flag filter (not a search), a mark action for the done flag, a removal, no edit form and no temporary files or streams.
+export const choreChartBlueprint: SemanticBlueprint = {
+  ...base,
+  productName: "Chore Chart",
+  summary: "An offline list of chores with a name, a person and a done flag, with add, mark done, remove and a not-done filter.",
+  goals: ["Share the housework"],
+  features: [
+    feature("Chore list", "Show every chore with its name, person and done state; an empty list shows 'No chores yet. Add one.'.", "The list shows the stored chores.", { usesData: ["Chores"], dataOperations: ops("Chores", "read"), usesPlatformNeeds: ["local-storage"] }),
+    feature("Add chore", "Add a chore with a required name and person; it starts not done.", "A valid chore appears in the list.", { usesData: ["Chores"], dataOperations: ops("Chores", "create"), buildsOn: ["Chore list"] }),
+    feature("Mark chore done", "A done toggle on each row sets the done flag.", "A marked chore shows as done.", { usesData: ["Chores"], dataOperations: ops("Chores", "update"), buildsOn: ["Chore list"] }),
+    feature("Remove chore", "Remove a chore after the user confirms in a dialog.", "A removed chore leaves the list.", { usesData: ["Chores"], dataOperations: ops("Chores", "delete"), buildsOn: ["Chore list"] }),
+    feature("Show only not-done chores", "An on/off toggle shows only the chores that are not done.", "With the toggle on only not-done chores show.", { usesData: ["Chores"], dataOperations: ops("Chores", "read"), narrowsListBy: "flag", buildsOn: ["Chore list"] }),
+  ],
+  dataObjects: [
+    { name: "Chores", purpose: "One record per chore.", sensitivity: "personal", retentionIntent: "Keep until the user removes it.", storage: "records", writeMode: "direct", singleRecord: false, fields: [
+      { name: "Name", valueType: "text", optional: false },
+      { name: "Person", valueType: "text", optional: false },
+      { name: "Done", valueType: "flag", optional: false },
+    ] },
+  ],
+  ideaCoverage: [{ sentence: 1, features: ["Chore list", "Add chore", "Mark chore done", "Remove chore", "Show only not-done chores"], outsideFeatures: "none" }],
 }
