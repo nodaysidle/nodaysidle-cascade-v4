@@ -23,6 +23,7 @@ export interface AstroRoutePlan {
   readonly featurePlacements: Readonly<Record<string, AstroFeaturePlacement>>
   readonly routeSummary: readonly string[]
   readonly browserPersistence: boolean
+  readonly staticSite: boolean
   readonly dateNotes: readonly string[]
   readonly sharedDynamicRoute?: string
   readonly sharedDynamicRouteOwnerFeatureId?: string
@@ -39,6 +40,19 @@ export interface PlaceableFeature {
 // The production budget the kit's tests/performance.test.ts enforces and the documents state.
 export const ASTRO_PERFORMANCE_BUDGET = { htmlBytes: 100_000, scriptBytes: 50_000, styleBytes: 50_000 } as const
 export const ASTRO_BUDGET_TEXT = `every built HTML page under ${ASTRO_PERFORMANCE_BUDGET.htmlBytes / 1000} KB, all client JavaScript together under ${ASTRO_PERFORMANCE_BUDGET.scriptBytes / 1000} KB, all CSS together under ${ASTRO_PERFORMANCE_BUDGET.styleBytes / 1000} KB`
+
+// One spelling of a declared field name for the schema, the seeds, the pages and the documents: camelCase that keeps the
+// capitals the provider wrote ("shortDescription" stays, "Short description" becomes shortDescription), never lowercased whole.
+export function fieldKey(name: string): string {
+  const words = name.normalize("NFKD").replace(/[̀-ͯ]/g, "").split(/[^A-Za-z0-9]+/).filter(Boolean)
+    .map(word => word === word.toUpperCase() ? word.toLowerCase() : word)
+  return words.map((word, index) => (index === 0 ? word[0]!.toLowerCase() : word[0]!.toUpperCase()) + word.slice(1)).join("") || "value"
+}
+
+// A static site with no declared service and no browser storage: build-time files only, so no runtime error, retry, form or listener exists.
+export function astroStaticContentSite(blueprint: NormalizedBlueprint, runtimeMode: PresetRuntimeMode): boolean {
+  return runtimeMode === "static" && !blueprint.externalServices.length && !astroBrowserPersistence(blueprint, runtimeMode)
+}
 
 export function dataKey(name: string): string {
   return name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
@@ -173,7 +187,7 @@ export function planAstroWeb(
 
   // The 404 page always exists: a not-found-page feature owns its text, otherwise the foundation kit file does.
   if (!features.some(feature => featurePlacements[feature.id]?.kind === "page" && feature.surface === "not-found-page")) {
-    routeSummary.push("/404 — src/pages/404.astro (neutral kit text owned by the foundation; no task changes it)")
+    routeSummary.push(`/404 — src/pages/404.astro (neutral kit text owned by the foundation; no task changes it). A static build makes no page for an address that matches no entry, every unknown address${itemFeature ? ", including an item address that matches no entry," : ""} shows this page; a criterion about an unknown address is met by dist/404.html with its link home.`)
   }
 
   return {
@@ -181,10 +195,11 @@ export function planAstroWeb(
     collections,
     contentCollection: (itemFeature ? collectionOf(itemFeature, collections) : collections[0])?.name ?? "entries",
     foundationExtras: usesContentCollections ? ["src/content.config.ts"] : [],
-    seedContentPaths: collections.map(item => `src/content/${item.name}/_seed.example.md`),
+    seedContentPaths: collections.map(item => `src/content/${item.name}/sample-entry.md`),
     featurePlacements,
     routeSummary: unique(routeSummary),
     browserPersistence,
+    staticSite: astroStaticContentSite(blueprint, runtimeMode),
     dateNotes: astroDateNotes(features, collections),
     sharedDynamicRoute: itemPlacement?.kind === "page" ? itemPlacement.pageFile : undefined,
     sharedDynamicRouteOwnerFeatureId: itemFeature?.id,
@@ -206,8 +221,8 @@ export const ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS = [
 export const ASTRO_CONTENT_COLLECTION_PERSISTENCE = {
   enabledDecision: "Persistence: enabled through Astro content collections compiled at build time; public catalog data lives in src/content/ as typed markdown or MDX with no browser IndexedDB for core content.",
   disabledDecision: "Persistence: disabled. No application data is retained between visits; static assets use ordinary HTTP caching only.",
-  settingsPlacement: "Build-time content schema in src/content.config.ts; optional visitor preferences use minimal client islands only when semantics require them.",
-  recordsPlacement: "Public records are markdown or MDX files under {collection}; pages load them with getCollection() or getEntry() at build time.",
+  settingsPlacement: "Build-time content schema in src/content.config.ts; the site keeps no visitor preferences.",
+  recordsPlacement: "Public records are markdown or MDX files under {collection}; src/lib/contentcatalog.ts reads them with getCollection() at build time and pages call only its functions.",
   temporaryPlacement: "Keep draft or preview values in memory inside client islands; do not mirror build-time catalog data into IndexedDB.",
 } as const
 

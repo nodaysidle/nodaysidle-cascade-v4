@@ -95,9 +95,17 @@ describeBuild("v4 starter kits compile and pass their own tests", () => {
   // Every Astro fixture: no stored data, one record type with item pages, and several record types.
   for (const fixture of fixtureCases.filter(item => item.presetId === "astro-web")) {
     it(`Astro site kit: ${fixture.blueprint.productName}`, async () => {
-      const root = materialize(await compilePacket(fixture.blueprint, fixture.presetId))
+      const packet = await compilePacket(fixture.blueprint, fixture.presetId)
+      const root = materialize({ ...packet, kit: packet.kit.filter(file => packet.graph.foundationFiles.includes(file.name.replace(/^kit\//, ""))) })
       try {
+        // TASK-01 state: only the files copied before it exist, and npm test must already pass.
         run("npm", ["install", "--no-audit", "--no-fund"], root)
+        run("npm", ["test"], root)
+        for (const file of packet.kit.filter(item => !packet.graph.foundationFiles.includes(item.name.replace(/^kit\//, "")))) {
+          const path = join(root, file.name.replace(/^kit\//, ""))
+          mkdirSync(dirname(path), { recursive: true })
+          writeFileSync(path, file.content)
+        }
         run("npm", ["run", "check"], root)
         run("npm", ["test"], root)
         run("npm", ["run", "build"], root)

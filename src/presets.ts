@@ -1,6 +1,6 @@
 import { ANDROID_DEVICE_COMMANDS, ANDROID_DEVICE_GATE_RULE } from "./androidPlan"
 import { ANDROID_SDK } from "./androidKit"
-import { ASTRO_BUDGET_TEXT } from "./astroWeb"
+import { ASTRO_BUDGET_TEXT, astroStaticContentSite } from "./astroWeb"
 import type { NormalizedBlueprint } from "./compiler"
 import type { FeatureSurface } from "./schema"
 import { tauriSpecialize } from "./tauriContracts"
@@ -165,6 +165,8 @@ export interface PresetContract {
   readonly providerNotes?: readonly string[]
   // Used instead of recoveryRules when the blueprint has no service, file access, or other interactive input.
   readonly staticRecoveryRules?: readonly string[]
+  // Replaces these fields when the site is static with no service or browser storage (astroStaticContentSite).
+  readonly staticOverrides?: Partial<Pick<PresetContract, "wiringRules" | "lifecycleRules" | "packagingRules" | "installationDecision" | "launchCheck" | "outputArtifact" | "runtimeArchitecture">>
   readonly persistence: {
     readonly enabledDecision: string
     readonly disabledDecision: string
@@ -374,18 +376,23 @@ function tauriOwnerFiles(input: OwnerFileInput): OwnerFiles {
 }
 
 function astroOwnerFiles(input: OwnerFileInput): OwnerFiles {
+  const afterBuild = (file: string) => `npm test -- ${file}`
+  if (input.kind === "packaging") {
+    // A static site has no packaging code of its own: the one file is the test that checks the build.
+    return { implementationFile: "tests/packaging.test.ts", focusedTestFile: "tests/packaging.test.ts", focusedTestCommand: afterBuild("tests/packaging.test.ts") }
+  }
   if (input.kind === "feature") {
     if (input.pageFile) {
       return {
         implementationFile: input.pageFile,
         focusedTestFile: `tests/${input.slug}.test.ts`,
-        focusedTestCommand: `npm test -- tests/${input.slug}.test.ts`,
+        focusedTestCommand: afterBuild(`tests/${input.slug}.test.ts`),
       }
     }
     return {
       implementationFile: `src/components/${input.pascalName}.astro`,
       focusedTestFile: `tests/${input.slug}.test.ts`,
-      focusedTestCommand: `npm test -- tests/${input.slug}.test.ts`,
+      focusedTestCommand: afterBuild(`tests/${input.slug}.test.ts`),
     }
   }
   const implementationFile = input.kind === "integration"
@@ -749,7 +756,7 @@ const tauriDesktop: PresetContract = {
 
 const astroWeb: PresetContract = {
   id: "astro-web",
-  providerNotes: ["The site is static: pages are built once from content files. A failure the finished site can show is a missing page or missing text, never a runtime error message, retry, or loading state; write failureOutcome as the build failing on a bad content file, and write acceptance signals as facts about built pages (a page exists, a text appears, a list is in a stated order). If the idea does not supply the content itself (names, texts, hours), do not invent it in the blueprint."],
+  providerNotes: ["The site is static: pages are built once from content files. A failure the finished site can show is a missing page or missing text, never a runtime error message, retry, or loading state; write failureOutcome as the build failing on a bad content file, and write acceptance signals as facts about built pages (a page exists, a text appears, a list is in a stated order). If the idea does not supply the content itself (names, texts, hours), do not invent it in the blueprint. An address that matches no page shows the site's 404 page: write an unknown-address outcome as that, not as a feature-specific message. List non-goals only when the idea implies them. Use choiceLists only for sets a visitor picks from, not for values that are only content fields. Declare usesData only for data a feature reads, and platform needs only for browser capabilities a feature really uses; a plain content site declares none."],
   label: "Astro Web",
   platform: "Web",
   implementationMarker: "astro.config.mjs",
@@ -770,12 +777,13 @@ const astroWeb: PresetContract = {
   packagingFiles: () => [],
   ownerFiles: astroOwnerFiles,
   registrationFile: kind => kind === "feature" ? "src/pages/index.astro" : "astro.config.mjs",
+  // The kit's src/content.config.ts is complete, so the data owner edits no registration file.
   registrationFiles: (kind, identity) => kind === "data"
-    ? ["src/content.config.ts"]
+    ? []
     : kind === "integration"
       ? ["astro.config.mjs", "package.json"]
       : kind === "packaging"
-        ? ["astro.config.mjs", "package.json"]
+        ? []
         : ["src/pages/index.astro"],
   runtimeMode: blueprint => blueprint.externalServices.some(service => service.credentialRequirement !== "none") ? "server" : "static",
   runtimeArchitecture: ["Astro components render the content-first shell at build or request time; use client islands only for interaction that cannot be expressed with native HTML and CSS.", "Static output is mandatory unless a server-held credential requires an explicit adapter; browser code never receives deployment secrets."],
@@ -813,6 +821,22 @@ const astroWeb: PresetContract = {
     "Before completion, serve the production build, open every declared route, and complete one acceptance outcome per feature.",
     ...SHARED_WIRING_RULES,
   ],
+  specialize: (preset, blueprint) => astroStaticContentSite(blueprint, preset.runtimeMode(blueprint)) ? preset.staticOverrides ?? {} : {},
+  staticOverrides: {
+    runtimeArchitecture: ["Astro components render the content-first shell at build time; the shipped pages run no client JavaScript unless a feature declares an island.", "Static output only: no server adapter, no runtime data fetching, and no secret reaches the browser."],
+    lifecycleRules: ["Generate static output; no listener, timer, fetch, or object URL exists in the browser, so there is nothing to clean up."],
+    packagingRules: ["Generate static output with npm run build.", "Every page gets semantic metadata and a canonical URL from src/layouts/BaseLayout.astro; the kit enables the sitemap integration only when SITE_URL is set at build time, and no robots.txt is created because no feature declares one.", "Run accessibility, link, SEO metadata, and performance gates against the production build."],
+    wiringRules: [
+      "Pages and components read content only through the exported functions of src/lib/contentcatalog.ts (when the packet has stored content) and render what they return; no page keeps sample records inline, and test fixtures exist only under tests/.",
+      "Page behavior is tested over the build: each page's focused test asserts on the HTML that npm run build emits into dist/ and fails with a clear message when dist/ is missing; src/lib modules are unit-tested directly; .astro files are never imported by a test.",
+      "The packaging focused test reads dist/ and asserts that every declared static route, and every item route backed by an existing content entry, exists and shows its declared data; it does not run astro build itself, because npm run build precedes it.",
+      "A page cannot show a runtime error: a content file that fails its schema fails npm run build, and an address with no page shows 404.html. No page needs a retry, a loading state, or a preserved form.",
+      "Before completion, run npm run build and npm run preview, open every declared route in a browser at a 320-pixel-wide and a desktop viewport, confirm that nothing is clipped and text is readable, and complete one acceptance outcome per feature. The check creates no data.",
+    ],
+    launchCheck: () => "npm run build, then npm run preview and open every declared route.",
+    installationDecision: () => "No deployment host is declared, so the packet ends at the verified dist/ build: npm run build, then npm run test:a11y and npm run audit:performance pass against it. Deploying dist/ is outside these tasks.",
+    outputArtifact: "dist/ static site",
+  },
   installationDecision: () => "Deploy dist/ or the locked server-adapter artifact to the target HTTPS host, verify the deployed commit and asset hashes, then run link, accessibility, and performance smoke checks against that URL.",
   signingDecision: () => "No application code signature applies; deploy the verified production artifact over HTTPS with immutable asset hashes.",
   outputArtifact: "dist/ static site or explicit server adapter output",

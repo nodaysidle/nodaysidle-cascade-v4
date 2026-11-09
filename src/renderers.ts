@@ -1,4 +1,4 @@
-import { ASTRO_DESIGN_TOKENS } from "./astroWeb"
+import { ASTRO_DESIGN_TOKENS, fieldKey } from "./astroWeb"
 import { DOCUMENT_NAMES, type DocumentName, type DocumentPacket, type GraphContract, type GraphFeature, type GraphTask, type ProjectGraph } from "./compiler"
 
 function bullets(values: readonly string[]): string {
@@ -47,7 +47,7 @@ function astroRoutesSection(graph: ProjectGraph): string[] {
   return [section("Information Architecture and Routes", bullets([
     ...plan.routeSummary,
     plan.usesContentCollections
-      ? `Content collections, one per stored data object and all exported by src/content.config.ts: ${plan.collections.map(item => `${item.dataName || "entries"} in src/content/${item.name}/`).join("; ")}. Only a collection behind an item-page feature has [slug] detail routes; every other page reads its own collection with getCollection(). Do not store catalog records in browser-side databases.`
+      ? `Content collections, one per stored data object and all exported by src/content.config.ts: ${plan.collections.map(item => `${item.dataName || "entries"} in src/content/${item.name}/`).join("; ")}. Only a collection behind an item-page feature has [slug] detail routes; every other page reads its own collection through src/lib/contentcatalog.ts. Do not store catalog records in browser-side databases.`
       : "No build-time content collection is required for this graph.",
     ...plan.dateNotes,
   ]))]
@@ -56,11 +56,12 @@ function astroRoutesSection(graph: ProjectGraph): string[] {
 function contentSeedSection(graph: ProjectGraph): string[] {
   if (graph.presetId !== "astro-web" || !graph.astroPlan?.usesContentCollections || !graph.astroPlan.collections.length) return []
   const meaning = new Map(graph.blueprint.domainData.map(item => [item.name, item.meaning]))
-  const seedLines = graph.astroPlan.collections.map(item => `Create one entry in src/content/${item.name}/ for every ${item.dataName || "entry"} the idea names: frontmatter holds exactly ${item.fields.map(field => `${field.name}${field.optional ? " (optional)" : ""}`).join(", ")} (camelCase keys, matching src/content.config.ts) and the body holds any longer text of the entry. ${meaning.get(item.dataName) ?? ""}`.trim())
+  const seedLines = graph.astroPlan.collections.map(item => `Entries of ${item.dataName || "the collection"} live in src/content/${item.name}/, one file per entry named by its slug. Frontmatter holds exactly ${item.fields.map(field => `${fieldKey(field.name)}${field.optional ? " (optional)" : ""}`).join(", ")}, spelled exactly like this in src/content.config.ts, the starter seed and every page; the body holds any longer text of the entry. ${meaning.get(item.dataName) ?? ""}`.trim())
   return [section("Content Seed Requirements", bullets([
     ...seedLines,
-    `Starter seed files, one per collection (the collection loader ignores files whose name starts with an underscore): ${graph.astroPlan.seedContentPaths.join(", ")}; replace each with real entries and delete it.`,
-    "Use only content the idea names; invent no facts the idea does not state.",
+    `Starter sample entries, one per collection (the collection loads them, so pages build and lists are not empty): ${graph.astroPlan.seedContentPaths.join(", ")}. Their values are placeholders, not facts.`,
+    "When the idea supplies no entries for a collection, keep its sample entry unchanged and invent nothing; the site owner replaces it with real entries after delivery, and no task rewrites it. When the idea names entries, OWN-DATA-STORE creates one file per named entry and deletes that collection's sample entry. Test fixtures live only under tests/.",
+    "A long-text field renders as paragraphs split on blank lines; the markdown body renders only on a detail page. Lists and ordered sets render in the order the feature declares.",
   ]))]
 }
 
@@ -178,7 +179,7 @@ function renderARD(graph: ProjectGraph): string {
     `# Architecture Requirements Document — ${graph.blueprint.projectName}`,
     section("Document Purpose", "Lock architecture boundaries, component ownership, runtime flows, state placement, platform lifecycle, persistence, security, integrations, and trade-offs without changing product scope."),
     section("Architecture Summary", `${graph.blueprint.productDefinition} The implementation uses the ${graph.presetLabel} contract in ${graph.runtimeMode} runtime mode.`),
-    section("Architectural Style", bullets([`Preset-owned ${graph.presetLabel} architecture`, ...graph.runtimeArchitecture, "Vertical feature owners with explicit platform-boundary owners", "One-way feature and contract dependencies following the phase graph", "Local-first state unless product semantics explicitly require a remote service"])),
+    section("Architectural Style", bullets([`Preset-owned ${graph.presetLabel} architecture`, ...graph.runtimeArchitecture, "Vertical feature owners with explicit platform-boundary owners", "One-way feature and contract dependencies following the phase graph", ...(graph.astroPlan?.staticSite ? [] : ["Local-first state unless product semantics explicitly require a remote service"])])),
     ...astroRoutesSection(graph),
     section("Runtime Boundaries", bullets(graph.features.map(feature => `${feature.id} — ${feature.name}: ${feature.behavior}`))),
     section("Component and Ownership Map", bullets(ownerLines)),
@@ -201,7 +202,7 @@ function renderARD(graph: ProjectGraph): string {
     section("Architectural Trade-offs", bullets([
       "Preset fidelity is favored over cross-stack reuse.",
       "Deterministic owner and file mappings are favored over runtime plugin discovery.",
-      `${graph.persistence.enabled ? "Durable local recovery is favored over transient simplicity." : "No product persistence is favored over an unused storage layer."}`,
+      `${graph.astroPlan?.staticSite ? "Build-time content files are favored over a runtime store." : graph.persistence.enabled ? "Durable local recovery is favored over transient simplicity." : "No product persistence is favored over an unused storage layer."}`,
       `${graph.runtimeMode === "server" ? "Server rendering is enabled only to protect required service credentials." : "No server runtime is introduced."}`,
     ])),
     section("Architecture Review Checklist", bullets(["Every feature has one owner and one focused test.", "Every contract resolves to known features and one owner.", "Every modified file is created in an earlier phase.", "Persistence, permissions, credentials, lifecycle, recovery, packaging, and signing are explicit.", "No forbidden technology appears in an implementation decision."])),

@@ -1,6 +1,6 @@
 import type { DataField, NormalizedBlueprint } from "./compiler"
 import type { ProjectIdentity } from "./presets"
-import { ASTRO_BUDGET_TEXT, ASTRO_PERFORMANCE_BUDGET, astroCollections, astroDateNotes, astroNavLinks, placeAstroFeatures, type AstroCollection } from "./astroWeb"
+import { ASTRO_BUDGET_TEXT, ASTRO_PERFORMANCE_BUDGET, astroCollections, astroDateNotes, fieldKey, astroNavLinks, placeAstroFeatures, type AstroCollection } from "./astroWeb"
 
 export interface AstroKitFile {
   readonly path: string
@@ -32,11 +32,6 @@ const SEED_FOR: Record<string, string> = {
   "date-time": "2026-01-01",
   "text-list": "[Sample item]",
   reference: "sample-reference",
-}
-
-function fieldKey(name: string): string {
-  const words = name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
-  return words.map((word, index) => index === 0 ? word : word[0]!.toUpperCase() + word.slice(1)).join("") || "value"
 }
 
 // Text that lands in an .astro template: braces would start an expression, angle brackets a tag.
@@ -206,14 +201,16 @@ export function astroKit(identity: ProjectIdentity, blueprint: NormalizedBluepri
   })
   const content = collections.length ? [
     file("src/content.config.ts", contentConfig(collections)),
-    ...collections.map(item => file(`src/content/${item.name}/_seed.example.md`, `---
+    ...collections.map(item => file(`src/content/${item.name}/sample-entry.md`, `---
 ${item.fields.map(field => `${fieldKey(field.name)}: ${SEED_FOR[field.valueType]}`).join("\n")}
 ---
 
-Sample entry body. The content task replaces this file with the product's real entries.
+Sample content. Keep it when the idea supplies no entries; the site owner replaces it with real entries after delivery.
 `)),
   ] : []
-  const pageFiles = ["src/pages/index.astro", "src/pages/404.astro", ...shells.map(item => item.path)]
+  // Only pages copied before TASK-01 may be required here; a shell or detail page belongs to the task that owns it.
+  const pageFiles = ["src/pages/index.astro", "src/pages/404.astro"]
+  const ownedFiles = [...shells, ...detailPages].map(item => item.path)
 
   const files: AstroKitFile[] = [
     file("package.json", JSON.stringify({
@@ -352,17 +349,17 @@ describe("contract", () => {
   ]
   files.push(file("README.md", `# ${blueprint.projectName} starter kit
 
-Tested starting code for the static Astro site in TRD.md. Before TASK-01, copy every file below from kit/ to the same path in the project root. The task that owns a file starts from this content and extends it; keep every behavior listed here.
+Tested starting code for the static Astro site in TRD.md. Before TASK-01, copy every file in the first list below from kit/ to the same path in the project root and keep every behavior listed here. Do not copy the second list early: the task that owns each page lists it under Files to create and starts from this content.
 
-${files.map(item => `- ${item.path}`).join("\n")}
-
+${files.filter(item => !ownedFiles.includes(item.path)).map(item => `- ${item.path}`).join("\n")}
+${ownedFiles.length ? `\nStart from these in the owning task (not copied before it):\n\n${ownedFiles.map(path => `- ${path}`).join("\n")}\n` : ""}
 ## Behavior to keep
 
 - Routes shell: src/pages/index.astro is one h1 with the product name and a place for the main-surface feature component. It carries no product copy; the feature tasks fill it. ${nav.length ? `Declared page routes (each a shell with one h1): ${nav.map(link => link.href).join(", ")}.` : "No other static page route is declared."}
 - src/pages/404.astro is the not-found page: neutral text and a link home, unless a not-found-page feature declares it, in which case that feature's task owns its text.
 - src/layouts/BaseLayout.astro imports ../styles/global.css, links every declared page route in the primary nav (add a link when a task adds a static route), and gives every page a title and meta description. Every page has exactly one h1; a feature component never adds a second.
-${collections.length ? `- src/content.config.ts exports one collection per stored data object (${collections.map(item => item.name).join(", ")}), each with a schema of that object's declared fields. Seed files start with an underscore, so the collection loader ignores them; replace each with real entries and delete it.
-- Only a collection behind an item-page feature has a [slug] route; every other page reads its own collection with getCollection().` : "- The site declares no stored content collection."}
+${collections.length ? `- src/content.config.ts exports one collection per stored data object (${collections.map(item => item.name).join(", ")}), each with a schema of that object's declared fields. Each collection starts with one sample-entry.md of placeholder values: keep it when the idea supplies no entries (the site owner replaces it later), and delete it only when real entries exist.
+- Only a collection behind an item-page feature has a [slug] route; every other page reads its own collection (through src/lib/contentcatalog.ts once its task has created it). Frontmatter keys are the camelCase field keys in content.config.ts, used identically in the seeds, the pages and the documents.` : "- The site declares no stored content collection."}
 ${astroDateNotes(features, collections).map(note => `- ${note}\n`).join("")}- Scripts: npm run check (astro check), npm test (vitest, without the two production-build checks), npm run build, npm run test:a11y and npm run audit:performance. The last two read dist/ and fail when it is missing, so run npm run build first.
 - tests/accessibility.test.ts checks every built page for html lang, one h1, a title, a meta description, alt text on every image, and resolving internal links. It is structural; keyboard and contrast review stay manual.
 - tests/performance.test.ts enforces the budget: ${ASTRO_BUDGET_TEXT}.

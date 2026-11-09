@@ -1,5 +1,5 @@
 import { auditAgentReadinessGraph, auditMechanicalGraph, auditPacket, auditProjectGraph, buildValidationLedger, type AuditEntry, type AuditFailure } from "./audit"
-import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
+import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, astroStaticContentSite, dataKey, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetOptionValue, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
@@ -421,7 +421,10 @@ function permissionResourceId(capability: PermissionCapability): string {
   return `permission:${capability}`
 }
 
-function featureRecovery(name: string, recovery: FeatureRecovery): string {
+const STATIC_SITE_RECOVERY = "A bad content file fails npm run build and names the file and field; a finished page has no runtime failure, retry, or last valid state. Fix the file and rebuild."
+
+function featureRecovery(name: string, recovery: FeatureRecovery, staticSite = false): string {
+  if (staticSite) return STATIC_SITE_RECOVERY
   switch (recovery) {
     case "exit":
       return `Release partial resources before exiting so a relaunch of ${name} starts from a clean state.`
@@ -470,6 +473,11 @@ function astroContentSiteSemantics(source: SemanticBlueprint, presetId: PresetId
   return source.features.some(feature => feature.surface === "item-page")
 }
 
+// Mirrors astroStaticContentSite for a provider blueprint, before normalization has resolved platform needs.
+function astroStaticSource(source: SemanticBlueprint, presetId: PresetId): boolean {
+  return presetId === "astro-web" && !source.externalServices.length && !source.features.some(feature => feature.usesPlatformNeeds.includes("local-storage"))
+}
+
 function normalizationIssue(path: string): never {
   throw new NormalizationError([{ path, rule: "normalization.unusable-meaning", message: "Provider mechanics left no usable product meaning at this path." }])
 }
@@ -507,7 +515,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       outputs: [userOutcome],
       acceptanceOutcomes: acceptance.length ? acceptance : [`${name} produces the documented user outcome.`],
       failureBehavior: failure,
-      recoveryExpectations: [featureRecovery(name, feature.failureRecovery)],
+      recoveryExpectations: [featureRecovery(name, feature.failureRecovery, astroStaticSource(source, presetId))],
       // A feature provides itself, so another feature's buildsOn becomes an owner dependency.
       providedCapabilities: [slug(name)],
       requiredCapabilities: unique(feature.buildsOn.map(other => slug(cleanMeaning(other)))),
@@ -521,7 +529,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       usesData: unique(featureDataUses(source, feature).map(name => dataNameByKey.get(referenceKey(name))!)),
       usesServices: unique(feature.usesServices.map(name => serviceNameByKey.get(referenceKey(name))!)),
       userFileAccess: feature.userFileAccess,
-      choices: feature.choiceLists.map(list => `${cleanMeaning(list.name)}: ${cleanList(list.options).join(", ")}; initially ${cleanMeaning(list.initial)}`),
+      choices: feature.choiceLists.map(list => `${cleanMeaning(list.name)}: ${cleanList(list.options).join(", ")}${astroStaticSource(source, presetId) ? "" : `; initially ${cleanMeaning(list.initial)}`}`),
       surface: feature.surface,
     }
   }))
@@ -937,10 +945,12 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
   }
   if (!item.fields.length) return []
   const lines = [
-    `Stored fields (one record each, plus a stable generated id): ${item.fields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`,
+    `Stored fields (one record each, plus ${presetId === "astro-web" ? "its entry id, the file name without extension" : "a stable generated id"}): ${item.fields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`,
   ]
   if (operations.length) {
     lines.push(`Store operations, exactly these and no others: ${operations.map(operation => `${operation} (${users.filter(feature => operationsOf(feature).includes(operation)).map(feature => feature.id).join(", ")})`).join("; ")}.`)
+    lines.push(storeInterfaceDetail(presetId, item, operations))
+  } else if (presetId === "astro-web") {
     lines.push(storeInterfaceDetail(presetId, item, operations))
   }
   return lines
@@ -960,7 +970,10 @@ function storeInterfaceDetail(presetId: PresetId, item: NormalizedBlueprint["dom
     const functions = methods({ create: ["insert"], read: ["observeAll", "getById"], update: ["update"], delete: ["delete"] })
     return `Interface: OWN-DATA-STORE owns one Room entity ${record}Entity with the stored fields above, one ${record}Dao with exactly: ${functions.join(", ")}, the one RoomDatabase subclass AppDatabase that lists every records entity (version 1, exportSchema = true, schema JSON committed under app/schemas), and ${record}Repository over the DAO, all in its owner file; it constructs the database and repository in AppContainer.kt. Feature tasks use the repository and add no entity or query of their own.`
   }
-  if (presetId === "astro-web") return `Interface: the content collection schema declares exactly the stored fields above; pages read entries through getCollection and no page defines its own schema.`
+  if (presetId === "astro-web") {
+    const name = `${record}Entries`
+    return `Interface: src/content.config.ts (from the kit) declares exactly the stored fields above and no page defines its own schema. OWN-DATA-STORE creates src/lib/contentcatalog.ts exporting list${name}() (all entries of the "${dataKey(item.name)}" collection read with getCollection, sorted by id) and get${record}Entry(id) (one entry or undefined). Every page and component reads this data only through these functions and never calls getCollection itself; render(entry) from astro:content is the one other use, on a detail page. Its test mocks astro:content with vi.mock and covers an empty collection, the sort order, and an unknown id.`
+  }
   const functions = methods({ create: ["insert"], read: ["list", "get"], update: ["update"], delete: ["delete"] })
   return `Interface: OWN-DATA-STORE defines struct ${record} with the stored fields above (id: i64) and trait ${record}Store with exactly: ${functions.join(", ")}; every function returns Result with a typed error, and feature tasks call the trait and add no other storage access. OWN-DATA-STORE creates the table in its own transactional migration: the kit opens the database at PRAGMA user_version 1 with no tables, so the migration runs when the version is below 2 and sets it to 2; date-time values are stored as i64 epoch milliseconds (UTC) and date values as YYYY-MM-DD text; ordered lists of text lines are stored as a JSON text column; list returns records by descending id unless a feature states another order, with id as the final tie-break.`
 }
@@ -1334,8 +1347,8 @@ function buildOwnersAndContracts(
     ["Fix the first failing validation command, rebuild the artifact, and rerun every later release gate."],
   ))
 
-  // A static site has no adapter; recording one would contradict the output mode.
-  const optionEntries = Object.entries(presetOptions).filter(([key]) => !(preset.id === "astro-web" && runtimeMode === "static" && key === "adapter"))
+  // A static site has no adapter, and no Astro kit file reads siteKind; recording either would claim an effect that does not exist.
+  const optionEntries = Object.entries(presetOptions).filter(([key]) => !(preset.id === "astro-web" && ((runtimeMode === "static" && key === "adapter") || key === "siteKind")))
   if (optionEntries.length) {
     contracts.push(contract(
       "CON-PRESET-OPTIONS",
@@ -1559,7 +1572,10 @@ function buildPhases(
       : preset.registrationFiles?.(draft.kind, identity)
         ?? [preset.registrationFile(draft.kind, identity)]
     // The packaging task verifies runtime wiring, so it may fix the composition roots it checks.
-    const modifyCandidates = draft.kind === "packaging"
+    // A static Astro site has no composition root beyond the pages, which the build test already covers: its packaging task edits nothing.
+    const modifyCandidates = draft.kind === "packaging" && astroPlan?.staticSite
+      ? []
+      : draft.kind === "packaging"
       ? unique([
           ...(preset.registrationFiles?.("feature", identity) ?? [preset.registrationFile("feature", identity)]),
           ...(preset.registrationFiles?.("integration", identity) ?? [preset.registrationFile("integration", identity)]),
@@ -1583,10 +1599,13 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? " You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. Expose three named slots in the shared files: a per-row action area on every list row, an add-entry control, and a detail view for the selected record; later feature tasks build their controls in their own files and mount them into these slots, editing only the shared registration files." : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId}: build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.` : ""}${draft.kind === "packaging" ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => androidClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time from an injected clock (a trait or closure passed in), and write the tests with a fixed clock." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
-      validationCommands: draft.kind === "packaging"
-        ? [files.focusedTestCommand, ...preset.validationCommands.map(command => command(identity))]
-        : [files.focusedTestCommand, ...preset.validationCommands.slice(0, 2).map(command => command(identity))],
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? " You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. Expose three named slots in the shared files: a per-row action area on every list row, an add-entry control, and a detail view for the selected record; later feature tasks build their controls in their own files and mount them into these slots, editing only the shared registration files." : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId}: build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? " Content entry files under src/content/ are also yours: create one file per entry the idea names and delete that collection's sample-entry.md; keep the sample entry when the idea names none (see Content Seed Requirements)." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => androidClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time from an injected clock (a trait or closure passed in), and write the tests with a fixed clock." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
+      // An Astro page or packaging test asserts on the HTML that a production build emits into dist/, so the build runs first.
+      validationCommands: unique([
+        ...(preset.id === "astro-web" && (draft.kind === "feature" || draft.kind === "packaging") ? ["npm run build"] : []),
+        files.focusedTestCommand,
+        ...preset.validationCommands.slice(0, draft.kind === "packaging" ? undefined : 2).map(command => command(identity)),
+      ]),
     }
     phases.push({ id: phaseId, title: draft.name, dependencies: unique(["PHASE-01-FOUNDATION", ...draft.dependencyIds.map(dependencyId => coordinates.get(dependencyId)!.phaseId)]), tasks: [task] })
     owners.push({
@@ -1644,7 +1663,9 @@ function recoveryRulesFor(preset: PresetContract, blueprint: NormalizedBlueprint
   // Without a declared service, a web page's network need is only its own assets, so it adds no form or fetch recovery.
   const needs = preset.id === "astro-web" && !blueprint.externalServices.length ? blueprint.platformNeeds.filter(need => need !== "network") : blueprint.platformNeeds
   const interactive = blueprint.externalServices.length > 0 || blueprint.permissionNeeds.length > 0 || needs.length > 0
-  return preset.staticRecoveryRules && !interactive ? preset.staticRecoveryRules : preset.recoveryRules
+  // A static content site has no form, island, or fetch, whatever platform needs the provider listed.
+  const staticSite = preset.id === "astro-web" && astroStaticContentSite(blueprint, preset.runtimeMode(blueprint))
+  return preset.staticRecoveryRules && (!interactive || staticSite) ? preset.staticRecoveryRules : preset.recoveryRules
 }
 
 function lockedStackFor(preset: PresetContract, blueprint: NormalizedBlueprint): readonly string[] {

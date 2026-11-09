@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { compilePacket } from "../src/compiler"
+import { fieldKey } from "../src/astroWeb"
 import { fixtureCases, lanternBooksBlueprint } from "./fixtures/blueprints"
 
 const kitFile = (packet: Awaited<ReturnType<typeof compilePacket>>, path: string) => packet.kit.find(item => item.name === `kit/${path}`)?.content
@@ -11,8 +12,8 @@ describe("Astro packets for a site with several record types", () => {
     for (const name of ["featured-book", "reading-event", "opening-hours"]) {
       expect(config).toContain(`"${name}": defineCollection`)
       expect(config).toContain(`base: "./src/content/${name}"`)
-      expect(kitFile(packet, `src/content/${name}/_seed.example.md`)).toBeDefined()
-      expect(packet.graph.foundationFiles).toContain(`src/content/${name}/_seed.example.md`)
+      expect(kitFile(packet, `src/content/${name}/sample-entry.md`)).toBeDefined()
+      expect(packet.graph.foundationFiles).toContain(`src/content/${name}/sample-entry.md`)
     }
     expect(config).toContain("author: z.string()")
     expect(config).toContain("startsAt: z.coerce.date()")
@@ -24,7 +25,7 @@ describe("Astro packets for a site with several record types", () => {
     expect(paths.some(path => path.endsWith("/index.astro") && path !== "kit/src/pages/index.astro")).toBe(false)
     const tasks = packet.documents["TASKS.md"]
     expect(tasks).toContain("/featured-book/[slug]")
-    expect(tasks).toMatch(/Create one entry in src\/content\/reading-event\/ for every Reading event/)
+    expect(tasks).toContain("Entries of Reading event live in src/content/reading-event/")
     expect(tasks).not.toMatch(/at least (?:one|two|\d)/i)
     expect(tasks).not.toContain("Create at least")
     const data = packet.graph.contracts.find(item => item.id === "CON-PERSISTENCE-READING-EVENT")!
@@ -121,5 +122,75 @@ describe("Astro packets for a site with several record types", () => {
     expect(kitFile(packet, "README.md")).toContain("rebuild and redeploy")
     const noDate = { ...lanternBooksBlueprint, dataObjects: lanternBooksBlueprint.dataObjects.map(item => ({ ...item, fields: item.fields.map(field => field.valueType === "date-time" ? { ...field, valueType: "text" as const } : field) })) }
     expect((await compilePacket(noDate, "astro-web")).documents["TRD.md"]).not.toContain("runs once at build time")
+  })
+
+  it("spells every declared field the same in the schema, the seed, and the documents, keeping camelCase", async () => {
+    const camel = { ...lanternBooksBlueprint, dataObjects: lanternBooksBlueprint.dataObjects.map((item, index) => index === 0 ? { ...item, fields: [{ name: "shortDescription", valueType: "text" as const, optional: false }, { name: "lengthKilometres", valueType: "number" as const, optional: false }, { name: "Opening time", valueType: "text" as const, optional: true }] } : item) }
+    const packet = await compilePacket(camel, "astro-web")
+    expect(fieldKey("shortDescription")).toBe("shortDescription")
+    expect(fieldKey("Short note")).toBe("shortNote")
+    expect(fieldKey("URL list")).toBe("urlList")
+    expect(kitFile(packet, "src/content.config.ts")).toContain("shortDescription: z.string()")
+    expect(kitFile(packet, "src/content.config.ts")).toContain("lengthKilometres: z.number()")
+    expect(kitFile(packet, "src/content.config.ts")).toContain("openingTime: z.string().optional()")
+    expect(kitFile(packet, "src/content/featured-book/sample-entry.md")).toContain("lengthKilometres: 1")
+    expect(packet.documents["TASKS.md"]).toContain("Frontmatter holds exactly shortDescription, lengthKilometres, openingTime (optional)")
+    expect(packet.documents["TRD.md"]).not.toContain("shortdescription")
+  })
+
+  it("lets npm test pass at TASK-01 and TASK-02: the contract test requires only pages copied before TASK-01", async () => {
+    const packet = await compilePacket(lanternBooksBlueprint, "astro-web")
+    const contract = kitFile(packet, "tests/contract.test.ts")!
+    expect(contract).toContain("src/pages/index.astro")
+    expect(contract).toContain("src/pages/404.astro")
+    for (const owned of ["src/pages/about.astro", "src/pages/events.astro", "[slug]"]) expect(contract).not.toContain(owned)
+    const readme = kitFile(packet, "README.md")!
+    const [copyFirst, startFrom] = readme.split("Start from these in the owning task")
+    expect(copyFirst).not.toContain("- src/pages/about.astro")
+    expect(startFrom).toContain("- src/pages/about.astro")
+    expect(startFrom).toContain("- src/pages/featured-book/[slug].astro")
+    const copied = packet.graph.foundationFiles
+    expect(copied).not.toContain("src/pages/about.astro")
+  })
+
+  it("keeps sample entries as sample content when the idea supplies none, and says who replaces them", async () => {
+    const packet = await compilePacket(lanternBooksBlueprint, "astro-web")
+    const seed = kitFile(packet, "src/content/featured-book/sample-entry.md")!
+    expect(seed).toContain("Sample content")
+    expect(packet.documents["TASKS.md"]).toContain("keep its sample entry unchanged and invent nothing; the site owner replaces it")
+    const data = packet.graph.phases.flatMap(phase => phase.tasks).find(task => task.ownerIds.includes("OWN-DATA-STORE"))!
+    expect(data.prompt).toContain("create one file per entry the idea names and delete that collection's sample-entry.md")
+  })
+
+  it("states the content catalog interface and tests pages over the build", async () => {
+    const packet = await compilePacket(lanternBooksBlueprint, "astro-web")
+    const trd = packet.documents["TRD.md"]
+    expect(trd).toContain("exporting listFeaturedBookEntries()")
+    expect(trd).toContain("getFeaturedBookEntry(id)")
+    expect(trd).toContain("never calls getCollection itself")
+    expect(trd).toContain("each page's focused test asserts on the HTML that npm run build emits into dist/")
+    const tasks = packet.graph.phases.flatMap(phase => phase.tasks)
+    expect(tasks.find(task => task.ownerIds.includes("OWN-DATA-STORE"))!.filesToModify).toEqual([])
+    const about = tasks.find(task => task.ownerIds.includes("OWN-ABOUT-PAGE"))!
+    expect(about.validationCommands[0]).toBe("npm run build")
+  })
+
+  it("gives a static content site static failure, wiring, lifecycle, and deployment text and a packaging task with no edits", async () => {
+    const withNeeds = { ...lanternBooksBlueprint, platformNeeds: ["notifications" as const, "audio-input" as const] }
+    const packet = await compilePacket(withNeeds, "astro-web")
+    const everything = Object.values(packet.documents).join("\n")
+    for (const text of ["Preserve entered form content", "an empty list shows one centered message", "settings are grouped rows", "HTTPS host", "server-adapter", "Clean up event listeners", "Preserve the last valid state", "explicit retry", "Local-first state", "siteKind", "Durable local recovery"]) expect(everything, text).not.toContain(text)
+    expect(everything).toContain("fails npm run build and names the file and field")
+    expect(everything).toContain("No deployment host is declared")
+    expect(everything).toContain("including an item address that matches no entry")
+    const packaging = packet.graph.phases.flatMap(phase => phase.tasks).find(task => task.ownerIds.includes("OWN-PACKAGING"))!
+    expect(packaging.filesToCreate).toEqual(["tests/packaging.test.ts"])
+    expect(packaging.filesToModify).toEqual([])
+    expect(packaging.prompt).not.toContain("Modify the listed shared files")
+  })
+
+  it("keeps the interactive wiring and recovery text for a site with a declared service", async () => {
+    const packet = await compilePacket(lanternBooksBlueprint, "astro-web")
+    expect(packet.documents["TRD.md"]).not.toContain("Preserve entered form content")
   })
 })
