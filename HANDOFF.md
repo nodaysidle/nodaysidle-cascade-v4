@@ -80,7 +80,7 @@ build every kit -> independent audits -> fix the compiler -> repeat) is the meth
 | 5 | 9 | 17 | |
 | 6 | 10 | 19 | one real bug: package `com.class.schedule` (keyword) — fixed |
 | 7 | 9 | 3 | six of nine packets had **zero** blocking |
-| 8 | 10 | 16 | fixes for these are in flight (section 5) |
+| 8 | 10 | 16 | fixes merged, not yet re-audited (section 5) |
 
 Honest reading: strict LLM auditors always find a few new idiosyncratic issues per packet; "every
 audit of a brand-new idea set returns zero" is statistically unlikely. A reasonable stop rule: two
@@ -89,11 +89,11 @@ packets/presets) and every kit builds. Judge by classes, not raw counts.
 
 ## 4. State of the repo (main at the time of writing)
 
-- Branch `main`, head `00a0a49`, ~96 commits ahead of `origin/main` (**not pushed**; the last push was
+- Branch `main`, head `59273da` (see `git log`), ~105 commits ahead of `origin/main` (**not pushed**; the last push was
   `4900297`). Remote `https://github.com/nodaysidle/nodaysidle-cascade-v4` (private). The pre-push hook
   blocks `main`; Alan said "push" only for earlier work. **Do not push until Alan says push.**
   When he does: `NDS_ALLOW_PUSH=1 git push origin main`.
-- `npm run typecheck`, `npm test` (257 passed, 16 skipped build tests), kit builds: green.
+- `npm run typecheck`, `npm test` (273 passed, 17 skipped build tests), `npm run kit:check` (13 kit builds): green.
 - The **installed desktop app is outdated** (built before most compiler changes). Rebuild with
   `scripts/install-linux-app.sh` (it must use the Tauri CLI build; a plain `cargo build` ships a window
   that loads `localhost:1420` — see `.trail/learnings/`). Open via `omarchy menu summon apps.cascade-v4`;
@@ -105,27 +105,29 @@ packets/presets) and every kit builds. Judge by classes, not raw counts.
 - Learnings are force-added in `.trail/learnings/` (the global git config ignores `.trail/`; use
   `git add -f`).
 
-## 5. In-flight work you must pick up first
+## 5. Round-8 fixes: merged, not yet re-verified
 
-Round 8 fixes were running in four isolated git worktrees when this was written (branches
-`worktree-wf_402c080e-29f-1..4`, directories under `.claude/worktrees/`). Check `git branch --list
-'worktree-wf_402c080e*'` and `git log main..<branch>`:
+The four round-8 fix branches (GTK, Waybar, Tauri + shared prompt, Android) were merged into `main`
+(`npm test` 273 passed / 17 skipped, `npm run kit:check` 13 kit builds passed). What they changed:
 
-1. `-1` GTK: date-field form reset vs default, local-today conversion for a user date, list feature that
-   itself owns the mark control, edit dialog Save label, pending-delete state, empty-state vs filter.
-2. `-2` Waybar: response key paths per service field, label template + unit, `disk-read` source,
-   rate sources keep the previous counter, round-half-away-from-zero decimals (Rust `{:.1}` rounds 1.25
-   to 1.2), fixed unit vs units rule.
-3. `-3` Tauri + shared prompt: read-only date-added display in edit forms; provider prompt rule "a
-   feature must match a verb the idea states" (the model keeps inventing Edit features).
-4. `-4` Android: Save-button/validation mode stated once, Material date picker for user dates, decimal
-   places rule, acceptance naming a later task's control.
+1. GTK: one form-reset rule per input kind; kit ships `today_string`/`is_calendar_date` when a `date` field
+   exists; a list feature that itself declares update/delete builds those controls; edit dialog title/Save
+   label; display-free `request_delete`; empty state reads the unfiltered list.
+2. Waybar: per-field response key paths (`responseFields[].path`), feature `unit` + `valueDecimals` with an
+   intake rule that the label template carries the unit, `disk-read` source, rate sources keep the
+   previous counter, round-half-away-from-zero formatting.
+3. Tauri + shared prompt: stamped fields shown read-only in edit forms; provider prompt "a feature must
+   match a verb the idea states".
+4. Android: one Save rule, Material 3 date picker, 2-decimal numbers, acceptance naming a later task's
+   control is verified by that task.
 
-If a branch has no commits or the agent died, redo that area: the findings were in
-`/tmp/claude-1000/audit8/*.json` (may be gone; otherwise regenerate by running the loop). Then run the
-loop (section 6) with a fresh idea set and re-run the **same round-8 ideas** once to prove the fixes
-hold (round-8 ideas: Gift Tracker, Reading Goals, Wind Check, Disk IO, Travel Journal, Workout Log,
-Cycle Shop, Seed Library, Subscription Tracker, Vaccine Reminder).
+**Nothing has re-audited these fixes yet.** First task for you: re-run the round-8 ideas (Gift Tracker,
+Reading Goals, Wind Check, Disk IO, Travel Journal, Workout Log, Cycle Shop, Seed Library, Subscription
+Tracker, Vaccine Reminder) through the loop in section 6 to prove the fixes hold, then a NEW idea set.
+Known unfixed items from the round-8 reports: Waybar `src/main.rs` listed in label/click task modify
+lists (per-kind `registrationFiles` has no per-feature context); a GTK list feature that itself declares
+`edit` while an add feature builds on it gives an "Owner dependency cycle" graph error (no packet hits it
+yet); PRD wording the provider writes (two buttons called "Add") is not compiler-fixable.
 
 Merge conflicts are common because `src/compiler.ts` has one enormous task-prompt template line that
 every preset appends to. Use `scripts/agent-ready/split-merge.py` (see section 6).
@@ -213,9 +215,8 @@ and every kit builds with its own commands. Success is measured by independent a
 generated from FRESH ideas, judged by systematic classes of defect, not raw counts.
 
 Do, in order:
-1. Finish section 5 of HANDOFF.md: inspect the four in-flight branches `worktree-wf_402c080e-29f-1..4`,
-   merge what is committed (use scripts/agent-ready/split-merge.py on conflicts), redo any area whose
-   branch is empty, keep typecheck/tests green, commit.
+1. Read section 5 of HANDOFF.md (round-8 fixes are merged but not re-audited). Confirm `npm run typecheck`
+   and `npm test` are green and `npm run kit:check` passes before changing anything.
 2. Run the loop in section 6 on a NEW set of ten ideas (two per preset), plus the round-8 ideas once as
    regression. Use parallel read-only audit agents (scripts/agent-ready/audit-brief.md) and one fix agent
    per preset in isolated worktrees (scripts/agent-ready/fix-brief.md). Fix the compiler, never an
