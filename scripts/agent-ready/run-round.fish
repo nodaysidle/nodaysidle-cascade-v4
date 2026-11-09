@@ -2,8 +2,13 @@
 # Usage: fish scripts/agent-ready/run-round.fish /tmp/v4-roundN
 # Edit the g lines below (one per idea). Never reuse an idea from an earlier round: new ideas test generalization.
 cd (dirname (status filename))/../..
+# The folder is deleted first, so accept only a path under /tmp.
+if test (count $argv) -ne 1; or not string match -qr '^/tmp/[^/]+' -- $argv[1]; or string match -q '*..*' -- $argv[1]
+  echo "usage: fish scripts/agent-ready/run-round.fish /tmp/v4-roundN" >&2
+  exit 1
+end
 set out $argv[1]
-rm -rf $out
+rm -rf -- $out
 function g
   echo "=== $argv[1]"
   npm run -s cascade -- generate --preset $argv[1] --idea $argv[2] --out $out/$argv[1] 2>&1 | grep -vE 'DEP0205|trace-dep' | cut -c1-300 | head -14
