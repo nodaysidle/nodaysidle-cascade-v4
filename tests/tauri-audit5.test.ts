@@ -119,7 +119,7 @@ describe("Tauri audit round 5: shared conventions", () => {
   it("states the delete confirmation default, the empty-state title, the trim rule, and the renamed wire key", async () => {
     const packet = await compilePacket(load("tauri-contact-book"), PRESET, linux)
     const tasks = packet.documents["TASKS.md"]
-    expect(task(tasks, "TASK-06-DELETE-CONTACT")).toContain('"Delete this item?" with the label "Delete"')
+    expect(task(tasks, "TASK-06-DELETE-CONTACT")).toContain('the message `Delete "${record.name}"?`')
     expect(task(tasks, "TASK-04-CONTACT-LIST")).toContain("emptyState(title)")
     expect(task(tasks, "TASK-04-CONTACT-LIST")).toContain("a filter over zero saved records shows that empty-list text")
     expect(packet.documents["TRD.md"]).toContain("the stored field phoneNumber is the key phonenumber")
