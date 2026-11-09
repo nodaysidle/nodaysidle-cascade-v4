@@ -693,20 +693,20 @@ export function waybarTaskNotes(blueprint: NormalizedBlueprint, featureNames: re
   }
   if (roles.labelOwners.some(name => featureNames.includes(name))) {
     const keyed = blueprint.externalServices.filter(item => item.requestValueFrom !== "")
-    notes.push(`You own the pure label function for the stored reading: export label(reading, settings) -> ModuleOutput, where reading is the stored record or none (an Option over a reference to this product's stored record type) and ModuleOutput has text, tooltip, class, value; with no reading it returns the empty state. It never reads cache.json, fetches, measures, or schedules; the refresh-loop owner calls it from fetch_output. It sets value to the raw reading and leaves class to the kit, which sets class with severity_class(value) after the label function returns, so a test of amber (warning) or red (critical) asserts severity_class_with or the refresh path, never label().${keyed.length ? ` When the record's saved-setting value (the field named ${keyed.map(item => `'${item.requestValueFrom}'`).join(", ")}) differs from the current saved setting, it returns the empty state, never another place's value.` : ""}`)
+    notes.push(`You own the pure label function for the stored reading: export label(reading, settings) -> ModuleOutput, where reading is the stored record or none (an Option over a reference to this product's stored record type) and ModuleOutput has text, tooltip, class, value; with no reading it returns the empty state. It never reads cache.json, fetches, measures, or schedules; the refresh-loop owner calls it from fetch_output. It sets value to the raw reading and leaves class to the kit, which sets class with severity_class(value) after the label function returns, so a test of amber (warning) or red (critical) asserts severity_class_with or the refresh path, never label(). A criterion about a failed refresh (class stale, STALE_SUFFIX) or about what the module prints is asserted in this task through module::refresh_with(cache_path, settings, now, fetch, stored) and module::render_with(settings, cache, now) with injected fetch and stored closures, because fetch_output is built in a later task; label() itself stays pure.${keyed.length ? ` When the record's saved-setting value (the field named ${keyed.map(item => `'${item.requestValueFrom}'`).join(", ")}) differs from the current saved setting, it returns the empty state, never another place's value.` : ""}`)
   }
   if (roles.clickOwner !== undefined && featureNames.includes(roles.clickOwner)) {
     notes.push("You are the click-action owner: replace the body of click in src/module.rs and change its signature to click(settings: &Settings, launcher: &dyn Launcher), updating run_action to pass &SystemLauncher (click is the composition root of the click path); the Waybar fragment (already bound to --action click) needs no change, and no other --action name is added unless a feature declares one. A failed click returns Err (exit 2, message on stderr) and writes neither the store nor the cache.")
     const launchers = waybarLaunchers(blueprint)
     for (const page of launchers.pages) {
-      notes.push(`Open ${page.includes("{value}") ? `the address the integration owner's page_url function builds from the saved setting (template ${page})` : page} with open_url from src/platform/launcher.rs (xdg-open through std::process::Command) and take the launcher as an injected &dyn Launcher, so the focused test passes a recording launcher and a failing launcher; a launcher error makes click return Err.`)
+      notes.push(`Open ${page.includes("{value}") ? `the address the integration owner's page_url function builds from the saved setting (template ${page})` : page} with open_url from src/platform/launcher.rs (xdg-open through std::process::Command) and take the launcher as an injected &dyn Launcher, so the focused test passes a recording launcher and a failing launcher; a launcher error makes click return Err.${page.includes("{value}") ? " Read the saved setting first and return Err before calling page_url when none is saved." : ""}`)
     }
     if (launchers.notifies) {
       notes.push("Send the notification with notify from src/platform/launcher.rs (notify-send through std::process::Command) from click only, through an injected &dyn Launcher, so the focused test asserts exactly one request and a failing launcher makes click return Err.")
     }
   }
   for (const feature of blueprint.features.filter(item => featureNames.includes(item.name) && item.runsEverySeconds !== null)) {
-    notes.push(`${feature.name} runs every ${feature.runsEverySeconds} seconds: take that interval and the current time as parameters (default ${feature.runsEverySeconds} seconds, the clock injected), so the focused test sets a short interval and a fixed clock instead of sleeping or reading the system clock.`)
+    notes.push(`${feature.name} runs every ${feature.runsEverySeconds} seconds: take that interval and the current time as parameters (default ${feature.runsEverySeconds} seconds, the clock injected), so the focused test sets a short interval and a fixed clock instead of sleeping or reading the system clock; the feature function returns the interval it was given, and the test also asserts module::interval_seconds(&Settings::default()) == ${feature.runsEverySeconds}.`)
   }
   return notes.length ? ` ${notes.join(" ")}` : ""
 }
@@ -1377,6 +1377,91 @@ pub fn client() -> reqwest::Client {
         .timeout(Duration::from_secs(30))
         .build()
         .expect("HTTP client construction is infallible for the default configuration")
+}
+
+/// RFC 3986 unreserved characters (letters, digits, - . _ ~) are kept; every other byte of the UTF-8 text is %XX
+/// in upper-case hexadecimal, so a space is %20 and "San José" is "San%20Jos%C3%A9".
+pub fn percent_encode(value: &str) -> String {
+    let mut out = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            out.push(char::from(byte));
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+/// The one place a service response value is read: follow the keys, and when the value is a JSON array take
+/// element 0 (a one-element daily list). null, a missing key, or an empty array is an Err, which is a failed fetch.
+pub fn value_at<'a>(
+    root: &'a serde_json::Value,
+    path: &[&str],
+) -> Result<&'a serde_json::Value, String> {
+    let mut current = root;
+    for key in path {
+        current = current
+            .get(*key)
+            .ok_or_else(|| format!("missing {key} in the response"))?;
+    }
+    if let Some(items) = current.as_array() {
+        current = items
+            .first()
+            .ok_or_else(|| String::from("empty list in the response"))?;
+    }
+    if current.is_null() {
+        return Err(String::from("null value in the response"));
+    }
+    Ok(current)
+}
+
+pub fn number_at(root: &serde_json::Value, path: &[&str]) -> Result<f64, String> {
+    value_at(root, path)?
+        .as_f64()
+        .ok_or_else(|| String::from("the response value is not a number"))
+}
+
+pub fn text_at(root: &serde_json::Value, path: &[&str]) -> Result<String, String> {
+    value_at(root, path)?
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| String::from("the response value is not text"))
+}
+`)] : []),
+    ...(http ? [file("tests/http_tests.rs", String.raw`
+use ${crate}::platform::http::*;
+
+fn body(text: &str) -> serde_json::Value {
+    serde_json::from_str(text).expect("test json")
+}
+
+#[test]
+fn percent_encoding_keeps_unreserved_and_encodes_the_rest_as_utf8() {
+    assert_eq!(percent_encode("San José"), "San%20Jos%C3%A9");
+    assert_eq!(percent_encode("a-b.c_d~e1"), "a-b.c_d~e1");
+    assert_eq!(percent_encode("a+b/c?"), "a%2Bb%2Fc%3F");
+}
+
+#[test]
+fn a_scalar_field_reads_element_zero_of_a_one_element_array() {
+    let path = ["daily", "value"];
+    let list = body(r#"{"daily":{"value":[40]}}"#);
+    let plain = body(r#"{"daily":{"value":40}}"#);
+    assert_eq!(number_at(&list, &path), Ok(40.0));
+    assert_eq!(number_at(&plain, &path), Ok(40.0));
+    let day = body(r#"{"daily":{"day":["Mon"]}}"#);
+    assert_eq!(text_at(&day, &["daily", "day"]), Ok(String::from("Mon")));
+}
+
+#[test]
+fn null_missing_and_empty_are_failed_fetches() {
+    let path = ["daily", "value"];
+    assert!(number_at(&body(r#"{"daily":{"value":[null]}}"#), &path).is_err());
+    assert!(number_at(&body(r#"{"daily":{"value":null}}"#), &path).is_err());
+    assert!(number_at(&body(r#"{"daily":{"value":[]}}"#), &path).is_err());
+    assert!(number_at(&body(r#"{"daily":{}}"#), &path).is_err());
+    assert!(text_at(&body(r#"{"daily":{"day":[7]}}"#), &["daily", "day"]).is_err());
 }
 `)] : []),
     ...(launches ? [file("src/platform/launcher.rs", String.raw`

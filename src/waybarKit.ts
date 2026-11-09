@@ -10,7 +10,7 @@ export function waybarSystemKit(sources: readonly SystemSource[], crate: string)
   if (sources.length === 0) return []
   const has = (source: SystemSource) => sources.includes(source)
   const net = has("network-received") || has("network-sent")
-  const sizes = net || has("memory") || has("disk-space")
+  const sizes = net || has("memory") || has("swap") || has("disk-space")
   const parts: string[] = [`/// Operating-system sources, each read through SystemReader so tests inject their own reader.
 pub trait SystemReader {
     type Reading;
@@ -133,14 +133,8 @@ fn load_average_is_the_first_field() {
 }
 `)
   }
-  if (has("memory")) {
-    parts.push(`#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MemoryUse {
-    pub total_bytes: u64,
-    pub used_bytes: u64,
-}
-
-fn meminfo_bytes(text: &str, key: &str) -> Result<u64, String> {
+  if (has("memory") || has("swap")) {
+    parts.push(`fn meminfo_bytes(text: &str, key: &str) -> Result<u64, String> {
     let line = text
         .lines()
         .find(|line| line.starts_with(key))
@@ -154,6 +148,17 @@ fn meminfo_bytes(text: &str, key: &str) -> Result<u64, String> {
     Ok(kilobytes.saturating_mul(1024))
 }
 
+pub const MEMINFO_PATH_ENV: &str = "MODULE_MEMINFO_PATH";
+pub const MEMINFO_PATH: &str = "/proc/meminfo";
+`)
+  }
+  if (has("memory")) {
+    parts.push(`#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MemoryUse {
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+}
+
 /// free = MemAvailable (not MemFree); used = MemTotal - MemAvailable; the meminfo kB lines are multiplied by 1024 to bytes.
 pub fn parse_meminfo(text: &str) -> Result<MemoryUse, String> {
     let total_bytes = meminfo_bytes(text, "MemTotal:")?;
@@ -163,9 +168,6 @@ pub fn parse_meminfo(text: &str) -> Result<MemoryUse, String> {
         used_bytes: total_bytes.saturating_sub(available),
     })
 }
-
-pub const MEMINFO_PATH_ENV: &str = "MODULE_MEMINFO_PATH";
-pub const MEMINFO_PATH: &str = "/proc/meminfo";
 
 pub struct MemoryReader {
     pub path: String,
@@ -206,6 +208,70 @@ fn memory_reader_reads_the_fixture_file_and_fails_on_a_missing_one() {
     };
     assert_eq!(reader.read().expect("read").used_bytes, 768_000);
     let missing = MemoryReader {
+        path: directory.path().join("none").to_string_lossy().into_owned(),
+    };
+    assert!(missing.read().is_err());
+}
+`)
+  }
+  if (has("swap")) {
+    parts.push(`#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SwapUse {
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+}
+
+/// total = SwapTotal; used = SwapTotal - SwapFree; the meminfo kB lines are multiplied by 1024 to bytes. No swap is total 0, used 0.
+pub fn parse_swapinfo(text: &str) -> Result<SwapUse, String> {
+    let total_bytes = meminfo_bytes(text, "SwapTotal:")?;
+    let free = meminfo_bytes(text, "SwapFree:")?;
+    Ok(SwapUse {
+        total_bytes,
+        used_bytes: total_bytes.saturating_sub(free),
+    })
+}
+
+pub struct SwapReader {
+    pub path: String,
+}
+
+impl SwapReader {
+    /// Production reads /proc/meminfo unless MODULE_MEMINFO_PATH names a fixture file.
+    pub fn from_env() -> Self {
+        SwapReader {
+            path: std::env::var(MEMINFO_PATH_ENV).unwrap_or_else(|_| String::from(MEMINFO_PATH)),
+        }
+    }
+}
+
+impl SystemReader for SwapReader {
+    type Reading = SwapUse;
+    fn read(&self) -> Result<SwapUse, String> {
+        parse_swapinfo(&read_text(&self.path)?)
+    }
+}
+`)
+    tests.push(`#[test]
+fn swapinfo_gives_used_bytes_and_no_swap_is_zero() {
+    let text = "MemTotal: 9000 kB\\nSwapTotal:       1000 kB\\nSwapFree:    250 kB\\n";
+    let used = parse_swapinfo(text).expect("swapinfo");
+    assert_eq!(used.total_bytes, 1_024_000);
+    assert_eq!(used.used_bytes, 768_000);
+    let none = parse_swapinfo("SwapTotal: 0 kB\\nSwapFree: 0 kB\\n").expect("no swap");
+    assert_eq!((none.total_bytes, none.used_bytes), (0, 0));
+    assert!(parse_swapinfo("MemTotal: 1 kB\\nMemAvailable: 1 kB\\n").is_err());
+}
+
+#[test]
+fn swap_reader_reads_the_fixture_file_and_fails_on_a_missing_one() {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let path = directory.path().join("meminfo");
+    std::fs::write(&path, "SwapTotal: 1000 kB\\nSwapFree: 250 kB\\n").expect("fixture");
+    let reader = SwapReader {
+        path: path.to_string_lossy().into_owned(),
+    };
+    assert_eq!(reader.read().expect("read").used_bytes, 768_000);
+    let missing = SwapReader {
         path: directory.path().join("none").to_string_lossy().into_owned(),
     };
     assert!(missing.read().is_err());

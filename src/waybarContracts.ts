@@ -10,6 +10,9 @@ export const WAYBAR_UNITS_KIT = " src/platform/units.rs (kit) implements this on
 export const WAYBAR_TIME_CONVENTION = "Time: an instant (a sunset, a fetch time, a sample time) is stored as a UTC epoch in whole milliseconds in a date-time field, never as a time of day, because a time of day has lost its date and cannot be converted later. It is converted to the user's local time zone only when the label or tooltip is rendered, with src/platform/local_time.rs (kit; chrono, the system time zone); a time of day in a label is HH:MM, 24-hour, zero-padded. Nothing else converts a time zone."
 export const WAYBAR_EMPTY_LABEL = "--"
 
+// runsEverySeconds is in seconds; the idea's own unit is converted once, and the PRD, acceptance, and schedule all carry that one number.
+export const WAYBAR_INTERVAL_NOTE = "runsEverySeconds is always in seconds and is the interval the idea states, converted once: 30 seconds is 30, 5 minutes is 300, 30 minutes is 1800, 2 hours is 7200, a day is 86400. Never write 1800 for 'every 30 seconds' or 30 for 'every 30 minutes', and never write both numbers in one sentence ('30 seconds (1800 seconds)'); state the interval once in the unit of the idea and once as the seconds value of runsEverySeconds. This cannot be detected by intake, so check it before answering."
+
 // The one wording of what a failed refresh does to cache.json; it is exactly what refresh_with in the kit does.
 export const WAYBAR_FAILED_REFRESH_CACHE = "the cache label text is kept with class stale and STALE_SUFFIX appended (cache.json is rewritten only to mark it stale, or rebuilt from the stored record when it is missing; an acceptance criterion never says it stays unchanged, and its class is never anything but stale) and no stored record changes"
 
@@ -21,16 +24,19 @@ interface SourceFacts {
   readonly path: string
   readonly reading: string
   readonly kit: string
+  // True when the reading is a size or rate, so the units rules and src/platform/units.rs apply.
+  readonly sizes: boolean
 }
 
 export const WAYBAR_SYSTEM_SOURCES: Readonly<Record<Exclude<SystemSource, "none">, SourceFacts>> = {
-  "network-received": { path: "/proc/net/dev", reading: "total received bytes since boot: the sum of the rx_bytes column over every interface except lo", kit: "NetReceivedReader" },
-  "network-sent": { path: "/proc/net/dev", reading: "total sent bytes since boot: the sum of the tx_bytes column over every interface except lo", kit: "NetSentReader" },
-  "load-average": { path: "/proc/loadavg", reading: "the one-minute load average (first field)", kit: "LoadAverageReader" },
-  memory: { path: "/proc/meminfo (file overridable with the MODULE_MEMINFO_PATH environment variable, so tests point it at a fixture file; build the reader with MemoryReader::from_env())", reading: "MemTotal and MemAvailable (kB lines, multiplied by 1024 to bytes): totalBytes = MemTotal, freeBytes = MemAvailable (never MemFree), usedBytes = totalBytes - freeBytes", kit: "MemoryReader" },
-  battery: { path: "/sys/class/power_supply/BAT*/capacity", reading: "the charge percentage of the first BAT* supply", kit: "BatteryReader" },
-  temperature: { path: "/sys/class/thermal/thermal_zone*/temp (directory overridable with the MODULE_THERMAL_DIR environment variable, so tests point it at a fixture tree)", reading: "the CPU temperature in degrees Celsius: every zone file holds millidegrees, the highest zone is taken, and the value is divided by 1000; a whole-number label rounds to the nearest degree (Rust f64::round, half away from zero), never truncates, and severity compares the unrounded value. With no readable zone the read fails (a failed refresh: exit 2 for --action refresh, the empty state in --once)", kit: "TemperatureReader" },
-  "disk-space": { path: "statvfs(\"/\") (the root file system, through the nix crate)", reading: "free bytes = f_bavail x f_frsize (what a normal user can still write), total bytes = f_blocks x f_frsize, used bytes = total - f_bfree x f_frsize", kit: "DiskSpaceReader" },
+  "network-received": { path: "/proc/net/dev", reading: "total received bytes since boot: the sum of the rx_bytes column over every interface except lo", kit: "NetReceivedReader", sizes: true },
+  "network-sent": { path: "/proc/net/dev", reading: "total sent bytes since boot: the sum of the tx_bytes column over every interface except lo", kit: "NetSentReader", sizes: true },
+  "load-average": { path: "/proc/loadavg", reading: "the one-minute load average (first field)", kit: "LoadAverageReader", sizes: false },
+  memory: { path: "/proc/meminfo (file overridable with the MODULE_MEMINFO_PATH environment variable, so tests point it at a fixture file; build the reader with MemoryReader::from_env())", reading: "MemTotal and MemAvailable (kB lines, multiplied by 1024 to bytes): totalBytes = MemTotal, freeBytes = MemAvailable (never MemFree), usedBytes = totalBytes - freeBytes", kit: "MemoryReader", sizes: true },
+  swap: { path: "/proc/meminfo (file overridable with the MODULE_MEMINFO_PATH environment variable, so tests point it at a fixture file; build the reader with SwapReader::from_env())", reading: "SwapTotal and SwapFree (kB lines, multiplied by 1024 to bytes): totalBytes = SwapTotal, usedBytes = totalBytes - SwapFree (swap, never MemTotal or MemAvailable, which are RAM). A machine without swap reports SwapTotal 0: that is a successful read of total 0 and used 0, and a percentage of a total of 0 is 0 percent, never a division by zero", kit: "SwapReader", sizes: true },
+  battery: { path: "/sys/class/power_supply/BAT*/capacity", reading: "the charge percentage of the first BAT* supply", kit: "BatteryReader", sizes: false },
+  temperature: { path: "/sys/class/thermal/thermal_zone*/temp (directory overridable with the MODULE_THERMAL_DIR environment variable, so tests point it at a fixture tree)", reading: "the CPU temperature in degrees Celsius: every zone file holds millidegrees, the highest zone is taken, and the value is divided by 1000; a whole-number label rounds to the nearest degree (Rust f64::round, half away from zero), never truncates, and severity compares the unrounded value. With no readable zone the read fails (a failed refresh: exit 2 for --action refresh, the empty state in --once)", kit: "TemperatureReader", sizes: false },
+  "disk-space": { path: "statvfs(\"/\") (the root file system, through the nix crate)", reading: "free bytes = f_bavail x f_frsize (what a normal user can still write), total bytes = f_blocks x f_frsize, used bytes = total - f_bfree x f_frsize", kit: "DiskSpaceReader", sizes: true },
 }
 
 // Which optional kit helpers a blueprint needs; the kit files, the locked stack, and the docs all read this so a doc never names a helper the kit lacks.
@@ -39,10 +45,17 @@ export function waybarKitParts(blueprint: Pick<NormalizedBlueprint, "features" |
   const dateTime = (fields: readonly { readonly valueType: string }[]) => fields.some(field => field.valueType === "date-time")
   return {
     sources,
-    sizes: sources.some(source => source === "network-received" || source === "network-sent" || source === "memory" || source === "disk-space"),
-    localTime: blueprint.domainData.some(item => dateTime(item.fields)) || blueprint.externalServices.some(item => dateTime(item.responseFields)),
+    sizes: sources.some(source => WAYBAR_SYSTEM_SOURCES[source as Exclude<SystemSource, "none">].sizes),
+    // shortcut: a date-time stored beside a declared service is read as bookkeeping (a fetched-at stamp) unless the service returns an instant too; upgrade when a declared field says an instant is shown.
+    localTime: blueprint.externalServices.some(item => dateTime(item.responseFields)) || (blueprint.externalServices.length === 0 && blueprint.domainData.some(item => dateTime(item.fields))),
     disk: sources.includes("disk-space"),
   }
+}
+
+// True when a click feature reads a records data object; only then does the stored-record click rule apply.
+export function waybarClickReadsRecord(blueprint: Pick<NormalizedBlueprint, "features" | "domainData">): boolean {
+  const records = new Set(blueprint.domainData.filter(item => item.storage === "records").map(item => referenceKey(item.name)))
+  return blueprint.features.some(feature => feature.invokedBy === "click" && Object.entries(feature.operationsByData).some(([key, operations]) => records.has(key) && operations.includes("read")))
 }
 
 export function waybarSources(blueprint: Pick<NormalizedBlueprint, "features">): SystemSource[] {
@@ -168,12 +181,17 @@ export const WAYBAR_PROVIDER_NOTES: readonly string[] = [
   `Failure story, stated once: when a measurement or fetch fails the bar shows the last good label marked stale and nothing stored changes; never write that the stored reading is marked stale or add a stale or failed flag to a dataObject (stale is derived when the module renders), never also write that the module shows the last stored value as if fresh, and say what is shown when no reading was ever stored (the empty label is always ${WAYBAR_EMPTY_LABEL}). A failed click shows no JSON; it makes the command exit non-zero.`,
   `${WAYBAR_UNIT_CONVENTION} Give a numeric example (a counter change and its label) only when you computed it with these rules, for example 6,250,000 bytes in 5 seconds is 10.0 Mb/s and 3,670,016,000 bytes is 3.67 GB.`,
   `${WAYBAR_TIME_CONVENTION} Declare an instant as a date-time field, never as a time of day.`,
-  "When a feature reads an operating-system source instead of calling a service, set its systemSource to network-received, network-sent, load-average, memory, battery, disk-space (free, used, and total space of the root file system), or temperature (the CPU temperature in Celsius, highest thermal zone) and name no file path or command yourself; otherwise leave it none. A system source is not an externalService. A measurement the idea reads from the machine (load, memory, battery, disk, network speed, CPU temperature) must use the matching systemSource; never invent an externalService or leave systemSource none for it, because a feature that reads the machine with systemSource none has no reader in the kit.",
+  "When a feature reads an operating-system source instead of calling a service, set its systemSource to network-received, network-sent, load-average, memory (RAM), swap (swap space: SwapTotal and SwapFree), battery, disk-space (free, used, and total space of the root file system), or temperature (the CPU temperature in Celsius, highest thermal zone) and name no file path or command yourself; otherwise leave it none. A system source is not an externalService. A measurement the idea reads from the machine (load, memory, swap, battery, disk, network speed, CPU temperature) must use the matching systemSource; never invent an externalService or leave systemSource none for it, because a feature that reads the machine with systemSource none has no reader in the kit.",
   "A maximum or minimum kept since the module started is state: a value that only has to live as long as the service process lives in the service process (the --service loop) and reaches the click action only through the cache file the loop writes (the label, tooltip, and value), because a click is a separate process and cannot read the service's memory; a value that must survive a restart is a declared field of a records or settings dataObject, so name that dataObject and field and say when it is reset, and never describe storage no dataObject declares. Say what 'since the module started' means (the start of the --service process).",
   "A response field is never a bare time of day, whether declared as time or as text: a time of day has no date and cannot become an instant. Choose the field that carries the full instant (a date-time, such as an ISO 8601 or epoch value) and declare it date-time. This is checked for fields declared as time; a text field that holds a time of day cannot be detected.",
   "A click feature that opens the page of a service for a saved setting (a city, a station) sets that externalService's webPage to the address template with {value}, filled from the saved setting and percent-encoded; a webPage without {value} opens the site root and ignores the saved value. Say that a stored reading, a stored peak, and a label are each written atomically per record (one write each), never as one transaction across records. Describe the module command as re-reading the cached label, never the stored record.",
   `The module label is composed by one feature, the one that shows the reading: set its labelTemplate to the exact label with {value} for the formatted reading ("{value}", "Sunset {value}"); leave labelTemplate empty on every other feature. When the idea states a limit (red below 10 GB free, amber above 80 percent), declare it on that same feature as thresholds {state warning or critical, comparison above or below, value} where value is in the unit of the raw reading (bytes for a size, bits per second for a rate, a plain number otherwise: 10 GB is 10000000000); "above" means strictly greater and "below" strictly less. Never declare a limit the idea does not state.`,
+  "Use only request parameters that the documented API defines: never invent a parameter (a 'location' or 'city' query that the service does not document). Prefer a service that takes a place name or one saved identifier directly in its documented request; when the documented API needs coordinates, choose another service, because this preset has no geocoding step. Intake detects only latitude and longitude parameters; an invented parameter name cannot be detected, so confirm the endpoint's documented parameters before answering.",
+  "A response value is read by its documented path in the JSON body. When the documented value is a list (a daily forecast with one entry, such as a one-element array), declare the field with its scalar type (whole-number, number, text) and say in the behavior that the reading is the first element of the list, and that a null, missing, or empty value is a failed fetch; the kit's http::value_at, number_at and text_at implement exactly that.",
+  "A records dataObject with singleRecord true that a refresh feature writes on every run needs only the operation create (the one write is insert-or-replace of the single row); declare update only when a separate feature edits it, and never promise a delete.",
+  "Show a numeric size example (3.67 GB) only where a surface of that feature (label, tooltip, notification) shows a size; a label that shows a percent states the percent example instead. A labelTemplate carries the unit symbol of its reading ('{value}%' for a percent, never just '{value}').",
   "An externalService whose endpoint uses {value} sets requestValueType to text (a name or identifier) or number, and the saved setting named by requestValueFrom must have that valueType. A service that needs latitude and longitude cannot take a saved city name or one saved value: this preset has no geocoding step, so choose a service that takes the one identifier the user saves.",
+  `${WAYBAR_INTERVAL_NOTE}`,
   "Acceptance criteria about a schedule state what a test asserts (the default interval value and the interval the refresh pass returns), not a wall-clock wait. A reading that is only valid for one calendar day is a product limit this preset does not detect; say so in a non-goal instead of promising it.",
   "A value the user saves (a city, a station, a unit) is a settings dataObject with its fields, set by the user with the command's --set KEY=VALUE or by editing config.json; do not add a feature or a records dataObject for it. A records dataObject that keeps the last reading sets singleRecord true when only the latest reading is kept, and a reading fetched for a saved setting includes a field with that setting's name. Compare stored rows by their values, never by file bytes.",
 ]
@@ -183,6 +201,7 @@ const WAYBAR_COMPOSITION_ROOT_BASE = "The composition root of the module is the 
 // Environment variables the kit defines so a test can point a system source at a fixture; the wiring text lists exactly these.
 export const WAYBAR_SOURCE_OVERRIDES: Readonly<Partial<Record<Exclude<SystemSource, "none">, { env: string; fixture: string }>>> = {
   memory: { env: "MODULE_MEMINFO_PATH", fixture: "a file in /proc/meminfo format with MemTotal and MemAvailable lines" },
+  swap: { env: "MODULE_MEMINFO_PATH", fixture: "a file in /proc/meminfo format with SwapTotal and SwapFree lines" },
   temperature: { env: "MODULE_THERMAL_DIR", fixture: "a directory tree with thermal_zone*/temp files in millidegrees" },
 }
 
@@ -213,14 +232,18 @@ export function waybarSettingsInterface(item: NormalizedBlueprint["domainData"][
   const keys = item.fields.map(field => field.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")).join(", ")
   const reads = operations.includes("read") ? ` get(settings) returns the ${record} struct built from those keys in Settings.values, or a String error that names a missing key (never a default);` : ""
   const writes = operations.some(operation => operation !== "read") ? " set(key, value) saves through config::set_pair;" : ""
-  return `Interface: ${item.name} lives only in config.json (Settings.values, keys ${keys || "none"}); there is no SQLite table, migration, or generated id for it.${reads}${writes} OWN-DATA-STORE adds these functions to src/config.rs and no trait over a database. Its focused test saves a value through config::set_pair (the --set path) and reads it back, and asserts that reading an unset key returns the error that names the key.`
+  return `Interface: ${item.name} lives only in config.json (Settings.values, keys ${keys || "none"}); there is no SQLite table, migration, or generated id for it.${reads}${writes} OWN-DATA-STORE adds these functions to src/config.rs and no trait over a database. Its focused test saves a value through config::set_pair (the --set path) and reads it back; set_pair and load read XDG_CONFIG_HOME, so the test points it at a temporary directory inside one single test function (std::env::set_var is unsafe in edition 2024 and races across parallel tests, so every environment change stays in that one function), and asserts that reading an unset key returns the error that names the key.`
 }
 
 export function waybarSingleRecordDetail(item: NormalizedBlueprint["domainData"][number], operations: readonly string[] = []): string[] {
-  const methods = [...(operations.includes("create") ? ["create is insert"] : []), ...(operations.includes("update") ? ["update is update"] : []), ...(operations.includes("read") ? ["read is list and get"] : [])]
+  // A single-record object written repeatedly has no separate update: its one write is insert-or-replace.
+  const upsert = item.singleRecord && operations.includes("create") && !operations.includes("update")
+  const methods = [...(operations.includes("create") ? [upsert ? "create is insert, which on a single record is insert-or-replace" : "create is insert"] : []), ...(operations.includes("update") ? ["update is update"] : []), ...(operations.includes("read") ? ["read is list and get"] : [])]
   return [
     ...(methods.length ? [`Operation to trait method: ${methods.join(", ")}; a feature calls only the methods of its own operations.`] : []),
-    ...(item.singleRecord ? ["Cardinality: exactly one record. The first successful write inserts it; every later write updates the record returned by list()[0] (the highest id) in place, so the table never holds two rows."] : []),
+    ...(item.singleRecord ? [upsert
+      ? "Cardinality: exactly one record. insert is one transaction that inserts the row when the table is empty and otherwise replaces every stored field of the record returned by list()[0] (the highest id), keeping its id, so the table never holds two rows; the trait has no update and no delete method, and no feature may add one."
+      : "Cardinality: exactly one record. The first successful write inserts it; every later write updates the record returned by list()[0] (the highest id) in place, so the table never holds two rows."] : []),
   ]
 }
 
@@ -230,22 +253,27 @@ export function refineWaybarContracts(contracts: readonly GraphContract[]): Grap
   return contracts.map(item => item.kind === "data" || item.kind === "persistence" ? { ...item, failureBehavior: swap(item.failureBehavior), recovery: item.recovery.map(swap) } : item)
 }
 
-// The click page address: {value} replaced by the saved setting, the site root when none is saved.
+// The click page address: {value} replaced by the saved setting; a click with no saved setting fails before the address is built.
 export function waybarPageDetail(service: NormalizedBlueprint["externalServices"][number]): string[] {
   if (!service.webPage.includes("{value}")) return []
-  const root = /^(https?:\/\/[^/]+)/.exec(service.webPage)?.[1] ?? ""
-  return [`Page address: the web page template ${service.webPage} with {value} replaced by the saved setting '${service.requestValueFrom}' (percent-encoded); when no value is saved the address is ${root}/. The integration owner exposes the function page_url (it takes the saved value, which may be absent, and returns the address as text) and the click owner calls that function instead of building the address itself.`]
+  return [`Page address: the web page template ${service.webPage} with {value} replaced by the saved setting '${service.requestValueFrom}' (percent-encoded: RFC 3986 unreserved characters kept, every other byte of the UTF-8 text as upper-case %XX, a space as %20, so 'San José' becomes 'San%20Jos%C3%A9'; use http::percent_encode (src/platform/http.rs, kit), no other crate); the integration owner exposes the function page_url (it takes the saved value as text, never an absent value, and returns the address as text) and the click owner calls that function instead of building the address itself, after reading the saved setting: with no value saved the click returns Err (exit 2, nothing is opened) before page_url is called.`]
 }
 
 export function waybarRequestDetail(service: NormalizedBlueprint["externalServices"][number]): string[] {
   if (!service.endpoint.includes("{value}")) return []
-  return [`Request URL: ${service.endpoint} with {value} replaced by the saved setting '${service.requestValueFrom}' (percent-encoded). The integration owner exposes the function request_url (it takes the base, the scheme and host, and the saved value as text and returns the address as text; production passes the documented host and the focused tests pass a local 127.0.0.1 listener, so no test reaches the live service); a response whose status or value is not the documented success shape is a failed fetch.`]
+  return [`Request URL: ${service.endpoint} with {value} replaced by the saved setting '${service.requestValueFrom}' (percent-encoded: RFC 3986 unreserved characters kept, every other byte of the UTF-8 text as upper-case %XX, a space as %20, so 'San José' becomes 'San%20Jos%C3%A9'; use http::percent_encode (src/platform/http.rs, kit), no other crate). The integration owner exposes the function request_url (it takes the base, the scheme and host, and the saved value as text and returns the address as text; production passes the documented host and the focused tests pass a local 127.0.0.1 listener, so no test reaches the live service); a response whose status or value is not the documented success shape is a failed fetch.`]
+}
+
+// How a response value is read: a scalar field takes element 0 of a one-element array; null, missing, or empty is a failed fetch.
+export function waybarResponseDetail(service: NormalizedBlueprint["externalServices"][number]): string[] {
+  if (!service.responseFields.length) return []
+  return [`Response shape: every response value is read with http::value_at, http::number_at or http::text_at (src/platform/http.rs, kit), never by deserializing it into a scalar struct field. When the JSON value at the documented path is an array, a field declared with a scalar type is read from element 0 (a daily list that holds one element); a value that is null, missing, or an empty array is a failed fetch, handled exactly as the refresh failure behavior above.`]
 }
 
 // Interface lines for the feature that composes the label and declares severity limits.
 export function waybarFeatureDetail(feature: NormalizedBlueprint["features"][number]): string[] {
   const lines: string[] = []
-  if (feature.labelTemplate !== "") lines.push(`Label: exactly "${feature.labelTemplate}" with {value} replaced by the formatted reading (formatting follows the Units and Time rules above); before the first successful refresh the label is "${WAYBAR_EMPTY_LABEL}", the kit default of Settings.text in src/config.rs, which no task changes.`)
+  if (feature.labelTemplate !== "") lines.push(`Label: exactly "${feature.labelTemplate}" with {value} replaced by the reading as the label shows it (a size or rate in the units rule's format and an instant as HH:MM where this document states those rules; any other number as stored, a whole number without decimals; the template carries any unit symbol such as %); before the first successful refresh the label is "${WAYBAR_EMPTY_LABEL}", the kit default of Settings.text in src/config.rs, which no task changes.`)
   if (feature.thresholds.length) {
     const rows = feature.thresholds.map(item => `${item.state === "critical" ? "critical (red)" : "warning (amber)"} when the raw value is ${item.comparison === "above" ? "above" : "below"} ${item.value}`)
     lines.push(`Thresholds on the raw ModuleOutput.value (never the rounded label; the comparison is strict): ${rows.join("; ")}; critical wins over warning. The kit declares them in THRESHOLDS in src/module.rs and its severity function implements both directions, so no task edits them; the label function only sets ModuleOutput.value to the raw reading in the unit these thresholds use.`)
