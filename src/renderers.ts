@@ -1,5 +1,5 @@
 import { ASTRO_DESIGN_TOKENS } from "./astroWeb"
-import { DOCUMENT_NAMES, type DocumentName, type DocumentPacket, type GraphContract, type GraphFeature, type GraphTask, type ProjectGraph } from "./compiler"
+import { DOCUMENT_NAMES, sharedModifyEditors, type DocumentName, type DocumentPacket, type GraphContract, type GraphFeature, type GraphTask, type ProjectGraph } from "./compiler"
 
 function bullets(values: readonly string[]): string {
   return values.map(value => `- ${value}`).join("\n")
@@ -336,13 +336,9 @@ function renderAGENTS(graph: ProjectGraph): string {
   ].join("\n\n") + "\n"
 }
 
-// Files that several tasks modify: each task edits them only after TASK-01 created them, to register its own owner.
+// Files that several tasks modify, or that a task modifies after the foundation created them: each task edits them only to register its own owner.
 function sharedModifyLines(graph: ProjectGraph): string[] {
-  const editors = new Map<string, string[]>()
-  for (const task of graph.phases.flatMap(phase => phase.tasks)) {
-    for (const path of task.filesToModify) editors.set(path, [...(editors.get(path) ?? []), task.id])
-  }
-  return [...editors].filter(([, tasks]) => tasks.length > 1).map(([path, tasks]) => `Shared file ${path} — edited by ${tasks.join(", ")} in task order; each task edits it only to register or wire its own owner`)
+  return [...sharedModifyEditors(graph)].map(([path, tasks]) => `Shared file ${path} — edited by ${tasks.join(", ")} in task order; each task edits it only to register or wire its own owner`)
 }
 
 export function renderPacket(graph: ProjectGraph): DocumentPacket {

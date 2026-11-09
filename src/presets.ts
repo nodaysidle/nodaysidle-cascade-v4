@@ -183,7 +183,7 @@ export interface PresetContract {
   // A preset with no permission prompts gives its permission contracts to this existing owner instead of a PermissionCoordinator.
   readonly permissionOwnerId?: string
   // Preset wording for a permission's purpose, denied behavior, and recovery where the shared window-oriented text does not apply.
-  readonly permissionTexts?: Partial<Record<PermissionCapability, { readonly purpose: string; readonly deniedBehavior: string; readonly recovery: string }>>
+  readonly permissionTexts?: Partial<Record<PermissionCapability, { readonly purpose?: string; readonly deniedBehavior: string; readonly recovery: string }>>
   // Render each preset option with its label and description in CON-PRESET-OPTIONS.
   readonly explainOptions?: boolean
   readonly lifecycleRules: readonly string[]
@@ -300,7 +300,7 @@ const webPermissionPatterns: Readonly<Record<PermissionCapability, string>> = {
 const androidPermissionPatterns: Readonly<Record<PermissionCapability, string>> = {
   microphone: "Declare android.permission.RECORD_AUDIO and request it at runtime immediately before recording; denial leaves non-recording screens usable.",
   accessibility: "Use an AccessibilityService only when the product explicitly needs it, with a dedicated service declaration and a non-service fallback.",
-  notifications: "Declare android.permission.POST_NOTIFICATIONS in AndroidManifest.xml. One flow, owned by PermissionCoordinator.kt: MainActivity.onCreate registers one ActivityResultContracts.RequestPermission launcher and calls PermissionCoordinator.requestOnFirstLaunch; on Android 13+, when the permission is not granted and SettingsRepository.notificationPermissionState is \"unasked\", it launches the request once and records \"granted\" or \"denied\" with recordNotificationPermission. No later launch prompts again; the in-app status reads the real grant, so a grant made in system settings is honored. Below Android 13 nothing is requested. Denial keeps every other feature working and shows in-app status that notifications are off; scheduled work is not a retry and keeps its schedule.",
+  notifications: "Declare android.permission.POST_NOTIFICATIONS in AndroidManifest.xml. One flow, owned by PermissionCoordinator.kt: MainActivity.onCreate registers one ActivityResultContracts.RequestPermission launcher and calls PermissionCoordinator.requestOnFirstLaunch; on Android 13+, when the permission is not granted and SettingsRepository.notificationPermissionState is \"unasked\", it launches the request once and records \"granted\" or \"denied\" with recordNotificationPermission. No later launch prompts again; a scheduled run posts only when NotificationManagerCompat.areNotificationsEnabled() is true, so a grant made in system settings is honored. Below Android 13 nothing is requested. Denial keeps every other feature working and posts nothing; no screen shows the notification status unless a feature declares one; scheduled work is not a retry and keeps its schedule.",
   filesystem: "Use the Storage Access Framework for user-chosen documents; when a feature reopens a saved document URI later, call ContentResolver.takePersistableUriPermission at selection time and releasePersistableUriPermission when the app stops keeping that URI.",
   network: "Declare INTERNET and keep HTTPS calls behind the repository or service boundary with offline and retry states.",
   camera: "Declare CAMERA and request it at runtime from the capture action; denial leaves non-camera behavior available.",
@@ -886,7 +886,14 @@ const androidCompose: PresetContract = {
     "MainActivity calls enableEdgeToEdge() before setContent and hosts a Material 3 Compose tree; ViewModels expose immutable StateFlow UI state and call repository or platform-service owners through constructor-injected interfaces.",
     "Navigation 3 uses NavDisplay with rememberNavBackStack and @Serializable NavKey destinations; predictive back is enabled in the manifest and system back pops the NavBackStack.",
     "Collect state with collectAsStateWithLifecycle, run I/O in structured coroutines off the main dispatcher, use SavedStateHandle for process death, and keep Activity instances free of durable state.",
-    `SDK levels come from the kit's app/build.gradle.kts: compileSdk ${ANDROID_SDK.compileSdk}, targetSdk ${ANDROID_SDK.targetSdk}, minSdk ${ANDROID_SDK.minSdk}, build-tools ${ANDROID_SDK.buildTools}; change them only there.`,
+    `SDK levels come from the kit's app/build.gradle.kts: compileSdk ${ANDROID_SDK.compileSdk}, targetSdk ${ANDROID_SDK.targetSdk}, minSdk ${ANDROID_SDK.minSdk}, build-tools ${ANDROID_SDK.buildTools}; change them only there. Before the first Gradle command install SDK platform ${ANDROID_SDK.compileSdk} and build-tools ${ANDROID_SDK.buildTools}; scripts/gradle.sh uses a system Gradle only when it is 9.6.0 and otherwise downloads 9.6.0.`,
+  ],
+  providerNotes: [
+    "Write the choices a field offers and the value it starts with so that no acceptance outcome contradicts them: a choice list with an initial option always has a selected value, so an outcome about nothing being chosen needs a list with no initial option or an explicit none option.",
+    "When an input is only a time of day but the stored value is a date and time, declare the date field the user picks, or state in the behavior which date a bare time belongs to (for example today, or the day before when it is earlier than another entered time). Store a calendar day as a date field, not a date-time.",
+    "A value the screen shows (a due date, an average, a count) is either a stored field or named in the list or view behavior as shown; an acceptance outcome may assert on screen only what that behavior shows. State the control for each action (for example an Add button that opens a form, a Mark button on each row), the case rule of any sort order, and how a computed average is rounded.",
+    "An acceptance outcome may rely only on what its own feature or the features it builds on deliver; two features must not each need the other's result.",
+    "A reminder or notification sent on a schedule is sent at most once per local day; the app keeps the day it last sent or skipped in its own settings, so declare no data object only to remember that day, and declare no status screen unless a feature asks for one.",
   ],
   integrationBoundary: "Use HttpsURLConnection or one typed HTTP client inside a coroutine-backed service or repository owner, map JSON into locked Kotlin data classes before returning, close streams in finally blocks, and expose only privacy-safe typed failures to ViewModels.",
   recoveryRules: ["Model loading, success, empty, denied, failed, and cancelled states explicitly in immutable UI state.", "Use structured coroutine cancellation, Room transactions, and cache-file cleanup; retries and provider changes always require an explicit user action; a declared automatic fallback and a declared schedule (runs every N seconds or daily at a time) are not retries."],
@@ -909,6 +916,10 @@ const androidCompose: PresetContract = {
     boundary: "Keep every byte in app-private storage (Room, DataStore, filesDir, cacheDir); no feature opens or saves a user-chosen file and the app requests no storage permission.",
     details: ["App files, when declared, stay in filesDir/files/.", "No document picker is used."],
   },
+  permissionTexts: {
+    notifications: { deniedBehavior: "Keep every other feature usable, post no notification, and prompt no more than once; no screen shows the status unless a feature declares one.", recovery: "The user can allow notifications in system settings; the next scheduled run honors it." },
+    "background-execution": { deniedBehavior: "Keep the foreground features working; scheduled work runs whenever the platform allows it.", recovery: "The next scheduled run is the recovery; nothing asks the user." },
+  },
   permissionPurposes: { "background-execution": "Keep running after the app leaves the foreground only while a declared background feature needs it." },
   deviceGates: { rule: ANDROID_DEVICE_GATE_RULE, commands: ANDROID_DEVICE_COMMANDS },
   launchCheck: identity => `./scripts/gradle.sh assembleDebug on every machine; when an adb device is attached, also adb install -r app/build/outputs/apk/debug/app-debug.apk and launch applicationId ${identity.packageName}; with none attached the completion report is PARTIAL and names the skipped launch check.`,
@@ -924,7 +935,7 @@ const androidCompose: PresetContract = {
   wiringRules: [
     "AppContainer.kt (built in the Application class) is the composition root and provides the concrete repositories, services, and platform adapters named in the contracts; App.kt only reads them from it. Fakes and in-memory stores exist only under app/src/test and app/src/androidTest.",
     "The packaging focused test constructs the production composition root and asserts that every provided dependency is the concrete production type, not a fake.",
-    "Before completion, when an adb device is attached: install the APK, complete one acceptance outcome per feature, force-stop the app, relaunch, and confirm that saved records and settings are still present. With no device attached, the completion report is PARTIAL and names this check as skipped; the JVM tests that assert the production container's concrete types still run.",
+    "Before completion, when an adb device is attached: install the APK, complete one acceptance outcome per feature, force-stop the app, relaunch, and confirm that the data the app saved is still present. With no device attached, the completion report is PARTIAL and names this check as skipped; the JVM tests that assert the production container's concrete types still run.",
     ...SHARED_WIRING_RULES,
   ],
   installationDecision: identity => `When \`adb devices\` lists an attached target, re-identify it, run adb install -r app/build/outputs/apk/debug/app-debug.apk, and launch applicationId ${identity.packageName} before collecting device smoke evidence; with no target attached, skip the install and report PARTIAL.`,

@@ -14,11 +14,12 @@ function file(path: string, content: string): AndroidKitFile {
 export const ANDROID_SDK = { compileSdk: 37, targetSdk: 37, minSdk: 26, buildTools: "37.0.0" } as const
 
 // A declared schedule or notification need decides which kit files ship.
-export function androidKitNeeds(blueprint: NormalizedBlueprint): { schedule: boolean; notifications: boolean } {
-  return {
-    schedule: blueprint.features.some(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null),
-    notifications: blueprint.permissionNeeds.some(item => item.capability === "notifications"),
-  }
+export function androidKitNeeds(blueprint: NormalizedBlueprint): { schedule: boolean; notifications: boolean; settingsData: boolean; settings: boolean } {
+  const schedule = blueprint.features.some(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null)
+  const notifications = blueprint.permissionNeeds.some(item => item.capability === "notifications")
+  const settingsData = blueprint.domainData.some(item => item.storage === "settings")
+  // SettingsRepository ships only when something stores in it: a declared setting, the notification state, or a schedule's last-run day.
+  return { schedule, notifications, settingsData, settings: schedule || notifications || settingsData }
 }
 
 export function androidKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint): AndroidKitFile[] {
@@ -182,14 +183,13 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.androidx.work.runtime.ktx)
-    implementation(libs.kotlinx.serialization.json)
+${needs.schedule ? "    implementation(libs.androidx.work.runtime.ktx)\n" : ""}    implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core.ktx)
-    testImplementation(libs.androidx.work.testing)
+${needs.schedule ? "    testImplementation(libs.androidx.work.testing)\n" : ""}    testImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -256,68 +256,14 @@ open class ${identity.pascalName}Application : Application() {
     file(`app/src/main/java/${path}/AppContainer.kt`, `package ${pkg}
 
 import android.content.Context
-${needs.schedule ? "import androidx.work.WorkManager\n" : ""}import ${pkg}.data.SettingsRepository
-import java.time.Clock
+${needs.schedule ? "import androidx.work.WorkManager\n" : ""}${needs.settings ? `import ${pkg}.data.SettingsRepository\n` : ""}import java.time.Clock
 
 // Feature and data tasks add their repositories here and nowhere else. Code that compares a stored
 // date or time with the present moment reads \`clock\`; tests pass a fixed Clock instead.
 class AppContainer(${needs.schedule ? "private val " : ""}context: Context, val clock: Clock = Clock.systemDefaultZone()) {
-    val settings = SettingsRepository(context)
-${needs.schedule ? "    val workManager: WorkManager by lazy { WorkManager.getInstance(context) }\n" : ""}}
+${needs.settings ? "    val settings = SettingsRepository(context)\n" : ""}${needs.schedule ? "    val workManager: WorkManager by lazy { WorkManager.getInstance(context) }\n" : ""}}
 `),
-    file(`app/src/main/java/${path}/data/SettingsRepository.kt`, `package ${pkg}.data
-
-import android.content.Context
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.edit
-${needs.notifications ? "import androidx.datastore.preferences.core.stringPreferencesKey\n" : ""}import androidx.datastore.preferences.preferencesDataStore
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
-
-private val Context.settingsDataStore by preferencesDataStore(name = "settings")
-
-class SettingsRepository(private val context: Context) {
-    private val compact = booleanPreferencesKey("compact")
-
-    val compactLists: Flow<Boolean> = context.settingsDataStore.data.map { it[compact] ?: false }
-
-    suspend fun setCompact(value: Boolean) {
-        context.settingsDataStore.edit { it[compact] = value }
-    }
-${needs.notifications ? `
-    private val notificationPermission = stringPreferencesKey("notification_permission")
-
-    // "unasked" until the one first-launch request has been answered, then "granted" or "denied".
-    val notificationPermissionState: Flow<String> = context.settingsDataStore.data.map { it[notificationPermission] ?: "unasked" }
-
-    suspend fun recordNotificationPermission(state: String) {
-        require(state == "granted" || state == "denied")
-        context.settingsDataStore.edit { it[notificationPermission] = state }
-    }
-` : ""}}
-`),
-    file(`app/src/test/java/${path}/data/SettingsRepositoryTest.kt`, `package ${pkg}.data
-
-import androidx.test.core.app.ApplicationProvider
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.runTest
-import org.junit.Assert.assertEquals
-import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-
-// Proves the JVM test setup (Robolectric, coroutines-test, DataStore) works without a device.
-@RunWith(RobolectricTestRunner::class)
-class SettingsRepositoryTest {
-    @Test
-    fun compactListsDefaultsToFalseAndKeepsAWrittenValue() = runTest {
-        val repository = SettingsRepository(ApplicationProvider.getApplicationContext())
-        assertEquals(false, repository.compactLists.first())
-        repository.setCompact(true)
-        assertEquals(true, repository.compactLists.first())
-    }
-}
-`),
+    ...(needs.settings ? settingsKitFiles(identity, needs) : []),
     file("app/src/test/resources/robolectric.properties", `sdk=35\n${needs.schedule ? `application=${pkg}.Test${identity.pascalName}Application\n` : ""}`),
     ...(needs.schedule ? scheduleKitFiles(identity) : []),
     file(`app/src/main/java/${path}/App.kt`, `package ${pkg}
@@ -425,11 +371,12 @@ if [ ! -f local.properties ]; then
   printf 'sdk.dir=%s\\n' "$ANDROID_HOME" > local.properties
 fi
 
-if command -v gradle >/dev/null 2>&1; then
+version="\${GRADLE_VERSION:-9.6.0}"
+# A system gradle is used only when it is the locked version.
+if command -v gradle >/dev/null 2>&1 && gradle --version 2>/dev/null | grep -q "^Gradle $version\\$"; then
   exec gradle "$@"
 fi
 
-version="\${GRADLE_VERSION:-9.6.0}"
 cache="\${GRADLE_USER_HOME:-$HOME/.gradle}/wrapper/dists"
 binary="$(find "$cache" -path "*/gradle-$version/bin/gradle" -type f 2>/dev/null | head -1 || true)"
 if [ -z "$binary" ]; then
@@ -449,17 +396,90 @@ TASK-01 verifies that each exists unchanged. The kit is a real Android project w
 
 - Compose Material 3 and edge-to-edge in MainActivity.
 - Navigation 3 with serializable NavKey routes.
-- DataStore for settings; Room (KSP, schema exported to app/schemas) and WorkManager are declared in the build for the data and background tasks.
+- Room (KSP) is declared in the build for the data task; the schema JSON under app/schemas is generated by the build and committed.${needs.settings ? "\n- DataStore behind SettingsRepository for the values this packet stores there." : ""}${needs.schedule ? "\n- WorkManager is declared in the build for the declared schedule." : ""}
 - A navigation shell (App.kt) and a container (AppContainer.kt, with an injectable java.time.Clock) that carry no product code:
   feature and data tasks add the entities, DAOs, repositories, ViewModels, and screens their TASKS.md lists.
-- JVM test dependencies already declared: JUnit, coroutines-test, Robolectric (sdk=35), androidx test core, and work-testing.
-  With a declared schedule, a test Application starts a test WorkManager for every unit test (the manifest's Application enqueues work on launch).
+- JVM test dependencies already declared: JUnit, coroutines-test, Robolectric (sdk=35), androidx test core, and Compose UI tests${needs.schedule ? ", and work-testing" : ""}.${needs.schedule ? "\n  A test Application starts a test WorkManager for every unit test, because the manifest's Application enqueues work on launch." : ""}
   ./scripts/gradle.sh testDebugUnitTest passes without a device. connectedDebugAndroidTest needs one.
 
 Build with ./scripts/gradle.sh assembleDebug. Set ANDROID_HOME to an SDK with platform ${ANDROID_SDK.compileSdk} and
 build-tools ${ANDROID_SDK.buildTools} (compileSdk ${ANDROID_SDK.compileSdk}, targetSdk ${ANDROID_SDK.targetSdk}, minSdk ${ANDROID_SDK.minSdk}); the script writes
 local.properties on first run. The first build downloads the Gradle distribution and the declared Android
 dependencies; the first unit test run downloads the Robolectric android-all jar.
+`),
+  ]
+}
+
+// Shipped only when something stores in it. reset() is the explicit reset the settings placement promises.
+function settingsKitFiles(identity: ProjectIdentity, needs: ReturnType<typeof androidKitNeeds>): AndroidKitFile[] {
+  const pkg = identity.packageName
+  const path = identity.packagePath
+  return [
+    file(`app/src/main/java/${path}/data/SettingsRepository.kt`, `package ${pkg}.data
+
+import android.content.Context
+import androidx.datastore.preferences.core.edit
+${needs.schedule ? "import androidx.datastore.preferences.core.longPreferencesKey\n" : ""}${needs.notifications ? "import androidx.datastore.preferences.core.stringPreferencesKey\n" : ""}import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+
+private val Context.settingsDataStore by preferencesDataStore(name = "settings")
+
+class SettingsRepository(private val context: Context) {
+    suspend fun reset() {
+        context.settingsDataStore.edit { it.clear() }
+    }
+${needs.notifications ? `
+    private val notificationPermission = stringPreferencesKey("notification_permission")
+
+    // "unasked" until the one first-launch request has been answered, then "granted" or "denied".
+    val notificationPermissionState: Flow<String> = context.settingsDataStore.data.map { it[notificationPermission] ?: "unasked" }
+
+    suspend fun recordNotificationPermission(state: String) {
+        require(state == "granted" || state == "denied")
+        context.settingsDataStore.edit { it[notificationPermission] = state }
+    }
+` : ""}${needs.schedule ? `
+    // The one home of a schedule's once-per-day state: the epoch day (LocalDate.toEpochDay on the injected
+    // clock) on which the schedule last sent or deliberately skipped its run; null before the first run.
+    fun lastRunEpochDay(schedule: String): Flow<Long?> =
+        context.settingsDataStore.data.map { it[longPreferencesKey("last_run_" + schedule)] }
+
+    suspend fun recordRun(schedule: String, epochDay: Long) {
+        context.settingsDataStore.edit { it[longPreferencesKey("last_run_" + schedule)] = epochDay }
+    }
+` : ""}}
+`),
+    file(`app/src/test/java/${path}/data/SettingsRepositoryTest.kt`, `package ${pkg}.data
+
+import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+
+// Proves the JVM test setup (Robolectric, coroutines-test, DataStore) works without a device.
+@RunWith(RobolectricTestRunner::class)
+class SettingsRepositoryTest {
+    private val repository get() = SettingsRepository(ApplicationProvider.getApplicationContext())
+
+    @Test
+    fun resetOnAnEmptyStoreKeepsTheDefaults() = runTest {
+        repository.reset()
+${needs.notifications ? `        assertEquals("unasked", repository.notificationPermissionState.first())
+` : ""}    }
+${needs.schedule ? `
+    @Test
+    fun aScheduleRemembersTheDayItLastRanUntilReset() = runTest {
+        assertEquals(null, repository.lastRunEpochDay("daily").first())
+        repository.recordRun("daily", 20_000)
+        assertEquals(20_000L, repository.lastRunEpochDay("daily").first())
+        repository.reset()
+        assertEquals(null, repository.lastRunEpochDay("daily").first())
+    }
+` : ""}}
 `),
   ]
 }
