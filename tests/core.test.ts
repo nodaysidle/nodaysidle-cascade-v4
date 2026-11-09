@@ -9,7 +9,7 @@ import { auditPacket } from "../src/audit"
 import { auditCapabilities } from "../src/capabilities"
 import { auditSemanticIntake } from "../src/schema"
 import { PRESETS, PRESET_IDS } from "../src/presets"
-import { bareGtkBlueprint, bareWaybarBlueprint, fixtureCases, tideTickBlueprint } from "./fixtures/blueprints"
+import { bareGtkBlueprint, bareWaybarBlueprint, fixtureCases, tidePageBlueprint, tideTickBlueprint } from "./fixtures/blueprints"
 
 describe("v4 deterministic core", () => {
   it("exposes only the approved presets", () => {
@@ -172,6 +172,78 @@ describe("v4 deterministic core", () => {
       const gtk = fixtureCases.find(item => item.presetId === "linux-wayland-gtk4-desktop")!
       const gtkPacket = await compilePacket(gtk.blueprint, gtk.presetId)
       expect(gtkPacket.documents["TRD.md"]).toContain("screenshot of every window")
+    })
+  })
+
+  describe("Waybar click, classes, persistence, and validation order", () => {
+    const text = (packet: Awaited<ReturnType<typeof compilePacket>>, name: string) => packet.kit.find(file => file.name === `kit/${name}`)?.content ?? ""
+    const task = (packet: Awaited<ReturnType<typeof compilePacket>>, id: string) => packet.documents["TASKS.md"].split(`### ${id}`)[1]!.split("\n### ")[0]!
+
+    it("gives the click feature the click hook and the fragment binding, and none when no feature clicks", async () => {
+      const tide = await compilePacket(tideTickBlueprint, "linux-hyprland-waybar-module")
+      expect(text(tide, "resources/waybar/config.jsonc")).toContain('"on-click": "~/.local/bin/tide-tick --action click"')
+      expect(task(tide, "TASK-01-FOUNDATION")).toContain("click (the --action click body) is replaced by TASK-07-TIDE-TABLE-LINK")
+      expect(task(tide, "TASK-07-TIDE-TABLE-LINK")).toContain("click-action owner")
+      expect(tide.documents["TRD.md"]).toContain("only when a feature declares invokedBy click")
+      const bare = await compilePacket(bareWaybarBlueprint, "linux-hyprland-waybar-module")
+      expect(text(bare, "resources/waybar/config.jsonc")).not.toContain("on-click")
+      expect(task(bare, "TASK-01-FOUNDATION")).toContain("no feature declares invokedBy click")
+    })
+
+    it("documents one class vocabulary with colours and one stale rule", async () => {
+      const tide = await compilePacket(tideTickBlueprint, "linux-hyprland-waybar-module")
+      const css = text(tide, "resources/waybar/style.css")
+      for (const name of ["warning", "critical", "stale", "empty"]) expect(css).toContain(`#custom-tide-tick.${name}`)
+      const module = text(tide, "src/module.rs")
+      expect(module).toContain("pub const WARNING_ABOVE: Option<f64> = None;")
+      expect(module).toContain("pub const CRITICAL_ABOVE: Option<f64> = None;")
+      const trd = tide.documents["TRD.md"]
+      expect(trd).toContain("exactly one of normal, warning, critical, stale, empty")
+      expect(trd).toContain("stale wins over warning and critical")
+      expect(task(tide, "TASK-06-TIDE-REFRESH")).toContain("leave both None so the class is normal")
+      expect(task(tide, "TASK-06-TIDE-REFRESH")).toContain("Settings.text in src/config.rs")
+      expect(task(tide, "TASK-06-TIDE-REFRESH")).toContain("Modify only these files")
+      expect(task(tide, "TASK-06-TIDE-REFRESH")).toContain("src/config.rs")
+    })
+
+    it("installs the binary before systemd-analyze verify runs", async () => {
+      const tide = await compilePacket(tideTickBlueprint, "linux-hyprland-waybar-module")
+      const gates = tide.documents["TASKS.md"].match(/Final Validation Commands[\s\S]*$/)?.[0] ?? ""
+      expect(gates.indexOf("./scripts/package.sh --install")).toBeGreaterThan(-1)
+      expect(gates.indexOf("./scripts/package.sh --install")).toBeLessThan(gates.indexOf("systemd-analyze verify"))
+      expect(tide.documents["TRD.md"]).toContain("only after ./scripts/package.sh --install")
+      expect(tide.documents["TRD.md"]).toContain("~/.config/waybar/tide-tick.jsonc")
+    })
+
+    it("tells one persistence story: records yield SQLite everywhere, no records yield no SQLite", async () => {
+      const tide = await compilePacket(tideTickBlueprint, "linux-hyprland-waybar-module")
+      expect(text(tide, "Cargo.toml")).toContain("rusqlite")
+      expect(text(tide, "src/platform/sqlite.rs")).not.toBe("")
+      expect(tide.documents["TRD.md"]).toContain("rusqlite")
+      expect(tide.documents["TRD.md"]).toContain("close the SQLite connection")
+      const bare = await compilePacket(bareWaybarBlueprint, "linux-hyprland-waybar-module")
+      const docs = Object.values(bare.documents).join("\n")
+      expect(docs).not.toMatch(/sqlite/i)
+      expect(docs).not.toContain("in memory")
+    })
+
+    it("names xdg-open, notify-send, the injectable launcher, the web page URL, and the package depends", async () => {
+      const page = await compilePacket(tidePageBlueprint, "linux-hyprland-waybar-module")
+      expect(text(page, "src/platform/launcher.rs")).toContain("pub fn open_url(launcher: &dyn Launcher")
+      expect(text(page, "src/platform/launcher.rs")).toContain("pub fn notify(launcher: &dyn Launcher")
+      expect(text(page, "src/platform/mod.rs")).toContain("pub mod launcher;")
+      expect(text(page, "PKGBUILD")).toContain("depends=('xdg-utils' 'libnotify')")
+      const click = task(page, "TASK-07-TIDE-TABLE-LINK")
+      expect(click).toContain("Open https://tides.example.org/harbor with open_url")
+      expect(click).toContain("xdg-open through std::process::Command")
+      expect(click).toContain("injected &dyn Launcher")
+      expect(click).toContain("notify-send through std::process::Command")
+      expect(page.documents["TRD.md"]).toContain("Web page opened for the user: https://tides.example.org/harbor")
+      expect(page.documents["TRD.md"].toLowerCase()).toContain("xdg-open (xdg-utils)")
+      const tide = await compilePacket(tideTickBlueprint, "linux-hyprland-waybar-module")
+      expect(text(tide, "src/platform/launcher.rs")).toBe("")
+      expect(text(tide, "PKGBUILD")).toContain("depends=()")
+      expect(tide.documents["TRD.md"].toLowerCase()).not.toContain("notify-send (libnotify)\n")
     })
   })
 

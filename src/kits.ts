@@ -553,6 +553,17 @@ function snakeKey(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value"
 }
 
+// The external programs the click action runs, read from declared fields: a service web page the click feature
+// uses (xdg-open) and the notifications platform need (notify-send). Both go through src/platform/launcher.rs.
+export function waybarLaunchers(blueprint: NormalizedBlueprint): { readonly pages: readonly string[]; readonly notifies: boolean } {
+  const click = blueprint.features.find(feature => feature.invokedBy === "click")
+  const alnum = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "")
+  const pages = click === undefined ? [] : blueprint.externalServices
+    .filter(service => service.webPage !== "" && click.resourceIds.some(id => id.startsWith("service:") && alnum(id.slice("service:".length)) === alnum(service.name)))
+    .map(service => service.webPage)
+  return { pages, notifies: click?.resourceIds.includes("permission:notifications") ?? false }
+}
+
 export interface WaybarRoles {
   // The first feature that declares a schedule, else the first that needs background execution.
   readonly refreshOwner?: string
@@ -589,10 +600,17 @@ export function waybarTaskNotes(blueprint: NormalizedBlueprint, featureNames: re
   const roles = waybarRoles(blueprint)
   const notes: string[] = []
   if (roles.refreshOwner !== undefined && featureNames.includes(roles.refreshOwner)) {
-    notes.push(`You are the refresh-loop owner: replace the body of fetch_output in src/module.rs so the --service loop calls this feature's code and returns the final label as a ModuleOutput; keep run_service, render_with, refresh, STALE_SUFFIX, and the loop interval (settings.refresh_seconds) unchanged, and keep cache.json a derived render of that label.`)
+    notes.push(`You are the refresh-loop owner: replace the body of fetch_output in src/module.rs so the --service loop calls this feature's code and returns the final label as a ModuleOutput; keep run_service, render_with, refresh, STALE_SUFFIX, and the loop interval (settings.refresh_seconds) unchanged, and keep cache.json a derived render of that label. Set ModuleOutput.value to the numeric reading when the label shows one; only when this feature's acceptance criteria state warning or critical thresholds (amber is warning, red is critical), set WARNING_ABOVE and CRITICAL_ABOVE in src/module.rs to them and compare the raw value, otherwise leave both None so the class is normal. Take every external read (service call, file, command) behind an injected trait or closure so the failure test substitutes one that fails. If its acceptance criteria name wording for the state before the first successful refresh, set that as the default of Settings.text in src/config.rs.`)
   }
   if (roles.clickOwner !== undefined && featureNames.includes(roles.clickOwner)) {
-    notes.push("You are the click-action owner: replace the body of click in src/module.rs; the Waybar fragment binds on-click to --action click only, and no other --action name is added unless a feature declares one.")
+    notes.push("You are the click-action owner: replace the body of click in src/module.rs; the Waybar fragment (already bound to --action click) needs no change, and no other --action name is added unless a feature declares one.")
+    const launchers = waybarLaunchers(blueprint)
+    for (const page of launchers.pages) {
+      notes.push(`Open ${page} with open_url from src/platform/launcher.rs (xdg-open through std::process::Command) and take the launcher as an injected &dyn Launcher, so the focused test passes a recording launcher and a failing launcher; a launcher error makes click return Err.`)
+    }
+    if (launchers.notifies) {
+      notes.push("Send the notification with notify from src/platform/launcher.rs (notify-send through std::process::Command) from click only, through an injected &dyn Launcher, so the focused test asserts exactly one request and a failing launcher makes click return Err.")
+    }
   }
   for (const feature of blueprint.features.filter(item => featureNames.includes(item.name) && item.runsEverySeconds !== null)) {
     notes.push(`${feature.name} runs every ${feature.runsEverySeconds} seconds: take that interval and the current time as parameters (default ${feature.runsEverySeconds} seconds, the clock injected), so the focused test sets a short interval and a fixed clock instead of sleeping or reading the system clock.`)
@@ -605,7 +623,7 @@ export function waybarHookSummary(blueprint: NormalizedBlueprint, taskIdForFeatu
   const roles = waybarRoles(blueprint)
   const refreshTask = roles.refreshOwner === undefined ? undefined : taskIdForFeature(roles.refreshOwner)
   const clickTask = roles.clickOwner === undefined ? undefined : taskIdForFeature(roles.clickOwner)
-  return ` src/module.rs ships two hooks: fetch_output (the refresh loop body) is replaced by ${refreshTask ?? "no task, because no feature declares a schedule or background work; it stays the empty-state base"}, and click (the --action click body) is replaced by ${clickTask ?? "no task, because no feature declares a read-only action; it stays a no-op and the fragment binds no on-click"}.`
+  return ` src/module.rs ships two hooks: fetch_output (the refresh loop body) is replaced by ${refreshTask ?? "no task, because no feature declares a schedule or background work; it stays the empty-state base"}, and click (the --action click body) is replaced by ${clickTask ?? "no task, because no feature declares invokedBy click; it stays a no-op and the fragment binds no on-click"}.`
 }
 
 function waybarKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, options: Readonly<Record<string, string | boolean | readonly string[]>> = {}): KitFile[] {
@@ -617,7 +635,10 @@ function waybarKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, op
   const { records, secrets, http, optionalDeps } = rustKitHelpers(blueprint)
   const roles = waybarRoles(blueprint)
   const settingKeys = roles.settingKeys.map(key => JSON.stringify(key)).join(", ")
-  const helperNames = [...(records ? ["sqlite.rs"] : []), ...(secrets ? ["credentials.rs"] : []), ...(http ? ["http.rs"] : [])]
+  const launchers = waybarLaunchers(blueprint)
+  const launches = launchers.pages.length > 0 || launchers.notifies
+  const helperNames = [...(records ? ["sqlite.rs"] : []), ...(secrets ? ["credentials.rs"] : []), ...(http ? ["http.rs"] : []), ...(launches ? ["launcher.rs"] : [])]
+  const packageDepends = [...(secrets ? ["dbus"] : []), ...(launchers.pages.length ? ["xdg-utils"] : []), ...(launchers.notifies ? ["libnotify"] : [])].map(name => `'${name}'`).join(" ")
   return [
     file("README.md", String.raw`
 # Starter kit
@@ -643,7 +664,7 @@ Shipped helpers:
 - tests/contract_tests.rs, tests/module_output_tests.rs: storage and output-shape tests.
 
 Rules the kit encodes:
-- Source of truth: persisted records (SQLite records and the settings file, per each data object's declared
+- Source of truth: persisted ${records ? "records (SQLite records and the settings file" : "values (the settings file"}, per each data object's declared
   storage) are authoritative. cache.json under $XDG_RUNTIME_DIR is only a derived render of the final label
   text, written by the service and read by --once; deleting it loses nothing.
 - Saved settings live in the "values" map of config.json and are set with --set KEY=VALUE (declared keys:
@@ -652,6 +673,13 @@ Rules the kit encodes:
   one refresh now. Right and middle click stay unbound unless a feature declares them.
 - STALE_SUFFIX in src/module.rs (default "${WAYBAR_STALE_SUFFIX}") is the one stale marker; use the wording the
   acceptance criteria state if they state one, and change only that constant.
+- Classes: the output class is exactly one of normal, warning, critical, stale, empty, and resources/waybar/style.css
+  colours each. render_with sets it: empty before the first successful refresh (text is settings.text), stale when
+  the last refresh failed or the reading is older than twice the service interval (the text keeps the last value
+  plus STALE_SUFFIX, and stale wins over warning and critical), otherwise normal, warning, or critical from
+  ModuleOutput.value against WARNING_ABOVE and CRITICAL_ABOVE. Both limits are None, so every fresh reading is
+  normal, until a feature's acceptance criteria state thresholds.${launches ? `
+- src/platform/launcher.rs: the Launcher trait and SystemLauncher (std::process::Command) with ${[...(launchers.pages.length ? ["open_url (xdg-open)"] : []), ...(launchers.notifies ? ["notify (notify-send)"] : [])].join(" and ")}; features take a &dyn Launcher so tests inject a recording or failing one.` : ""}
 - Time is injected: render_with, refresh, and interval_seconds take the clock and the settings as parameters,
   so tests never sleep or read the system clock.
 `),
@@ -766,6 +794,15 @@ use crate::platform::atomic_file;
 
 /// Appended to the label of an out-of-date reading; the one stale marker (docs and tests name it).
 pub const STALE_SUFFIX: &str = "${WAYBAR_STALE_SUFFIX}";
+pub const CLASS_NORMAL: &str = "normal";
+pub const CLASS_WARNING: &str = "warning";
+pub const CLASS_CRITICAL: &str = "critical";
+pub const CLASS_STALE: &str = "stale";
+pub const CLASS_EMPTY: &str = "empty";
+/// Severity limits on ModuleOutput.value. Both stay None (every fresh reading is "normal") unless a
+/// feature's acceptance criteria state thresholds; then the owner task sets them here and nowhere else.
+pub const WARNING_ABOVE: Option<f64> = None;
+pub const CRITICAL_ABOVE: Option<f64> = None;
 pub const ACTION_CLICK: &str = "click";
 pub const ACTION_REFRESH: &str = "refresh";
 /// The whole --action vocabulary; the Waybar fragment binds only ACTION_CLICK.
@@ -778,6 +815,9 @@ pub struct ModuleOutput {
     pub tooltip: String,
     pub class: String,
     pub percentage: Option<u8>,
+    /// The raw numeric reading, when the label shows one; severity compares this, never the rounded text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<f64>,
 }
 
 /// cache.json: a derived render of the final label, never a source of truth.
@@ -805,9 +845,27 @@ pub fn empty_state(settings: &Settings) -> ModuleOutput {
         text: settings.text.clone(),
         alt: String::from("empty"),
         tooltip: settings.tooltip.clone(),
-        class: String::from("empty"),
+        class: String::from(CLASS_EMPTY),
         percentage: None,
+        value: None,
     }
+}
+
+/// The class vocabulary is exactly normal, warning, critical, stale, empty.
+pub fn severity_class_with(
+    value: Option<f64>,
+    warning_above: Option<f64>,
+    critical_above: Option<f64>,
+) -> &'static str {
+    match value {
+        Some(value) if critical_above.is_some_and(|limit| value > limit) => CLASS_CRITICAL,
+        Some(value) if warning_above.is_some_and(|limit| value > limit) => CLASS_WARNING,
+        _ => CLASS_NORMAL,
+    }
+}
+
+pub fn severity_class(value: Option<f64>) -> &'static str {
+    severity_class_with(value, WARNING_ABOVE, CRITICAL_ABOVE)
 }
 
 pub fn read_cache(path: &Path) -> Option<Cache> {
@@ -832,11 +890,14 @@ pub fn render_with(settings: &Settings, cache: Option<&Cache>, now: u64) -> Stri
         Some(cache) => {
             let mut output = cache.output.clone();
             let age = now.saturating_sub(cache.updated_unix);
-            if output.class == "stale" || age > interval_seconds(settings) * 2 {
-                output.class = String::from("stale");
+            if output.class == CLASS_STALE || age > interval_seconds(settings) * 2 {
+                // Stale wins over warning and critical: the text keeps the last value plus STALE_SUFFIX.
+                output.class = String::from(CLASS_STALE);
                 if !output.text.ends_with(STALE_SUFFIX) {
                     output.text.push_str(STALE_SUFFIX);
                 }
+            } else if output.class != CLASS_EMPTY {
+                output.class = String::from(severity_class(output.value));
             }
             output
         }
@@ -865,7 +926,7 @@ pub fn refresh(cache_path: &Path, settings: &Settings, now: u64) -> Result<(), S
         Ok(output) => write_cache(cache_path, &output, now),
         Err(error) => {
             if let Some(mut cache) = read_cache(cache_path) {
-                cache.output.class = String::from("stale");
+                cache.output.class = String::from(CLASS_STALE);
                 write_cache(cache_path, &cache.output, cache.updated_unix)?;
             }
             Err(error)
@@ -1024,7 +1085,7 @@ ${records ? `pub fn database_path() -> PathBuf {
 `),
     file("src/platform/mod.rs", String.raw`
 pub mod atomic_file;
-${[...(secrets ? ["pub mod credentials;"] : []), ...(http ? ["pub mod http;"] : []), "pub mod runtime;", ...(records ? ["pub mod sqlite;"] : [])].join("\n")}
+${[...(secrets ? ["pub mod credentials;"] : []), ...(http ? ["pub mod http;"] : []), ...(launches ? ["pub mod launcher;"] : []), "pub mod runtime;", ...(records ? ["pub mod sqlite;"] : [])].join("\n")}
 `),
     file("src/platform/atomic_file.rs", String.raw`
 use std::fs;
@@ -1134,6 +1195,94 @@ pub fn client() -> reqwest::Client {
         .expect("HTTP client construction is infallible for the default configuration")
 }
 `)] : []),
+    ...(launches ? [file("src/platform/launcher.rs", String.raw`
+use std::process::Command;
+
+/// Runs an external program. Production code passes SystemLauncher; tests pass a recording or failing double.
+pub trait Launcher {
+    fn run(&self, program: &str, arguments: &[&str]) -> Result<(), String>;
+}
+
+pub struct SystemLauncher;
+
+impl Launcher for SystemLauncher {
+    fn run(&self, program: &str, arguments: &[&str]) -> Result<(), String> {
+        let status = Command::new(program)
+            .args(arguments)
+            .status()
+            .map_err(|error| format!("{program}: {error}"))?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("{program} exited with {status}"))
+        }
+    }
+}
+${launchers.pages.length ? `
+/// Opens an https page in the desktop's default browser through xdg-open.
+pub fn open_url(launcher: &dyn Launcher, url: &str) -> Result<(), String> {
+    if !url.starts_with("https://") {
+        return Err(format!("refusing to open a non-https address: {url}"));
+    }
+    launcher.run("xdg-open", &[url])
+}
+` : ""}${launchers.notifies ? `
+/// Sends one desktop notification through notify-send; call it from a click action only.
+pub fn notify(launcher: &dyn Launcher, title: &str, body: &str) -> Result<(), String> {
+    launcher.run("notify-send", &["--", title, body])
+}
+` : ""}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    struct Recorder {
+        calls: RefCell<Vec<String>>,
+        fail: bool,
+    }
+
+    impl Launcher for Recorder {
+        fn run(&self, program: &str, arguments: &[&str]) -> Result<(), String> {
+            self.calls
+                .borrow_mut()
+                .push(format!("{program} {}", arguments.join(" ")));
+            if self.fail {
+                Err(String::from("launcher failed"))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    fn recorder(fail: bool) -> Recorder {
+        Recorder {
+            calls: RefCell::new(Vec::new()),
+            fail,
+        }
+    }
+${launchers.pages.length ? `
+    #[test]
+    fn open_url_runs_xdg_open_once_and_rejects_non_https() {
+        let launcher = recorder(false);
+        open_url(&launcher, "https://example.org/page").expect("open");
+        assert_eq!(
+            *launcher.calls.borrow(),
+            ["xdg-open https://example.org/page"]
+        );
+        assert!(open_url(&launcher, "file:///etc/passwd").is_err());
+        assert!(open_url(&recorder(true), "https://example.org/page").is_err());
+    }
+` : ""}${launchers.notifies ? `
+    #[test]
+    fn notify_runs_notify_send_once_and_reports_failure() {
+        let launcher = recorder(false);
+        notify(&launcher, "title", "body").expect("notify");
+        assert_eq!(*launcher.calls.borrow(), ["notify-send -- title body"]);
+        assert!(notify(&recorder(true), "title", "body").is_err());
+    }
+` : ""}}
+`)] : []),
     file("src/platform/runtime.rs", String.raw`
 use std::sync::OnceLock;
 
@@ -1214,8 +1363,9 @@ fn cached(text: &str, updated_unix: u64) -> Cache {
             text: text.to_string(),
             alt: String::from("ok"),
             tooltip: String::from("tip"),
-            class: String::from("ready"),
+            class: String::from("normal"),
             percentage: None,
+            value: None,
         },
         updated_unix,
     }
@@ -1240,7 +1390,7 @@ fn fresh_cache_is_shown_and_old_cache_is_marked_stale() {
     let fresh = module::render_with(&settings, Some(&cached("14:05", 1000)), 1000 + interval);
     let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("valid JSON");
     assert_eq!(fresh["text"], "14:05");
-    assert_eq!(fresh["class"], "ready");
+    assert_eq!(fresh["class"], "normal");
     let old = module::render_with(
         &settings,
         Some(&cached("14:05", 1000)),
@@ -1249,6 +1399,35 @@ fn fresh_cache_is_shown_and_old_cache_is_marked_stale() {
     let old: serde_json::Value = serde_json::from_str(&old).expect("valid JSON");
     assert_eq!(old["text"], format!("14:05{STALE_SUFFIX}"));
     assert_eq!(old["class"], "stale");
+}
+
+#[test]
+fn severity_comes_from_stated_thresholds_only_and_stale_wins() {
+    assert_eq!(module::severity_class_with(Some(9.0), None, None), "normal");
+    for (value, class) in [
+        (None, "normal"),
+        (Some(1.0), "normal"),
+        (Some(1.5), "warning"),
+        (Some(2.5), "critical"),
+    ] {
+        assert_eq!(
+            module::severity_class_with(value, Some(1.0), Some(2.0)),
+            class
+        );
+    }
+    let settings = Settings::default();
+    let mut loud = cached("9.9", 1000);
+    loud.output.class = String::from("critical");
+    loud.output.value = Some(9.9);
+    let interval = u64::from(settings.refresh_seconds);
+    let old: serde_json::Value = serde_json::from_str(&module::render_with(
+        &settings,
+        Some(&loud),
+        1000 + interval * 2 + 1,
+    ))
+    .expect("valid JSON");
+    assert_eq!(old["class"], "stale");
+    assert_eq!(old["text"], format!("9.9{STALE_SUFFIX}"));
 }
 
 #[test]
@@ -1285,6 +1464,16 @@ fn unknown_action_is_rejected_and_the_vocabulary_is_fixed() {
   padding: 0 8px;
 }
 
+/* Class vocabulary set by render_with in src/module.rs: normal, warning, critical, stale, empty.
+   Stale wins over warning and critical; the text and tooltip also carry the state, so colour is never the only signal. */
+#custom-${slug}.warning {
+  color: #e5a50a;
+}
+
+#custom-${slug}.critical {
+  color: #e01b24;
+}
+
 #custom-${slug}.stale,
 #custom-${slug}.empty {
   opacity: 0.7;
@@ -1311,7 +1500,7 @@ pkgdesc="${identity.projectName}"
 arch=('x86_64' 'aarch64')
 url="https://github.com/nodaysidle"
 license=('MIT')
-depends=(${secrets ? "'dbus'" : ""})
+depends=(${packageDepends})
 optdepends=('waybar: status bar')
 makedepends=('cargo')
 source=()
@@ -1371,7 +1560,7 @@ systemctl --user enable --now "${slug}.service"
 systemctl --user try-restart "${slug}.service"
 
 echo "Installed ${slug} Waybar module under $HOME/.local and started ${slug}.service"
-echo "Add include = [\"$HOME/.config/waybar/${slug}.jsonc\"] to ~/.config/waybar/config.jsonc"
+echo "Add include = [\"$HOME/.config/waybar/${slug}.jsonc\"] and \"custom/${slug}\" to modules-right in ~/.config/waybar/config.jsonc"
 echo "Add @import \"$HOME/.config/waybar/${slug}.css\"; to ~/.config/waybar/style.css"
 `),
   ]
