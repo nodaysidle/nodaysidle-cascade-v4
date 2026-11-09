@@ -42,7 +42,9 @@ describe("Android form, validation, and notification contracts", () => {
     expect(trd).toContain("Shop: text, trimmed; an empty Shop is allowed and stored as no value")
     expect(trd).toContain("fixing the field and pressing Save again is the retry")
     expect(trd).toContain('whose dismiss button is labelled "Cancel"')
-    expect(trd).toContain("the form is a dialog (AlertDialog) shown over the main screen")
+    expect(trd).toContain("the form is an inline section of the main screen above the list, with no dialog")
+    expect(trd).toContain("use that quoted label with the same testTag")
+    expect(trd).toContain("shows exactly 2")
     const tasks = packet.documents["TASKS.md"]
     expect(tasks).toContain("Form rules: build the form exactly as the Form, Field rules and Rejection details")
     expect(tasks).toContain('confirm button is labelled "Delete"')
