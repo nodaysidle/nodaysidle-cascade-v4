@@ -153,6 +153,8 @@ export interface BlueprintInstructionInput {
   readonly idea: string
   // From the preset's declared capabilities; false adds the no-tray sentence.
   readonly trayAvailable?: boolean
+  // From the preset's declared capabilities; false adds the no-background sentence.
+  readonly backgroundAvailable?: boolean
 }
 
 function issuePath(path: PropertyKey[]): string {
@@ -533,6 +535,7 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "A feature is not a setting, preference, default, destination, or data field. Do not add a feature for a destination folder, a default value, a configuration screen, or an internal data object. Include a settings feature only when the idea explicitly asks the user to change that setting. A destination folder chosen once belongs to the feature that uses it, as a dataObject, not to a separate feature.",
     "The provider schema has no filesystem platform need. File access is declared only by userFileAccess and by document dataObjects. Never emit filesystem anywhere in platformNeeds or usesPlatformNeeds.",
     "For every feature, set usesTray to true only when that feature needs a persistent status icon or tray presence; otherwise false. Set clipboardAccess to none, copy, read, or read-write, and set clipboardWatch true only when the feature reads the clipboard repeatedly in the background. List the clipboard platform need exactly when clipboardAccess is not none, and do not list it otherwise. A preset that cannot watch the clipboard rejects clipboardWatch true before compilation.",
+    ...(input.backgroundAvailable === false ? ["The selected preset cannot run work while the app is closed. Declare the background-execution platform need only for work that must continue or start while the app is closed; work the user watches while the app is open, such as a copy with progress and a cancel button, is not background execution."] : []),
     ...(input.trayAvailable === false ? ["The selected preset has no tray surface. Set usesTray to false for every feature: the preset's own surface (a bar module, web page, or mobile screen) is not a tray."] : []),
     "Coverage is checked structurally. Before finalizing, map every numbered idea sentence in ideaCoverage, then define only the features those mappings name. If a feature is listed by no sentence, remove it. If a sentence asks for behavior, map at least one feature to it. Never add a feature to make the design feel complete.",
     "For web surfaces, use collection-index for a list page that shows all entries, tag-page for a tag or category page, and search-page for a search results page. Use those values only when the idea asks for those pages.",

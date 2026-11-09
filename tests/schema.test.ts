@@ -39,6 +39,11 @@ describe("v4 provider schema and intake", () => {
     expect(buildBlueprintInstructions({ idea: "One sentence." })).not.toContain("Set usesTray to false for every feature")
   })
 
+  it("tells the provider when the preset cannot run work while the app is closed", () => {
+    expect(buildBlueprintInstructions({ idea: "One sentence.", backgroundAvailable: false })).toContain("is not background execution")
+    expect(buildBlueprintInstructions({ idea: "One sentence.", backgroundAvailable: true })).not.toContain("is not background execution")
+  })
+
   it("prompt is coverage-first and forbids settings as features", () => {
     const prompt = buildBlueprintInstructions({ idea: "One sentence." })
     expect(prompt).toContain("Coverage is checked structurally")
