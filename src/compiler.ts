@@ -1033,8 +1033,8 @@ function buildOwnersAndContracts(
       `${feature.name} recovery`,
       [feature.id],
       feature.ownerId,
-      `Treat failure as a terminal or recoverable state exactly as the semantic contract describes. ${preset.recoveryRules.join(" ")}`,
-      preset.recoveryRules,
+      `Treat failure as a terminal or recoverable state exactly as the semantic contract describes. ${recoveryRulesFor(preset, blueprint).join(" ")}`,
+      recoveryRulesFor(preset, blueprint),
       feature.failureBehavior,
       feature.recoveryExpectations,
     ))
@@ -1480,6 +1480,11 @@ function buildPhases(
   return { owners, phases }
 }
 
+function recoveryRulesFor(preset: PresetContract, blueprint: NormalizedBlueprint): readonly string[] {
+  const interactive = blueprint.externalServices.length > 0 || blueprint.permissionNeeds.length > 0 || blueprint.platformNeeds.length > 0
+  return preset.staticRecoveryRules && !interactive ? preset.staticRecoveryRules : preset.recoveryRules
+}
+
 function lockedStackFor(preset: PresetContract, blueprint: NormalizedBlueprint): readonly string[] {
   if (preset.id !== "linux-hyprland-waybar-module" && preset.id !== "linux-wayland-gtk4-desktop") return preset.allowedTechnologies
   const { records, secrets, http } = rustKitHelpers(blueprint)
@@ -1602,7 +1607,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     accessibilityRules: preset.accessibilityRules,
     runtimeArchitecture: preset.runtimeArchitecture,
     integrationBoundary: effectiveIntegrationBoundary,
-    recoveryRules: preset.recoveryRules,
+    recoveryRules: recoveryRulesFor(preset, blueprint),
     outputArtifact: preset.outputArtifact,
     artifactPath: preset.artifactPath(identity),
     completionEvidence: preset.completionEvidence,

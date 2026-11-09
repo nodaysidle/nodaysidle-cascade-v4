@@ -584,7 +584,7 @@ export function auditPacket(
   if (!graph.validationCommands.every(command => documents["TRD.md"]?.includes(command) && documents["TASKS.md"]?.includes(command) && documents["AGENTS.md"]?.includes(command))) {
     failures.push(failure("validation.commands", "packet", "One or more final validation commands are missing from TRD.md, TASKS.md, or AGENTS.md."))
   }
-  for (const rule of [...preset.runtimeArchitecture, graph.integrationBoundary, ...preset.recoveryRules, ...preset.lifecycleRules, ...preset.accessibilityRules, preset.installationDecision(graph.identity)]) {
+  for (const rule of [...preset.runtimeArchitecture, graph.integrationBoundary, ...graph.recoveryRules, ...preset.lifecycleRules, ...preset.accessibilityRules, preset.installationDecision(graph.identity)]) {
     if (!["ARD.md", "TRD.md", "AGENTS.md"].every(name => documents[name]?.includes(rule))) {
       failures.push(failure("preset.contracts", preset.id, "A preset lifecycle or accessibility rule is missing from the downstream contract."))
     }

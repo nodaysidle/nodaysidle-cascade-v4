@@ -149,6 +149,8 @@ export interface PresetContract {
   readonly runtimeArchitecture: readonly string[]
   readonly integrationBoundary: string
   readonly recoveryRules: readonly string[]
+  // Used instead of recoveryRules when the blueprint has no service, file access, or other interactive input.
+  readonly staticRecoveryRules?: readonly string[]
   readonly persistence: {
     readonly enabledDecision: string
     readonly disabledDecision: string
@@ -711,6 +713,7 @@ const astroWeb: PresetContract = {
   runtimeMode: blueprint => blueprint.externalServices.some(service => service.credentialRequirement !== "none") ? "server" : "static",
   runtimeArchitecture: ["Astro components render the content-first shell at build or request time; use client islands only for interaction that cannot be expressed with native HTML and CSS.", "Static output is mandatory unless a server-held credential requires an explicit adapter; browser code never receives deployment secrets."],
   integrationBoundary: "Use standards-based fetch with typed local request and response validators; credentialed calls run only in Astro server endpoints using import.meta.env, while public browser calls use allowlisted HTTPS URLs and AbortController cancellation.",
+  staticRecoveryRules: ["A build-time content error fails the build and names the file and field; no page ships with a missing required field.", "Core content never depends on client-side data fetching."],
   recoveryRules: ["Preserve entered form content across validation, transport, timeout, and server failures and require an explicit resubmission.", "Remove event listeners, abort fetches, stop media tracks, and revoke object URLs when an island unmounts."],
   persistence: {
     enabledDecision: "Persistence: enabled through Astro content collections at build time by default; browser IndexedDB is used only when product semantics explicitly require client-side retention without build-time content.",
