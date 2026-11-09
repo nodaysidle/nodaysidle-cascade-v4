@@ -34,6 +34,10 @@ describe("Android scheduled work", () => {
     expect(reminder.prompt).toContain("Time rule")
     expect(kit("app/src/main/java/com/pantry/pal/platform/ScheduleMath.kt")).toContain("fun initialDelay(clock: Clock")
     expect(kit("app/src/main/java/com/pantry/pal/AppContainer.kt")).toContain("val workManager")
+    expect(trd).toContain("ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE")
+    expect(kit("app/src/test/resources/robolectric.properties")).toContain("application=com.pantry.pal.TestPantryPalApplication")
+    expect(kit("app/src/test/java/com/pantry/pal/TestPantryPalApplication.kt")).toContain("initializeTestWorkManager")
+    expect(kit("app/src/main/java/com/pantry/pal/PantryPalApplication.kt")).toContain("open class PantryPalApplication")
     // A packet with no declared schedule ships neither the helper nor the work manager.
     const noSchedule = await compilePacket(habit, "android-kotlin-compose")
     expect(noSchedule.kit.some(file => file.name.endsWith("ScheduleMath.kt"))).toBe(false)

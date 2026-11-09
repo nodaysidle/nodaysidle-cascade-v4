@@ -243,7 +243,8 @@ class MainActivity : ComponentActivity() {
 
 import android.app.Application
 
-class ${identity.pascalName}Application : Application() {
+// open so the JVM test Application can extend it and start a test WorkManager first.
+open class ${identity.pascalName}Application : Application() {
     lateinit var container: AppContainer
 
     override fun onCreate() {
@@ -317,7 +318,7 @@ class SettingsRepositoryTest {
     }
 }
 `),
-    file("app/src/test/resources/robolectric.properties", "sdk=35\n"),
+    file("app/src/test/resources/robolectric.properties", `sdk=35\n${needs.schedule ? `application=${pkg}.Test${identity.pascalName}Application\n` : ""}`),
     ...(needs.schedule ? scheduleKitFiles(identity) : []),
     file(`app/src/main/java/${path}/App.kt`, `package ${pkg}
 
@@ -452,6 +453,7 @@ TASK-01 verifies that each exists unchanged. The kit is a real Android project w
 - A navigation shell (App.kt) and a container (AppContainer.kt, with an injectable java.time.Clock) that carry no product code:
   feature and data tasks add the entities, DAOs, repositories, ViewModels, and screens their TASKS.md lists.
 - JVM test dependencies already declared: JUnit, coroutines-test, Robolectric (sdk=35), androidx test core, and work-testing.
+  With a declared schedule, a test Application starts a test WorkManager for every unit test (the manifest's Application enqueues work on launch).
   ./scripts/gradle.sh testDebugUnitTest passes without a device. connectedDebugAndroidTest needs one.
 
 Build with ./scripts/gradle.sh assembleDebug. Set ANDROID_HOME to an SDK with platform ${ANDROID_SDK.compileSdk} and
@@ -484,6 +486,39 @@ object ScheduleMath {
         var next = now.toLocalDate().atTime(at).atZone(now.zone)
         if (next.isBefore(now)) next = now.toLocalDate().plusDays(1).atTime(at).atZone(now.zone)
         return Duration.between(now, next)
+    }
+}
+`),
+    // Robolectric starts the manifest's Application for every unit test; once a task enqueues work there,
+    // WorkManager must already be initialized, so every JVM test runs under this Application.
+    file(`app/src/test/java/${path}/Test${identity.pascalName}Application.kt`, `package ${pkg}
+
+import androidx.work.Configuration
+import androidx.work.testing.WorkManagerTestInitHelper
+
+class Test${identity.pascalName}Application : ${identity.pascalName}Application() {
+    override fun onCreate() {
+        WorkManagerTestInitHelper.initializeTestWorkManager(this, Configuration.Builder().build())
+        super.onCreate()
+    }
+}
+`),
+    file(`app/src/test/java/${path}/ApplicationBootTest.kt`, `package ${pkg}
+
+import androidx.test.core.app.ApplicationProvider
+import org.junit.Assert.assertNotNull
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+
+// Boots the real Application class under the test WorkManager, so enqueueing work in onCreate is covered.
+@RunWith(RobolectricTestRunner::class)
+class ApplicationBootTest {
+    @Test
+    fun theApplicationBuildsItsContainerWithAClock() {
+        val application = ApplicationProvider.getApplicationContext<${identity.pascalName}Application>()
+        assertNotNull(application.container.workManager)
+        assertNotNull(application.container.clock)
     }
 }
 `),
