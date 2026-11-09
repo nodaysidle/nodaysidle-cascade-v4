@@ -3,6 +3,7 @@ import { astroKit } from "./astroKit"
 import { tauriKitFiles, tauriKitReadme, tauriKitUses } from "./tauriKit"
 import type { NormalizedBlueprint } from "./compiler"
 import type { PresetId, ProjectIdentity } from "./presets"
+import { desktopValue, rustString, shellWord, systemdValue, xmlText } from "./kitText"
 import { WAYBAR_EMPTY_LABEL, WAYBAR_FAILURE_RULE, waybarKitParts, waybarRequestSlots, waybarSources } from "./waybarContracts"
 import { waybarLocalTimeKit, waybarSystemKit } from "./waybarKit"
 
@@ -29,9 +30,6 @@ function shortSummary(text: string): string {
   return sentence.slice(0, 80).replace(/\s+\S*$/, "").replace(/(\s+(?:a|an|the|of|to|for|with|and|or|that|who|which|in|on|by|never))+$/i, "")
 }
 
-function xmlEscape(value: string): string {
-  return value.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&apos;" })[character]!)
-}
 
 function gtkKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint): KitFile[] {
   const slug = identity.slug
@@ -144,14 +142,14 @@ pub fn build_services(_data_dir: &std::path::Path) -> Services {
 pub fn build_window(application: &adw::Application) -> adw::ApplicationWindow {
     let window = adw::ApplicationWindow::builder()
         .application(application)
-        .title("${identity.projectName}")
+        .title("${rustString(identity.projectName)}")
         .default_width(960)
         .default_height(640)
         .build();
     let header = adw::HeaderBar::new();
     let toolbar = adw::ToolbarView::new();
     toolbar.add_top_bar(&header);
-    let label = gtk::Label::new(Some("${identity.projectName}"));
+    let label = gtk::Label::new(Some("${rustString(identity.projectName)}"));
     label.set_margin_top(24);
     label.set_margin_bottom(24);
     label.set_margin_start(24);
@@ -527,8 +525,8 @@ fn calendar_dates_are_real_days_in_one_shape() {
 ` : ""}` : ""}`),
     file(`resources/${identity.bundleId}.desktop`, String.raw`
 [Desktop Entry]
-Name=${identity.projectName}
-Comment=${identity.projectName} desktop application
+Name=${desktopValue(identity.projectName)}
+Comment=${desktopValue(identity.projectName)} desktop application
 Exec=${slug}
 Icon=${slug}
 Terminal=false
@@ -540,10 +538,10 @@ StartupWMClass=${identity.bundleId}
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>${identity.bundleId}</id>
-  <name>${identity.projectName}</name>
-  <summary>${xmlEscape(shortSummary(blueprint.productDefinition))}</summary>
+  <name>${xmlText(identity.projectName)}</name>
+  <summary>${xmlText(shortSummary(blueprint.productDefinition))}</summary>
   <description>
-    <p>${xmlEscape(blueprint.productDefinition)}</p>
+    <p>${xmlText(blueprint.productDefinition)}</p>
   </description>
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>
@@ -566,7 +564,7 @@ StartupWMClass=${identity.bundleId}
 `),
     ...(needsBackground ? [file(`resources/${slug}.service`, String.raw`
 [Unit]
-Description=${identity.projectName}
+Description=${systemdValue(identity.projectName)}
 After=graphical-session.target
 PartOf=graphical-session.target
 
@@ -581,7 +579,7 @@ WantedBy=default.target
 pkgname=${slug}
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="${identity.projectName}"
+pkgdesc=${shellWord(identity.projectName)}
 arch=('x86_64' 'aarch64')
 url="https://github.com/nodaysidle"
 license=('MIT')
@@ -1252,7 +1250,7 @@ impl Default for Settings {
         Self {
             schema_version: 1,
             text: String::from("${WAYBAR_EMPTY_LABEL}"),
-            tooltip: String::from("${identity.projectName}"),
+            tooltip: String::from("${rustString(identity.projectName)}"),
             refresh_seconds: ${roles.intervalSeconds},
             enabled: true,
             values: BTreeMap::new(),
@@ -2022,7 +2020,7 @@ fn service_loop_stops_after_the_pass_that_sees_the_shutdown_flag() {
 `),
     ...(service ? [file(`resources/systemd/${slug}.service`, String.raw`
 [Unit]
-Description=${identity.projectName}
+Description=${systemdValue(identity.projectName)}
 After=graphical-session.target
 PartOf=graphical-session.target
 
@@ -2037,7 +2035,7 @@ WantedBy=default.target
 pkgname=${slug}
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="${identity.projectName}"
+pkgdesc=${shellWord(identity.projectName)}
 arch=('x86_64' 'aarch64')
 url="https://github.com/nodaysidle"
 license=('MIT')

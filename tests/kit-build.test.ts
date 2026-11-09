@@ -165,6 +165,44 @@ describeBuild("v4 starter kits compile and pass their own tests", () => {
     }
   }, 1_800_000)
 
+  // A product name that is digit-leading and full of characters each target language treats specially.
+  it("kits build with a hostile product name", async () => {
+    const productName = `24h "Hi" \\ Ca$h & Tom's 100%`
+    const env = { CARGO_TARGET_DIR: target, TMPDIR: temporary }
+    for (const presetId of ["linux-wayland-gtk4-desktop", "linux-hyprland-waybar-module"] as const) {
+      const fixture = fixtureCases.find(item => item.presetId === presetId)!
+      const root = materialize(await compilePacket({ ...fixture.blueprint, productName }, presetId))
+      try {
+        run("cargo", ["fmt", "--check"], root, { TMPDIR: temporary })
+        run("cargo", ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"], root, env)
+        run("cargo", ["test"], root, env)
+        run("bash", ["-n", "PKGBUILD"], root)
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    }
+    const tauri = fixtureCases.find(item => item.presetId === "tauri2-rust-typescript-desktop")!
+    const tauriRoot = materialize(await compilePacket({ ...tauri.blueprint, productName }, tauri.presetId))
+    try {
+      run("npm", ["install", "--no-audit", "--no-fund"], tauriRoot)
+      run("npm", ["run", "typecheck"], tauriRoot)
+      run("npm", ["test"], tauriRoot)
+      run("npm", ["run", "build"], tauriRoot)
+      run("npm", ["run", "tauri", "--", "icon", "app-icon.svg"], tauriRoot)
+      run("bash", ["-n", "scripts/package_linux.sh"], tauriRoot)
+      run("cargo", ["test", "--manifest-path", "src-tauri/Cargo.toml"], tauriRoot, env)
+    } finally {
+      rmSync(tauriRoot, { recursive: true, force: true })
+    }
+    const android = fixtureCases.find(item => item.presetId === "android-kotlin-compose")!
+    const androidRoot = materialize(await compilePacket({ ...android.blueprint, productName }, android.presetId))
+    try {
+      run("./scripts/gradle.sh", ["assembleDebug", "testDebugUnitTest"], androidRoot, { ANDROID_HOME: process.env.ANDROID_HOME ?? join(homedir(), "Android/Sdk") })
+    } finally {
+      rmSync(androidRoot, { recursive: true, force: true })
+    }
+  }, 1_800_000)
+
   it("Android kit", async () => {
     const fixture = fixtureCases.find(item => item.presetId === "android-kotlin-compose")!
     // One kit with notifications only, one with a schedule and a setting, one with a per-record reminder log, and one with neither; both must build and pass the JVM unit tests without a device.

@@ -1,5 +1,6 @@
 import type { NormalizedBlueprint } from "./compiler"
 import type { ProjectIdentity } from "./presets"
+import { androidXmlString, kotlinString } from "./kitText"
 
 export interface AndroidKitFile {
   readonly path: string
@@ -199,7 +200,7 @@ ${needs.schedule ? "    testImplementation(libs.androidx.work.testing)\n" : ""} 
     <application
         android:name=".${identity.pascalName}Application"
         android:allowBackup="false"
-        android:label="${appName}"
+        android:label="${androidXmlString(appName)}"
         android:supportsRtl="true"
         android:theme="@style/Theme.${identity.pascalName}">
         <activity
@@ -292,7 +293,7 @@ fun App(@Suppress("UNUSED_PARAMETER") container: AppContainer) {
         entryProvider = entryProvider {
             entry<HomeRoute> {
                 Scaffold { padding ->
-                    Text("${appName}", modifier = Modifier.padding(padding).padding(16.dp))
+                    Text("${kotlinString(appName)}", modifier = Modifier.padding(padding).padding(16.dp))
                 }
             }
         },

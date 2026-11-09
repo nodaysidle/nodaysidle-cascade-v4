@@ -1,5 +1,6 @@
 import type { NormalizedBlueprint } from "./compiler"
 import type { ProjectIdentity } from "./presets"
+import { shellWord, templateText, xmlText } from "./kitText"
 
 export interface TauriKitFile {
   readonly path: string
@@ -228,7 +229,7 @@ function indexHtml(identity: ProjectIdentity): string {
     <meta name="color-scheme" content="light dark" />
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="/src/style.css" />
-    <title>${identity.projectName}</title>
+    <title>${xmlText(identity.projectName)}</title>
   </head>
   <body>
     <main id="app"></main>
@@ -312,9 +313,9 @@ if (!root) throw new Error("#app is missing from index.html")
 
 root.innerHTML = \`
   <header class="app-header">
-    <h1>${identity.projectName}</h1>
+    <h1>${templateText(xmlText(identity.projectName))}</h1>
   </header>
-  <section class="app-content" aria-label="${identity.projectName}"></section>
+  <section class="app-content" aria-label="${templateText(xmlText(identity.projectName))}"></section>
 \`
 
 export const errors = createErrorBanner(root)
@@ -804,7 +805,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 SLUG="${identity.slug}"
-APP_NAME="${identity.projectName}"
+APP_NAME=${shellWord(identity.projectName)}
 INSTALL_DIR="$HOME/.local"
 
 install=false
@@ -864,7 +865,7 @@ function packageScript(identity: ProjectIdentity): string {
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-APP_NAME="${identity.projectName}"
+APP_NAME=${shellWord(identity.projectName)}
 BUNDLE_ID="${identity.bundleId}"
 SIGN_IDENTITY="\${SIGN_IDENTITY:--}"
 APP="src-tauri/target/release/bundle/macos/$APP_NAME.app"

@@ -788,8 +788,21 @@ function bundleSegment(part: string, fallback: string): string {
   return RESERVED_SEGMENTS.has(named) ? `${named}app` : named
 }
 
+// The slug is also the Rust crate and Cargo package name: Cargo rejects a leading digit, a keyword, or a built-in crate name.
+const RUST_RESERVED_CRATES = new Set([
+  "abstract", "alloc", "as", "async", "await", "become", "box", "break", "const", "continue", "core", "crate", "do", "dyn", "else", "enum",
+  "extern", "false", "final", "fn", "for", "gen", "if", "impl", "in", "let", "loop", "macro", "match", "mod", "move", "mut", "override",
+  "priv", "proc-macro", "pub", "ref", "return", "self", "static", "std", "struct", "super", "test", "trait", "true", "try", "type", "typeof",
+  "unsafe", "unsized", "use", "virtual", "where", "while", "yield",
+])
+
+function crateSafeSlug(value: string): string {
+  if (/^[0-9]/.test(value)) return `project-${value}`
+  return RUST_RESERVED_CRATES.has(value) ? `${value}-app` : value
+}
+
 function projectIdentity(projectName: string): ProjectIdentity {
-  const projectSlug = slug(projectName)
+  const projectSlug = crateSafeSlug(slug(projectName))
   // Split camelCase for the bundle identity only, and never fall back to a trailing ".app":
   // macOS tooling rejects identifiers that end with the bundle extension.
   const parts = slug(camelWords(projectName)).split("-")
