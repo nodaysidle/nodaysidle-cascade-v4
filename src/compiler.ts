@@ -18,7 +18,7 @@ export const DOCUMENT_NAMES = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS
 export type DocumentName = (typeof DOCUMENT_NAMES)[number]
 export type ContractKind = "interface" | "data" | "integration" | "lifecycle" | "persistence" | "credential" | "permission" | "recovery" | "security" | "packaging"
 
-export type SystemSource = "none" | "network-received" | "network-sent" | "load-average" | "memory" | "battery" | "disk-space"
+export type SystemSource = "none" | "network-received" | "network-sent" | "load-average" | "memory" | "battery" | "disk-space" | "temperature"
 export type InvokedBy = "user-control" | "click" | "schedule" | "launch" | "shortcut"
 export type DataOperation = "create" | "read" | "update" | "delete"
 export interface DataField {
