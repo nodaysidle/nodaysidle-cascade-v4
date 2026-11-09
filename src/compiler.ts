@@ -3,6 +3,7 @@ import { CATALOG_PATH } from "./astroKit"
 import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, astroStaticContentSite, dataKey, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetOptionValue, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { androidKitNeeds } from "./androidKit"
+import { ANDROID_DELETE_PROMPT, androidFormRules } from "./androidForms"
 import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
@@ -61,6 +62,7 @@ export interface NormalizedBlueprint {
     readonly thresholds: NonNullable<SemanticBlueprint["features"][number]["thresholds"]>
     readonly labelTemplate: string
     readonly runsAtField: SemanticBlueprint["features"][number]["runsAtField"]
+    readonly scheduledNotification: { readonly titleText: string; readonly notificationBody: string } | null
     readonly resourceIds: readonly string[]
     readonly choices: readonly string[]
     readonly surface: FeatureSurface
@@ -156,6 +158,7 @@ export interface GraphFeature {
   readonly thresholds: NormalizedBlueprint["features"][number]["thresholds"]
   readonly labelTemplate: string
   readonly runsAtField: SemanticBlueprint["features"][number]["runsAtField"]
+  readonly scheduledNotification: { readonly titleText: string; readonly notificationBody: string } | null
   readonly resourceIds: readonly string[]
   readonly requiredOwnerIds: readonly string[]
   readonly choices: readonly string[]
@@ -575,6 +578,7 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       thresholds: feature.thresholds ?? [],
       labelTemplate: (feature.labelTemplate ?? "").trim(),
       runsAtField: feature.runsAtField,
+      scheduledNotification: feature.scheduledNotification ?? null,
       resourceIds: [],
       usesPlatformNeeds: unique(feature.usesPlatformNeeds),
       usesData: unique(featureDataUses(source, feature).map(name => dataNameByKey.get(referenceKey(name))!)),
@@ -1018,6 +1022,43 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
   return lines
 }
 
+// The records a feature saves through a form (create, or edit), and whether it deletes: the form, field, and delete-prompt rules of its interface contract.
+function androidFormFeature(feature: GraphFeature, item: NormalizedBlueprint["domainData"][number]): { creates: boolean; edits: boolean } | null {
+  if (item.storage !== "records") return null
+  const ops = opsOn(feature, item.name)
+  const creates = ops.includes("create")
+  const edits = feature.editsRecords && ops.includes("update")
+  return creates || edits ? { creates, edits } : null
+}
+
+function androidFeatureFormDetails(feature: GraphFeature, data: NormalizedBlueprint["domainData"], features: readonly GraphFeature[]): string[] {
+  const itemPage = features.some(other => other.surface === "item-page")
+  const details = data.flatMap(item => {
+    const form = androidFormFeature(feature, item)
+    return form ? androidFormRules(item.name, item.fields, { edits: form.edits, itemPage }) : []
+  })
+  if (data.some(item => item.storage === "records" && opsOn(feature, item.name).includes("delete"))) details.push(ANDROID_DELETE_PROMPT)
+  return details
+}
+
+// The concrete production type of every AppContainer property the kit and the data owner provide.
+function androidContainerTypes(blueprint: NormalizedBlueprint): string[] {
+  const needs = androidKitNeeds(blueprint)
+  return [
+    "clock is a java.time.Clock (Clock.systemDefaultZone() in production)",
+    ...(needs.settings ? ["settings is SettingsRepository"] : []),
+    ...(needs.schedule ? ["workManager is WorkManager"] : []),
+    ...(needs.reminders ? ["reminderLog is ReminderLogRepository"] : []),
+    ...blueprint.domainData.filter(item => item.storage === "records").map(item => `${androidRepositoryProperty(item.name)} is ${pascal(item.name)}Repository`),
+  ]
+}
+
+// The AppContainer property that holds a records object's repository: the camelCase data object name.
+function androidRepositoryProperty(name: string): string {
+  const words = pascal(name)
+  return words[0]!.toLowerCase() + words.slice(1)
+}
+
 function tauriData(item: NormalizedBlueprint["domainData"][number]): TauriData {
   return { name: item.name, key: referenceKey(item.name), base: slug(item.name).replaceAll("-", "_"), record: pascal(item.name), resource: dataResourceIds(item.name)[0]!, storage: item.storage, fields: item.fields }
 }
@@ -1032,7 +1073,7 @@ function storeInterfaceDetail(presetId: PresetId, item: NormalizedBlueprint["dom
   if (presetId === "android-kotlin-compose") {
     const functions = methods({ create: ["insert"], read: ["observeAll", "getById"], update: ["update"], delete: ["delete"] })
     const signatures = operations.flatMap(operation => ({ create: [`suspend fun insert(entity: ${record}Entity): Long`], read: [`fun observeAll() returning a Flow of the list of every ${record}Entity`, `suspend fun getById(id: Long): ${record}Entity?`], update: [`suspend fun update(entity: ${record}Entity)`], delete: [`suspend fun delete(entity: ${record}Entity)`] })[operation])
-    return `Interface: OWN-DATA-STORE owns one Room entity ${record}Entity with the stored fields above, one ${record}Dao with exactly: ${functions.join(", ")}, the one RoomDatabase subclass AppDatabase that lists every records entity (version 1, exportSchema = true; Room writes the schema JSON under app/schemas when the project builds, and that generated file is committed with the data task and exempt from its create-only list), and ${record}Repository over the DAO, all in its owner file; it constructs the database and repository in AppContainer.kt. Kotlin types: id is Long (autoGenerate), text and long-text are String, number is Double, whole-number is Long, flag is Boolean, a date is a Long epoch day (LocalDate.toEpochDay), a date and time is a Long in epoch milliseconds (UTC), a time of day is a String HH:MM (zero-padded, validated 00:00 through 23:59 before it is stored, parsed with LocalTime.parse), a reference is the referenced Long id, an ordered list of text lines is one String joined by newlines; an optional field is nullable. observeAll returns the rows ordered by id ascending (creation order); the feature ViewModel does every filter and other sort over that list, and a sort breaks ties by id in the sort's own direction. ${record}Repository has exactly these members, with the DAO's semantics: ${signatures.join("; ")}. Feature tasks use the repository and add no entity or query of their own.`
+    return `Interface: OWN-DATA-STORE owns one Room entity ${record}Entity with the stored fields above, one ${record}Dao with exactly: ${functions.join(", ")}, the one RoomDatabase subclass AppDatabase that lists every records entity (version 1, exportSchema = true; Room writes the schema JSON under app/schemas when the project builds, and that generated file is committed with the data task and exempt from its create-only list), and ${record}Repository over the DAO, all in its owner file; it constructs the database and repository in AppContainer.kt. Kotlin types: id is Long (autoGenerate), text and long-text are String, number is Double, whole-number is Long, flag is Boolean, a date is a Long epoch day (LocalDate.toEpochDay), a date and time is a Long in epoch milliseconds (UTC), a time of day is a String HH:MM (zero-padded, validated 00:00 through 23:59 before it is stored, parsed with LocalTime.parse), a reference is the referenced Long id, an ordered list of text lines is one String joined by newlines; an optional field is nullable. observeAll returns the rows ordered by id ascending (creation order); the feature ViewModel does every filter and other sort over that list, and a sort breaks ties by id in the sort's own direction. ${record}Repository has exactly these members, with the DAO's semantics: ${signatures.join("; ")}. Feature tasks use the repository and add no entity or query of their own. AppContainer.kt holds it as \`val ${androidRepositoryProperty(item.name)}\` (read as container.${androidRepositoryProperty(item.name)} by every feature, ViewModel, and Worker) and takes the Room database as an optional constructor parameter after the clock (\`database: AppDatabase = the production Room builder\`), so a test builds the container with Room.inMemoryDatabaseBuilder and a fixed Clock.`
   }
   if (presetId === "astro-web") {
     const name = `${record}Entries`
@@ -1097,6 +1138,11 @@ function androidScheduledFeatures(preset: PresetContract, identity: ProjectIdent
       runsDailyAt: feature.runsDailyAt,
       at: declared && record ? { record: pascal(record.name), timeField: fieldName(declared.timeField), titleField: fieldName(declared.titleField), body: declared.notificationBody } : null,
       notifies: feature.resourceIds.includes(permissionResourceId("notifications")),
+      notice: feature.scheduledNotification,
+      selectionFiles: features.filter(other => other.ownerId !== feature.ownerId && feature.requiredOwnerIds.includes(other.ownerId)).map(other => {
+        const name = `${pascal(other.name)}Feature`
+        return preset.ownerFiles({ kind: "feature", slug: slug(name), pascalName: name, identity }).implementationFile
+      }),
     }
   })
 }
@@ -1160,25 +1206,26 @@ function sharedScreenView(features: readonly GraphFeature[], presetId: PresetId)
 
 // The slots the first main-surface task exposes are the ones the declared operations of the other features need.
 // rowOpensEditor (Tauri): a packet with an edit feature always builds the detail view and opens it from the row.
-function mainSlotsSentence(features: readonly GraphFeature[], detailView = true, filterSlot = true, rowOpensEditor = false): string {
+function mainSlotsSentence(features: readonly GraphFeature[], detailView = true, filterSlot = true, rowOpensEditor = false, android = false): string {
   const ops = new Set(features.flatMap(feature => feature.dataOperations))
   const slots = [
-    "a status area shared by every message the main screen shows (empty state, no match, errors)",
+    android ? "a status area that carries only the empty-list message and the form errors" : "a status area shared by every message the main screen shows (empty state, no match, errors)",
     ...(ops.has("create") ? ["an add-entry control that opens the entry form shell (the add task builds the form fields and validation; an edit task reuses them)"] : []),
-    ...(ops.has("update") || ops.has("delete") ? ["a per-row action area on every list row", ...(detailView ? [`a detail view for the selected record that shows every stored field${mainDetailControls(features)}, ${rowOpensEditor && features.some(feature => feature.editsRecords) ? "it is always built because the packet has an edit feature: every list row is selectable (activating the row selects the record, marks it aria-selected, and shows this detail view), which is how the user reaches the editor; a single mark or toggle action belongs in the per-row action area and never uses the Edit button" : "built only if an acceptance criterion of a later task opens a record to edit or delete it"}`] : [])] : []),
-    ...(filterSlot ? ["a filter area above the list for read-only features that narrow or reorder it"] : []),
+    ...(ops.has("update") || ops.has("delete") ? [android ? "a per-row action area on every row of the main list (rows a later feature shows in the area above the list get none)" : "a per-row action area on every list row", ...(detailView ? [`a detail view for the selected record that shows every stored field${mainDetailControls(features)}, ${rowOpensEditor && features.some(feature => feature.editsRecords) ? "it is always built because the packet has an edit feature: every list row is selectable (activating the row selects the record, marks it aria-selected, and shows this detail view), which is how the user reaches the editor; a single mark or toggle action belongs in the per-row action area and never uses the Edit button" : "built only if an acceptance criterion of a later task opens a record to edit or delete it"}`] : [])] : []),
+    ...(filterSlot ? [android ? "one area above the list for the read-only features that filter, sort, total, or summarise it (each mounts its one control or section there)" : "a filter area above the list for read-only features that narrow or reorder it"] : []),
   ]
   return `Expose exactly these named slots in the shared files, no others: ${slots.join("; ")}. Later feature tasks build their controls in their own files and mount them into these slots, editing only the shared registration files; build no control that no later task names.`
 }
 
 // The slot a later feature task mounts into, from its declared operations.
 function slotFor(owned: readonly GraphFeature[], presetId: PresetId, detailView = true): string {
+  const android = presetId === "android-kotlin-compose"
   const ops = new Set(owned.flatMap(feature => feature.dataOperations))
   if (!ops.size && presetId === "tauri2-rust-typescript-desktop") return "no named slot: your own controls, if any (start and stop, an export button), sit in the main content area"
   if (ops.has("create")) return "the add-entry control"
   if (owned.some(feature => feature.editsRecords)) return detailView ? "the detail view (its Edit control)" : "the per-row action area"
   if (ops.has("update") || ops.has("delete")) return detailView && ops.has("delete") ? "the per-row action area or the detail view, whichever your acceptance criteria describe" : "the per-row action area"
-  return "the filter area or the list region"
+  return android ? "the one area above the list" : "the filter area or the list region"
 }
 
 // Files several tasks modify, or that one task modifies although the foundation (or its kit) created them: AGENTS.md lists each with its editing tasks.
@@ -1260,7 +1307,8 @@ function buildOwnersAndContracts(
   const contracts: GraphContract[] = []
   for (const feature of features) {
     const key = feature.id.replace(/^FEAT-/, "")
-    const interfaceDetails = [`Inputs: ${feature.inputs.join("; ")}`, `Outputs: ${feature.outputs.join("; ")}`, ...feature.choices.map(choice => `Choices: ${choice}`), ...(feature.runsEverySeconds !== null ? [`Schedule: runs by itself every ${feature.runsEverySeconds} seconds; this exact value is the default that code and tests use.`] : []), ...(feature.runsDailyAt !== null ? [`Schedule: runs by itself every day at ${feature.runsDailyAt} local time.`] : []), ...waybarSourceDetail(feature.systemSource), ...(preset.id === "linux-hyprland-waybar-module" ? waybarFeatureDetail(feature) : [])]
+    const androidFormDetails = preset.id === "android-kotlin-compose" ? androidFeatureFormDetails(feature, blueprint.domainData, features) : []
+    const interfaceDetails = [`Inputs: ${feature.inputs.join("; ")}`, `Outputs: ${feature.outputs.join("; ")}`, ...feature.choices.map(choice => `Choices: ${choice}`), ...(feature.runsEverySeconds !== null ? [`Schedule: runs by itself every ${feature.runsEverySeconds} seconds; this exact value is the default that code and tests use.`] : []), ...(feature.runsDailyAt !== null ? [`Schedule: runs by itself every day at ${feature.runsDailyAt} local time.`] : []), ...waybarSourceDetail(feature.systemSource), ...(preset.id === "linux-hyprland-waybar-module" ? waybarFeatureDetail(feature) : []), ...androidFormDetails]
     contracts.push(contract(
       `CON-${key}-INTERFACE`,
       "interface",
@@ -1665,7 +1713,7 @@ function buildPhases(
     "Every foundation file exists at the exact listed path.",
     `The locked identity is ${identity.bundleId}${preset.id === "astro-web" ? ', recorded as the "identity" field of package.json' : ""}.`,
     preset.id === "android-kotlin-compose"
-      ? `ContractTest asserts that app/build.gradle.kts declares ${identity.bundleId} as the namespace and applicationId and that App.kt declares the App composable.`
+      ? `ContractTest reads build.gradle.kts relative to the test working directory (Gradle runs unit tests with the app/ module directory as the working directory, so the file is app/build.gradle.kts from the project root) and asserts that it declares ${identity.bundleId} as the namespace and applicationId, and reads src/main/java/${identity.packagePath}/App.kt the same way and asserts that it declares the App composable.`
       : `The implementation marker is ${preset.implementationMarker}${preset.id === "linux-hyprland-waybar-module" ? ` (the Waybar module key prefix; this module's key is custom/${identity.slug})` : preset.id === "linux-wayland-gtk4-desktop" ? ` (adw::Application::builder() with application_id ${identity.bundleId} in src/main.rs)` : ""}.`,
     ...(preset.id === "astro-web" ? ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS.map(script => `package.json defines npm run ${script}.`) : []),
   ]
@@ -1739,6 +1787,10 @@ function buildPhases(
           clockDependent: ownedFeatures.some(feature => androidClockFeatureIds(blueprint, features).has(feature.id)),
           stamps: ownedFeatures.some(feature => androidStampFeatureIds(blueprint, features).has(feature.id)),
           notifications: blueprint.permissionNeeds.some(item => item.capability === "notifications"),
+          screen: ownedFeatures.length === 0 || ownedFeatures.some(feature => feature.invokedBy !== "schedule"),
+          form: ownedFeatures.some(feature => androidFeatureFormDetails(feature, blueprint.domainData, features).some(detail => detail.startsWith("Form (")) ),
+          deletes: ownedFeatures.some(feature => blueprint.domainData.some(item => item.storage === "records" && opsOn(feature, item.name).includes("delete"))),
+          containerTypes: draft.kind === "packaging" ? androidContainerTypes(blueprint) : undefined,
           focusedTestFile: files.focusedTestFile,
           firstMain: draft.id === firstMainOwnerId,
           detailView,
@@ -1768,7 +1820,8 @@ function buildPhases(
         ])
       : unique([...registrationTargets, ...(androidExtras?.modify ?? [])])
     // A file this task creates is not also a file it modifies.
-    const filesToModify = modifyCandidates.filter(file => !filesToCreate.includes(file) && !(preset.id === "android-kotlin-compose" && blueprint && !androidKitNeeds(blueprint).settingsData && file.endsWith("/data/SettingsRepository.kt")))
+    const androidScheduleOnly = preset.id === "android-kotlin-compose" && draft.kind === "feature" && ownedFeatures.length > 0 && ownedFeatures.every(feature => feature.invokedBy === "schedule")
+    const filesToModify = modifyCandidates.filter(file => !filesToCreate.includes(file) && !(preset.id === "android-kotlin-compose" && blueprint && !androidKitNeeds(blueprint).settingsData && file.endsWith("/data/SettingsRepository.kt")) && !(androidScheduleOnly && /\/(App|AppContainer)\.kt$/.test(file)))
     const acceptanceCriteria = buildTaskAcceptanceCriteria(ownedAcceptance, ownedContracts, [files.focusedTestFile])
     const task: GraphTask = {
       id: taskId,
@@ -1783,11 +1836,13 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(sharedScreenView(features, preset.id), detailView, filterSlot, preset.id === "tauri2-rust-typescript-desktop")}` : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.length > 0 && ownedFeatures.every(feature => feature.invokedBy === "schedule") ? " This feature runs by itself and adds no control to the main screen: it mounts into no slot." : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") && !ownedFeatures.every(feature => feature.invokedBy === "schedule") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(sharedScreenView(ownedFeatures, preset.id), preset.id, detailView)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${sharedScreenView(ownedFeatures, preset.id).some(feature => (preset.id === "tauri2-rust-typescript-desktop" ? feature.editsRecords : true) && opsOnAny(feature).includes("update")) && sharedScreenView(features, preset.id).some(feature => opsOnAny(feature).includes("create")) ? ` If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them${preset.id === "tauri2-rust-typescript-desktop" ? "" : "; a single mark or toggle action needs no form"}.` : ""}` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "feature" && ownedFeature && placement?.kind === "page" && kitPaths.includes(placement.pageFile) ? ` Start from kit/${placement.pageFile}, a shell with the layout and one h1${(astroPlan?.collections ?? []).filter(item => item.dataName && ownedFeature.resourceIds.includes(`data:${dataKey(item.dataName)}`)).map(item => `; it reads ${item.dataName} only through list${pascal(item.dataName)}Entries() from src/lib/contentcatalog.ts and renders the declared fields (long text as paragraphs split on blank lines)`).join("")}.` : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? ` Content entry files under src/content/ are also yours, in addition to the create-only list above: ${astroPlan.collections.filter(item => item.entryCount).map(item => `src/content/${item.name}/ already holds exactly ${item.entryCount} numbered sample entries (the idea states that count and names none): keep all ${item.entryCount}, invent no names, add or delete none; `).join("")}for a collection whose idea names entries, create one file per named entry, named with a two-digit numeric prefix in the order the idea lists them (01-, 02-), and delete that collection's sample entries; keep the sample entry when the idea names none (see Content Seed Requirements).` : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "lifecycle" && blueprint ? waybarLifecycleNote(blueprint) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(sharedScreenView(features, preset.id), detailView, filterSlot, preset.id === "tauri2-rust-typescript-desktop", preset.id === "android-kotlin-compose")}` : ""}
+${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.length > 0 && ownedFeatures.every(feature => feature.invokedBy === "schedule") ? " This feature runs by itself and adds no control to the main screen: it mounts into no slot." : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") && !ownedFeatures.every(feature => feature.invokedBy === "schedule") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(sharedScreenView(ownedFeatures, preset.id), preset.id, detailView)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${sharedScreenView(ownedFeatures, preset.id).some(feature => (preset.id === "tauri2-rust-typescript-desktop" ? feature.editsRecords : true) && opsOnAny(feature).includes("update")) && sharedScreenView(features, preset.id).some(feature => opsOnAny(feature).includes("create")) ? ` If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them${preset.id === "tauri2-rust-typescript-desktop" ? "" : "; a single mark or toggle action needs no form"}.` : ""}` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "feature" && ownedFeature && placement?.kind === "page" && kitPaths.includes(placement.pageFile) ? ` Start from kit/${placement.pageFile}, a shell with the layout and one h1${(astroPlan?.collections ?? []).filter(item => item.dataName && ownedFeature.resourceIds.includes(`data:${dataKey(item.dataName)}`)).map(item => `; it reads ${item.dataName} only through list${pascal(item.dataName)}Entries() from src/lib/contentcatalog.ts and renders the declared fields (long text as paragraphs split on blank lines)`).join("")}.` : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? ` Content entry files under src/content/ are also yours, in addition to the create-only list above: ${astroPlan.collections.filter(item => item.entryCount).map(item => `src/content/${item.name}/ already holds exactly ${item.entryCount} numbered sample entries (the idea states that count and names none): keep all ${item.entryCount}, invent no names, add or delete none; `).join("")}for a collection whose idea names entries, create one file per named entry, named with a two-digit numeric prefix in the order the idea lists them (01-, 02-), and delete that collection's sample entries; keep the sample entry when the idea names none (see Content Seed Requirements).` : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "lifecycle" && blueprint ? waybarLifecycleNote(blueprint) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
       // An Astro page or packaging test asserts on the HTML that a production build emits into dist/, so the build runs first.
       validationCommands: unique([
         ...(preset.id === "astro-web" && (draft.kind === "feature" || draft.kind === "packaging") ? ["npm run build"] : []),
         files.focusedTestCommand,
+        ...(androidExtras?.create.filter(file => file.endsWith("SchedulerTest.kt")).map(file => `./scripts/gradle.sh testDebugUnitTest --tests "${identity.packageName}.${file.replace(/^app\/src\/test\/java\//, "").replace(/\.kt$/, "").replaceAll("/", ".")}"`) ?? []),
         ...preset.validationCommands.slice(0, draft.kind === "packaging" ? undefined : 2).map(command => command(identity)),
       ]),
     }
@@ -1922,6 +1977,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       thresholds: feature.thresholds,
       labelTemplate: feature.labelTemplate,
       runsAtField: feature.runsAtField,
+      scheduledNotification: feature.scheduledNotification,
       resourceIds: feature.resourceIds,
       requiredOwnerIds: [],
       choices: feature.choices,
@@ -1971,7 +2027,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
   const androidWithoutSettings = presetId === "android-kotlin-compose" && !androidKitNeeds(blueprint).settingsData
   const persistenceSettings = (astroPlan?.usesContentCollections
     ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.settingsPlacement
-    : androidWithoutSettings ? "No setting is declared; no key is added to SettingsRepository." : preset.persistence.settingsPlacement).replaceAll("{app-id}", identity.bundleId)
+    : androidWithoutSettings ? "No setting is declared. OWN-DATA-STORE is Room only: add no Jetpack DataStore." : preset.persistence.settingsPlacement).replaceAll("{app-id}", identity.bundleId)
   const persistenceRecords = (astroPlan?.usesContentCollections
     ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.recordsPlacement.replace("{collection}", astroPlan.collections.map(item => `src/content/${item.name}/`).join(", "))
     : preset.persistence.recordsPlacement).replaceAll("{app-id}", identity.bundleId)
