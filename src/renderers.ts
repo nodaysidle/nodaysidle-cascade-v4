@@ -334,7 +334,7 @@ function sharedModifyLines(graph: ProjectGraph): string[] {
   for (const task of graph.phases.flatMap(phase => phase.tasks)) {
     for (const path of task.filesToModify) editors.set(path, [...(editors.get(path) ?? []), task.id])
   }
-  return [...editors].filter(([, tasks]) => tasks.length > 1).map(([path, tasks]) => `Shared file ${path} — edited by ${tasks.join(", ")} in task order, each only to register its own owner`)
+  return [...editors].filter(([, tasks]) => tasks.length > 1).map(([path, tasks]) => `Shared file ${path} — edited by ${tasks.join(", ")} in task order; each task edits it only to register or wire its own owner`)
 }
 
 export function renderPacket(graph: ProjectGraph): DocumentPacket {

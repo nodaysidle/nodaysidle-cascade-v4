@@ -377,15 +377,15 @@ const linuxGtk: PresetContract = {
   registrationFiles: (kind, identity) => kind === "feature"
     ? ["src/features/mod.rs", "src/state.rs", "src/app.rs"]
     : kind === "data"
-      ? ["src/platform/mod.rs", "src/config.rs", "src/state.rs", "src/app.rs"]
+      ? ["src/platform/mod.rs", "src/state.rs", "src/app.rs"]
       : kind === "packaging"
-        ? ["src/app.rs", "src/platform/mod.rs"]
+        ? ["src/app.rs"]
         : ["src/platform/mod.rs", "src/state.rs", "src/app.rs"],
   runtimeMode: () => "native",
   runtimeArchitecture: [
-    "Use one AdwApplication with the locked application ID and one AdwApplicationWindow; AdwHeaderBar is the title bar and AdwNavigationView owns item, about, and not-found pages.",
+    "Use one AdwApplication with the locked application ID and one AdwApplicationWindow; AdwHeaderBar is the title bar of an AdwToolbarView that holds the window content.",
     "One AppState lives on the GTK main thread; async work runs on a tokio runtime and returns to the main context through glib::MainContext::spawn_local. No blocking I/O runs on the main thread.",
-    "Rust platform owners implement atomic settings, SQLite records, XDG paths, Secret Service credentials, notifications, and the HTTPS client; features depend on their traits.",
+    "Rust platform owners implement atomic file writes and XDG paths, plus SQLite records, Secret Service credentials, notifications, and the HTTPS client only where a contract names them; features depend on their traits.",
     "Read and write only the app's XDG config, data, and runtime directories and paths chosen in org.freedesktop.portal.FileChooser; never scan another user folder. A file the app replaces is written to a temporary file in the same directory and renamed over the destination.",
   ],
   integrationBoundary: "Use one reqwest client with rustls inside each integration owner; HTTPS only, typed serde DTOs, timeouts, and privacy-safe errors. Never pass a raw response body to a view.",
@@ -405,7 +405,7 @@ const linuxGtk: PresetContract = {
   credentialPlacement: "Store credentials through the Secret Service (GNOME Keyring or KWallet) with the locked application ID as service and a deterministic account name; fail closed if no Secret Service is available.",
   fileBoundary: "Read and write only the app's XDG config, data, and runtime directories and files or folders the user chooses in the desktop portal; never scan another user folder.",
   fileBoundaryDetails: ["Settings: $XDG_CONFIG_HOME/{app-id}/settings.json.", "Records and app-owned files: $XDG_DATA_HOME/{app-id}/.", "User-chosen paths come only from org.freedesktop.portal.FileChooser or a path the app saved to reopen.", "Every path outside this boundary is rejected and leaves the filesystem unchanged."],
-  launchCheck: identity => `GDK_BACKEND=wayland ./scripts/package.sh --install, then launch ~/.local/bin/${identity.slug} and inspect every window.`,
+  launchCheck: identity => `./scripts/package.sh --install, then run GDK_BACKEND=wayland ~/.local/bin/${identity.slug} and inspect every window.`,
   permissionPatterns: linuxGtkPermissionPatterns,
   lifecycleRules: [
     "Use AdwApplication as the entry point and keep exactly one primary window.",
@@ -428,12 +428,12 @@ const linuxGtk: PresetContract = {
     "scripts/package.sh is the sole packaging authority for local proof: release build, install to ~/.local, desktop entry, icon, metainfo, and optional systemd unit.",
     "PKGBUILD is the Arch distribution authority: cargo build --release, install binary, desktop entry, icon, metainfo, license, and optional systemd unit.",
     "Validate the desktop entry with desktop-file-validate, the metainfo with appstreamcli, and the PKGBUILD with makepkg --printsrcinfo before completion.",
-    "Run the launch check under Wayland with GDK_BACKEND=wayland; a silent fallback to X11 is a contract violation.",
+    "Start the installed binary for the launch check with GDK_BACKEND=wayland set on that command; a silent fallback to X11 is a contract violation.",
   ],
   wiringRules: [
     "src/app.rs is the composition root and constructs every feature with the concrete platform owners named in the contracts; test doubles exist only under tests/.",
     "The packaging focused test constructs the production composition root and asserts that every injected platform dependency is the concrete production type.",
-    "Before completion, launch the installed binary under Wayland, complete one acceptance outcome per feature, quit, relaunch, and confirm that saved records and settings are still present.",
+    "Before completion, launch the installed binary under Wayland, complete one acceptance outcome per feature, quit, relaunch, and confirm that every declared stored data object is still present.",
     "Kit helpers that no contract names are optional; do not call a credential, HTTP, or tray helper only to satisfy the wiring gate. Every owner named in TRD.md must be reachable from the production composition root.",
     ...SHARED_WIRING_RULES,
   ],
@@ -441,7 +441,7 @@ const linuxGtk: PresetContract = {
   signingDecision: () => "Local proof is unsigned. Distribution signing is a separate release decision using the packager's GPG key; the local packet does not require a signature.",
   outputArtifact: "native Wayland binary and Arch package",
   artifactPath: identity => `dist/${identity.slug}`,
-  completionEvidence: ["Cargo format, clippy, test, and release build pass.", "desktop-file-validate, appstreamcli, and namcap pass.", "The installed binary launches under Wayland.", "Declared data, credentials, and temporary files survive the restart check."],
+  completionEvidence: ["Cargo format, clippy, test, and release build pass.", "desktop-file-validate and appstreamcli pass, and makepkg --printsrcinfo parses the PKGBUILD.", "The installed binary launches under Wayland.", "Declared stored data survives the restart check."],
   options: [
     { id: "packaging", label: "Packaging", type: "select", values: ["local", "pkgbuild"], default: "local", description: "Recorded in the packet. v4.0 validates the PKGBUILD and local install either way; option-driven packaging selection is next." },
   ],
@@ -646,7 +646,7 @@ const tauriDesktop: PresetContract = {
     "src-tauri/src/lib.rs defines a public app_builder function, generic over tauri::Runtime, that takes and returns a tauri::Builder, initializes every tauri-plugin crate listed in src-tauri/Cargo.toml and registers every #[tauri::command] with invoke_handler(tauri::generate_handler![...]), and nothing else. run() calls app_builder(tauri::Builder::default()) and owns the only setup closure.",
     "src/main.ts constructs every feature with adapters that call invoke() or the initialized plugin APIs; test doubles exist only under tests/.",
     "Every window the app opens has a fixed label and is listed in the windows array of src-tauri/capabilities/default.json. Only the main window hides when closed; every other window closes for real and is created fresh.",
-    "Before completion, launch the installed app, complete one acceptance outcome per feature, quit, relaunch, and confirm that saved records and settings are still present.",
+    "Before completion, launch the installed app, complete one acceptance outcome per feature, quit, relaunch, and confirm that every declared stored data object is still present.",
     ...SHARED_WIRING_RULES,
   ],
   wiringManifestFiles: ["src-tauri/Cargo.toml"],
