@@ -44,6 +44,7 @@ export interface NormalizedBlueprint {
     readonly acceptanceOutcomes: readonly string[]
     readonly failureBehavior: string
     readonly recoveryExpectations: readonly string[]
+    readonly failureRecovery: FeatureRecovery
     readonly providedCapabilities: readonly string[]
     readonly requiredCapabilities: readonly string[]
     readonly dataOperations: readonly DataOperation[]
@@ -127,6 +128,7 @@ export interface GraphFeature {
   readonly acceptanceOutcomes: readonly string[]
   readonly failureBehavior: string
   readonly recoveryExpectations: readonly string[]
+  readonly failureRecovery: FeatureRecovery
   readonly providedCapabilities: readonly string[]
   readonly requiredCapabilities: readonly string[]
   readonly dataOperations: readonly DataOperation[]
@@ -425,6 +427,10 @@ function permissionResourceId(capability: PermissionCapability): string {
 
 const STATIC_SITE_RECOVERY = "A bad content file fails npm run build and names the file and field; a finished page has no runtime failure, retry, or last valid state. Fix the file and rebuild."
 
+// An edit that creates nothing starts from the stored record, so its picker preselects the stored option, not the list's initial one.
+const tauriEditsOnly = (feature: SemanticBlueprint["features"][number], presetId: PresetId): boolean =>
+  presetId === "tauri2-rust-typescript-desktop" && feature.dataOperations.some(entry => entry.operations.includes("update")) && !feature.dataOperations.some(entry => entry.operations.includes("create"))
+
 function featureRecovery(name: string, recovery: FeatureRecovery, staticSite = false): string {
   if (staticSite) return STATIC_SITE_RECOVERY
   switch (recovery) {
@@ -518,6 +524,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       acceptanceOutcomes: acceptance.length ? acceptance : [`${name} produces the documented user outcome.`],
       failureBehavior: failure,
       recoveryExpectations: [featureRecovery(name, feature.failureRecovery, astroStaticSource(source, presetId))],
+      failureRecovery: feature.failureRecovery,
       // A feature provides itself, so another feature's buildsOn becomes an owner dependency.
       providedCapabilities: [slug(name)],
       requiredCapabilities: unique(feature.buildsOn.map(other => slug(cleanMeaning(other)))),
@@ -531,7 +538,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       usesData: unique(featureDataUses(source, feature).map(name => dataNameByKey.get(referenceKey(name))!)),
       usesServices: unique(feature.usesServices.map(name => serviceNameByKey.get(referenceKey(name))!)),
       userFileAccess: feature.userFileAccess,
-      choices: feature.choiceLists.map(list => `${cleanMeaning(list.name)}: ${cleanList(list.options).join(", ")}${astroStaticSource(source, presetId) ? "" : `; initially ${cleanMeaning(list.initial)}`}`),
+      choices: feature.choiceLists.map(list => `${cleanMeaning(list.name)}: ${cleanList(list.options).join(", ")}${astroStaticSource(source, presetId) ? "" : `; initially ${tauriEditsOnly(feature, presetId) ? "the stored value of the record being edited" : cleanMeaning(list.initial)}`}`),
       surface: feature.surface,
     }
   }))
@@ -1074,6 +1081,17 @@ function mainDetailControls(features: readonly GraphFeature[]): string {
 
 const opsOnAny = (feature: GraphFeature): readonly DataOperation[] => feature.dataOperations
 
+// Tauri: a feature that both creates and updates one data object (a timer's start and stop) drives it with its own controls, so the shared
+// add-entry control and entry form are not built for it. Its create and update are left out of what the shared screen is sized for.
+function ownsItsControls(feature: GraphFeature): boolean {
+  return Object.values(feature.operationsByData).some(operations => operations.includes("create") && operations.includes("update"))
+}
+function sharedScreenView(features: readonly GraphFeature[], presetId: PresetId): readonly GraphFeature[] {
+  if (presetId !== "tauri2-rust-typescript-desktop") return features
+  // A feature that saves a file, or is started by a shortcut or schedule, has no row, form, or filter control of the shared screen either.
+  return features.map(feature => feature.userFileAccess === "saves" || feature.userFileAccess === "opens-and-saves" || feature.invokedBy === "shortcut" || feature.invokedBy === "schedule" || feature.resourceIds.includes("permission:global-input") ? { ...feature, dataOperations: [], operationsByData: {} } : ownsItsControls(feature) ? { ...feature, dataOperations: feature.dataOperations.filter(operation => operation === "read" || operation === "delete"), operationsByData: Object.fromEntries(Object.entries(feature.operationsByData).map(([key, operations]) => [key, operations.filter(operation => operation === "read" || operation === "delete")])) } : feature)
+}
+
 // The slots the first main-surface task exposes are the ones the declared operations of the other features need.
 function mainSlotsSentence(features: readonly GraphFeature[]): string {
   const ops = new Set(features.flatMap(feature => feature.dataOperations))
@@ -1087,8 +1105,9 @@ function mainSlotsSentence(features: readonly GraphFeature[]): string {
 }
 
 // The slot a later feature task mounts into, from its declared operations.
-function slotFor(owned: readonly GraphFeature[]): string {
+function slotFor(owned: readonly GraphFeature[], presetId: PresetId): string {
   const ops = new Set(owned.flatMap(feature => feature.dataOperations))
+  if (!ops.size && presetId === "tauri2-rust-typescript-desktop") return "no named slot: your own controls, if any (start and stop, an export button), sit in the main content area"
   if (ops.has("create")) return "the add-entry control"
   if (ops.has("update") || ops.has("delete")) return "the per-row action area or the detail view, whichever your acceptance criteria describe"
   return "the filter area or the list region"
@@ -1231,7 +1250,7 @@ function buildOwnersAndContracts(
       credentialData ? `${preset.credentialPlacement} CredentialVault exclusively owns credential storage, retrieval, replacement, and deletion; DataStore receives no secret value.` : item.meaning,
       credentialData ? [...credentialDataDetails, `Retention: ${item.retention}`, `Sensitivity: ${item.sensitivity}`] : credentialDataDetails,
       credentialData ? "Missing, rejected, unreadable, replacement-failed, or deletion-failed credentials block only the affected provider action without exposing or copying a secret." : inMemoryData ? "A failed update leaves the last in-memory state valid." : contentCollection ? "A content file that fails the collection schema fails the build and names the file and field." : "Reject invalid or incomplete records without replacing the last valid state.",
-      credentialData ? ["Preserve the prior stored credential after failed replacement, report deletion only after the credential store confirms it, and expose an explicit replacement or provider-selection action."] : inMemoryData ? ["Keep the last in-memory value and rebuild it from its source on the next explicit action."] : contentCollection ? ["Correct the named content file or field and rebuild."] : ["Preserve the last valid record and expose a bounded correction or rebuild path."],
+      credentialData ? ["Preserve the prior stored credential after failed replacement, report deletion only after the credential store confirms it, and expose an explicit replacement or provider-selection action."] : inMemoryData ? ["Keep the last in-memory value and rebuild it from its source on the next explicit action."] : contentCollection ? ["Correct the named content file or field and rebuild."] : preset.id === "tauri2-rust-typescript-desktop" ? ["Preserve the last valid record: a failed command returns the AppError, leaves every stored row as it was, and the owning feature shows that message."] : ["Preserve the last valid record and expose a bounded correction or rebuild path."],
     ))
   }
 
@@ -1475,7 +1494,7 @@ function buildOwnersAndContracts(
   for (const editor of features) {
     for (const data of blueprint.domainData) {
       if (!opsOn(editor, data.name).includes("update")) continue
-      const adder = features.find(candidate => candidate.ownerId !== editor.ownerId && opsOn(candidate, data.name).includes("create"))
+      const adder = features.find(candidate => candidate.ownerId !== editor.ownerId && opsOn(candidate, data.name).includes("create") && !(preset.id === "tauri2-rust-typescript-desktop" && ownsItsControls(candidate)))
       if (adder) addDependency(editor.ownerId, adder.ownerId)
     }
   }
@@ -1675,7 +1694,7 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(features)}` : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(ownedFeatures)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${ownedFeatures.some(feature => opsOnAny(feature).includes("update")) && features.some(feature => opsOnAny(feature).includes("create")) ? " Reuse the form fields and validation that the add task exports from its own file; do not duplicate them." : ""}` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? " Content entry files under src/content/ are also yours: create one file per entry the idea names and delete that collection's sample-entry.md; keep the sample entry when the idea names none (see Content Seed Requirements)." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(sharedScreenView(features, preset.id))}` : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(sharedScreenView(ownedFeatures, preset.id), preset.id)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${sharedScreenView(ownedFeatures, preset.id).some(feature => opsOnAny(feature).includes("update")) && sharedScreenView(features, preset.id).some(feature => opsOnAny(feature).includes("create")) ? " Reuse the form fields and validation that the add task exports from its own file; do not duplicate them." : ""}` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? " Content entry files under src/content/ are also yours: create one file per entry the idea names and delete that collection's sample-entry.md; keep the sample entry when the idea names none (see Content Seed Requirements)." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
       // An Astro page or packaging test asserts on the HTML that a production build emits into dist/, so the build runs first.
       validationCommands: unique([
         ...(preset.id === "astro-web" && (draft.kind === "feature" || draft.kind === "packaging") ? ["npm run build"] : []),
@@ -1720,7 +1739,8 @@ function refineTauriPhases(phases: readonly GraphPhase[], owners: readonly Graph
   const allTasks = phases.flatMap(phase => phase.tasks)
   const firstMain = allTasks.find(task => task.prompt.includes("You are the first main-surface task"))
   const operations = features.flatMap(feature => Object.values(feature.operationsByData).flat())
-  const entryForm = operations.includes("create") && operations.includes("update")
+  const shared = sharedScreenView(features, "tauri2-rust-typescript-desktop").flatMap(feature => Object.values(feature.operationsByData).flat())
+  const entryForm = shared.includes("create") && shared.includes("update")
   return phases.map(phase => ({
     ...phase,
     tasks: phase.tasks.map(task => {
@@ -1793,6 +1813,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       acceptanceOutcomes: feature.acceptanceOutcomes,
       failureBehavior: feature.failureBehavior,
       recoveryExpectations: feature.recoveryExpectations,
+      failureRecovery: feature.failureRecovery,
       providedCapabilities: feature.providedCapabilities,
       requiredCapabilities: feature.requiredCapabilities,
       dataOperations: feature.dataOperations,
