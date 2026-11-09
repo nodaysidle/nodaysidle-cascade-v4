@@ -37,4 +37,26 @@ describe("normalization never drops provider content silently", () => {
     purpose.dataObjects[0]!.purpose = "TASK-02"
     expect(issuesOf(() => normalizeBlueprint(purpose, gtk.presetId)).map(issue => issue.path)).toEqual(["dataObjects[0].purpose"])
   })
+
+  it("keeps ordinary prose that only looks like a command, path, or ID", () => {
+    const blueprint = structuredClone(gtk.blueprint)
+    const prose = "Swift delivery for a yarn stash and the Cargo manifest; the task-list and own-brand items toggle on / off"
+    blueprint.features[0]!.behavior = prose
+    blueprint.features[0]!.name = "Task-list"
+    blueprint.ideaCoverage = blueprint.ideaCoverage.map(entry => ({ ...entry, features: entry.features.map(name => name === gtk.blueprint.features[0]!.name ? "Task-list" : name) }))
+    for (const other of blueprint.features) other.buildsOn = other.buildsOn.map(name => name === gtk.blueprint.features[0]!.name ? "Task-list" : name)
+    const normalized = normalizeBlueprint(blueprint, gtk.presetId)
+    expect(normalized.features[0]!.name).toBe("Task-list")
+    expect(normalized.features[0]!.behavior).toBe(prose)
+  })
+
+  it("still scrubs a real command, source path, and provider ID", () => {
+    const blueprint = structuredClone(gtk.blueprint)
+    blueprint.features[0]!.behavior = "Run npm run build --watch and cargo test, edit src/main.rs, see FEAT-02 for the rest"
+    const behavior = normalizeBlueprint(blueprint, gtk.presetId).features[0]!.behavior
+    expect(behavior).not.toMatch(/npm run|cargo test|src\/main|FEAT-02/)
+    expect(behavior).toContain("the local validation command")
+    expect(behavior).toContain("the local implementation")
+  })
 })
+

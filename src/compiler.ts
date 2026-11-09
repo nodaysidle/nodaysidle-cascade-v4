@@ -379,9 +379,12 @@ function uniqueStrings(values: readonly string[]): string[] {
 
 const implementationSuggestion = /\b(?:build|built|implement|implemented|implementation|use|using|written|powered|with)\s+(?:in\s+|on\s+)?(?:React Native|Jetpack Compose|SwiftUI|AppKit|Flutter|Electron|Tauri(?:\s*2)?|Astro|Next\.js|Kotlin|Rust|TypeScript|Swift(?:\s*6)?|React|Vue|Svelte)\b/gi
 const genericIdentity = /\b(?:com|org)\.example(?:\.[a-z0-9-]+)+\b|\bexample\.com\b|\byour[-. ](?:company|bundle)\b/gi
-const providerId = /\b(?:FEAT|REQ|TASK|PHASE|CONTRACT|CON|CTR|OWN)-[A-Z0-9-]+\b/gi
-const sourcePath = /(^|[\s("'`])(?:~\/|\.{0,2}\/|\/(?:Users|Volumes|Applications)\/|(?:src|tests?|Sources|Tests|app\/src|src-tauri)\/)[A-Za-z0-9_./ -]+/gim
-const command = /(?:\.\/gradlew|npm|pnpm|yarn|cargo|swift|xcodebuild|adb)\s+(?:run\s+)?[A-Za-z0-9:._-]+(?:\s+--?[A-Za-z0-9:._="'/-]+)*/gi
+// IDs are uppercase (FEAT-01, OWN-DATA-STORE); "task-list" or "own-brand" is prose.
+const providerId = /\b(?:FEAT|REQ|TASK|PHASE|CONTRACT|CON|CTR|OWN)-[A-Z0-9-]+\b/g
+// A path needs a segment right after its prefix: "on / off" is prose.
+const sourcePath = /(^|[\s("'`])(?:~\/|\.{0,2}\/|\/(?:Users|Volumes|Applications)\/|(?:src|tests?|Sources|Tests|app\/src|src-tauri)\/)[A-Za-z0-9_.-][A-Za-z0-9_./ -]*/gim
+// A command is a lowercase tool name followed by one of its real subcommands: "Swift delivery", "yarn stash", "Cargo manifest" are prose.
+const command = /(?:\.\/gradlew\s+[A-Za-z0-9:._-]+|\b(?:npm|pnpm|yarn)\s+(?:run\s+[A-Za-z0-9:._-]+|install|ci|test|build|add|exec|dev|check)\b|\bcargo\s+(?:build|test|run|check|clippy|fmt|install|add|tauri)\b|\bswift\s+(?:build|test|run|package)\b|\bxcodebuild(?=\s+-)|\badb\s+(?:install|shell|logcat|devices|push|pull|uninstall)\b)(?:\s+--?[A-Za-z0-9:._="'/-]+)*/g
 const documentName = /\b(?:PRD|ARD|TRD|TASKS|AGENTS)\.md\b/gi
 // Short lowercase format tokens such as "rates from <date>" become {date}: angle brackets vanish as
 // HTML in Markdown viewers. Capitalized or filler tokens such as <Your App Name> stay for the gate.
