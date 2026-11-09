@@ -227,10 +227,10 @@ describe("Astro packets for a site with several record types", () => {
     for (const name of ["FeaturedBook", "ReadingEvent", "OpeningHours"]) expect(catalog).toContain(`export async function list${name}Entries()`)
     expect(packet.graph.foundationFiles).not.toContain("src/lib/contentcatalog.ts")
     expect(kitFile(packet, "README.md")).toContain("src/lib/contentcatalog.ts")
-    // The title is the h1, so it gets no second row; labels are words, not field keys; long text is split into paragraphs.
+    // The title is the h1, so it gets no second row; labels are words, not field keys; long text is one element.
     for (const label of ["Author", "Short note"]) expect(page).toContain(`<dt>${label}</dt>`)
     expect(page).not.toContain("<dt>Title</dt>")
-    expect(page).toContain("split(/\\n\\s*\\n/)")
+    expect(page).not.toContain("split(")
     expect(page).toContain("description={entry.data.shortNote}")
     const events = { ...lanternBooksBlueprint, features: lanternBooksBlueprint.features.map(feature => feature.name === "Book page" ? { ...feature, usesData: ["Reading event"], dataOperations: [{ data: "Reading event", operations: ["read" as const] }] } : feature) }
     const eventPage = kitFile(await compilePacket(events, "astro-web"), "src/pages/reading-event/[slug].astro")!
@@ -364,5 +364,20 @@ describe("Astro packets for a site with several record types", () => {
     expect(tasks).not.toContain("create every other listed file")
     expect(tasks).not.toContain("paragraphs split on blank lines")
     expect(packet.documents["TRD.md"]).not.toContain("declared search page")
+  })
+})
+
+describe("astro pages of collections without a detail route", () => {
+  it("links to detail routes only for the item-page collection and tells the list owner not to add a heading", async () => {
+    const packet = await compilePacket(lanternBooksBlueprint, "astro-web")
+    const plan = packet.graph.astroPlan!
+    expect(plan.detailCollections.length).toBeGreaterThan(0)
+    const tasks = packet.documents["TASKS.md"]
+    const others = plan.collections.filter(item => !plan.detailCollections.includes(item.name))
+    expect(others.length).toBeGreaterThan(0)
+    for (const item of others) expect(tasks).toContain(`${item.name} has no detail route`)
+    for (const name of plan.detailCollections) expect(tasks).not.toContain(`${name} has no detail route`)
+    expect(tasks).toContain("src/pages/index.astro keeps the one h1")
+    expect(packet.documents["PRD.md"] + packet.documents["TRD.md"]).toContain("owner-supplied entry text")
   })
 })

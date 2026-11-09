@@ -32,6 +32,8 @@ export interface AstroRoutePlan {
   readonly browserPersistence: boolean
   readonly staticSite: boolean
   readonly dateNotes: readonly string[]
+  // Names of the collections that have a [slug] detail route; every other collection has none and its pages link to none.
+  readonly detailCollections: readonly string[]
   readonly sharedDynamicRoute?: string
   readonly sharedDynamicRouteOwnerFeatureId?: string
 }
@@ -208,6 +210,7 @@ export function planAstroWeb(
     browserPersistence,
     staticSite: astroStaticContentSite(blueprint, runtimeMode),
     dateNotes: astroDateNotes(features, collections),
+    detailCollections: unique(features.flatMap(feature => feature.surface === "item-page" && featurePlacements[feature.id]?.kind === "page" ? [collectionOf(feature, collections)?.name ?? "entries"] : [])),
     sharedDynamicRoute: itemPlacement?.kind === "page" ? itemPlacement.pageFile : undefined,
     sharedDynamicRouteOwnerFeatureId: itemFeature?.id,
   }
