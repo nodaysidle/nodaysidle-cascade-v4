@@ -1,0 +1,320 @@
+{
+ "productName": "Contact Book",
+ "summary": "A local contact book that keeps a list of contacts with a name and a phone number. Users add, edit, search by name, and delete contacts after confirming, and the contacts persist on the device across restarts.",
+ "targetUsers": [
+  "Individuals keeping a personal list of contacts on their own device"
+ ],
+ "goals": [
+  "Keep a persistent on-device list of contacts with a name and a phone number",
+  "Let the user add, edit, search by name, and delete contacts with confirmation",
+  "Restore the saved contacts when the app starts again"
+ ],
+ "nonGoals": [
+  "Syncing contacts with remote services or other devices",
+  "Importing or exporting contact files"
+ ],
+ "features": [
+  {
+   "name": "Contact List",
+   "userOutcome": "See all saved contacts and pick one to view",
+   "trigger": "The app opens",
+   "behavior": "Shows every saved contact as a row with the contact's name and phone number, ordered alphabetically by name (A to Z, case-insensitive). The list loads the saved contacts from the device when the app starts and restores them after restart. Selecting a row shows that contact read-only with an Edit button; selecting a row never opens the editor. When no contacts are saved, the list shows the text 'No contacts yet'. If loading the saved contacts fails, the list shows the single message 'Could not load contacts.' and shows no rows.",
+   "failureOutcome": "The saved contacts cannot be read, so the list shows 'Could not load contacts.' and no rows",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With two saved contacts 'Alice' and 'Bob', the list shows Alice before Bob.",
+    "With no saved contacts, the list shows 'No contacts yet'.",
+    "A contact read back from the store shows its saved name and phone number.",
+    "Selecting a row shows the contact read-only and does not open the edit form."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Contacts"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Contacts",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "launch",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Add Contact",
+   "userOutcome": "Save a new contact with a name and a phone number",
+   "trigger": "The user chooses to add a contact",
+   "behavior": "Opens a form with a required Name field and a required Phone number field. The form checks that both fields are non-empty and that the phone number contains only digits, spaces, hyphens, parentheses, and a leading plus sign; a value failing either rule is rejected and the contact is not saved. On save, the contact is written to the device store and appears in the contact list in alphabetical position by name. The form closes after a successful save.",
+   "failureOutcome": "The new contact cannot be written to the device store, so the form stays open with the entered values and no contact is added",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Saving a contact with name 'Alice' and phone number '555-0100' adds a record whose stored name is 'Alice' and stored phone number is '555-0100'.",
+    "Submitting an empty name or an empty phone number is rejected and no record is created.",
+    "Submitting a phone number containing letters is rejected and no record is created.",
+    "A failed write leaves the previously saved contact list unchanged."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Contacts"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Contact List"
+   ],
+   "dataOperations": [
+    {
+     "data": "Contacts",
+     "operations": [
+      "create"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Edit Contact",
+   "userOutcome": "Change the name or phone number of an existing contact",
+   "trigger": "The user presses Edit on a selected contact",
+   "behavior": "Opens the same form as adding, pre-filled with the contact's current name and phone number. The form applies the same rules as adding: both fields are required and the phone number contains only digits, spaces, hyphens, parentheses, and a leading plus sign. On save, the stored contact is updated and the list shows the new values in alphabetical position by name. The form closes after a successful save.",
+   "failureOutcome": "The change cannot be written to the device store, so the form stays open with the entered values and the stored contact keeps its previous values",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Editing a contact's name from 'Alice' to 'Alicia' and saving makes the stored record show 'Alicia'.",
+    "Editing a contact's phone number and saving makes the stored record show the new number.",
+    "Submitting an empty name or an empty phone number is rejected and the stored contact keeps its previous values.",
+    "A failed write leaves the stored contact with its previous name and phone number."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Contacts"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Contact List"
+   ],
+   "dataOperations": [
+    {
+     "data": "Contacts",
+     "operations": [
+      "edit"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Search Contacts",
+   "userOutcome": "Narrow the contact list to contacts whose name matches what was typed",
+   "trigger": "The user types in the search field above the contact list",
+   "behavior": "Filters the contact list to contacts whose name contains the typed text, case-insensitive. The search field starts empty, and an empty search field shows all contacts. Clearing the search field returns to showing all contacts. The filtered list keeps the alphabetical order by name. When no contact matches, the list shows the text 'No matching contacts'.",
+   "failureOutcome": "The search text cannot be applied, so the list keeps showing the previous results",
+   "failureRecovery": "fallback",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Typing 'ali' shows only contacts whose name contains 'ali' case-insensitively.",
+    "Clearing the search field shows all saved contacts again.",
+    "Typing text that matches no contact shows 'No matching contacts'.",
+    "With an empty search field, the shown contacts equal all saved contacts."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Contacts"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Contact List"
+   ],
+   "dataOperations": [
+    {
+     "data": "Contacts",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "text",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Delete Contact",
+   "userOutcome": "Remove a contact after confirming the deletion",
+   "trigger": "The user chooses to delete the selected contact",
+   "behavior": "Shows a confirmation asking whether to delete the contact, with a confirm action and a cancel action. Choosing cancel closes the confirmation and keeps the contact. Choosing confirm removes the contact from the device store and from the list. If the removal fails, the contact stays in the list and the confirmation closes.",
+   "failureOutcome": "The contact cannot be removed from the device store, so it stays in the list",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Choosing cancel on the confirmation leaves the stored contact unchanged.",
+    "Choosing confirm removes the contact so reading the store returns no record with that name.",
+    "A failed removal leaves the stored contact present in the list."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Contacts"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Contact List"
+   ],
+   "dataOperations": [
+    {
+     "data": "Contacts",
+     "operations": [
+      "delete"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Contacts",
+   "purpose": "The saved contacts, each with a name and a phone number",
+   "sensitivity": "personal",
+   "retentionIntent": "Kept on the device until the user deletes the contact",
+   "storage": "records",
+   "writeMode": "atomic-replace",
+   "fields": [
+    {
+     "name": "name",
+     "valueType": "text",
+     "optional": false
+    },
+    {
+     "name": "phoneNumber",
+     "valueType": "text",
+     "optional": false
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [
+  "local-storage"
+ ],
+ "qualityRequirements": [
+  "The contact list stays usable with at least 500 saved contacts."
+ ],
+ "productConstraints": [
+  "Contacts are stored only on the device and are never sent to a remote service."
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Contact List"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Add Contact",
+    "Edit Contact",
+    "Search Contacts",
+    "Delete Contact"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 3,
+   "features": [
+    "Contact List"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

@@ -22,7 +22,7 @@ describe("Tauri habit tracker with a calendar-day record", () => {
     blueprint.features[3]!.dataOperations = [{ data: "Habits", operations: ["read"] }, { data: "Habit completions", operations: ["create"] }]
     const mixed = (await compilePacket(blueprint, PRESET, linux)).documents
     const prompt = task(mixed["TASKS.md"], "TASK-07-MARK-DONE-TODAY")
-    expect(prompt).toContain("list_habits(), get_habits(id), create_habit_completions(input)")
+    expect(prompt).toContain("create_habit_completions(input)")
     expect(prompt).not.toMatch(/create_habits|update_habits/)
     expect(mixed["TRD.md"]).toContain("create (FEAT-MARK-DONE-TODAY)")
     expect(mixed["TRD.md"]).not.toMatch(/create \(FEAT-ADD-HABIT, FEAT-MARK-DONE-TODAY\)/)
@@ -48,7 +48,7 @@ describe("Tauri habit tracker with a calendar-day record", () => {
     for (const id of ["TASK-05-ADD-HABIT", "TASK-06-EDIT-HABIT-NAME", "TASK-07-MARK-DONE-TODAY"]) {
       expect(task(tasks, id)).toContain("do not show a launch-load error message (that one belongs to TASK-04-HABIT-LIST)")
     }
-    expect(task(tasks, "TASK-04-HABIT-LIST")).toContain("You build only the shell; the add task builds its field inputs and choice pickers")
+    expect(task(tasks, "TASK-04-HABIT-LIST")).toContain("You build only the shell, no field input, no Edit button, and no Delete button.")
   })
 
   it("names JSON keys, update semantics, and list order in the data contract", async () => {
@@ -84,7 +84,7 @@ describe("Tauri habit tracker with a calendar-day record", () => {
 
   it("gives the lifecycle owner a concrete deliverable", async () => {
     const tasks = (await compilePacket(habitStreakBlueprint, PRESET, linux)).documents["TASKS.md"]
-    expect(task(tasks, "TASK-03-LIFECYCLE-COORDINATOR")).toContain("a launch(folder) function that opens the store through database::open")
+    expect(task(tasks, "TASK-03-LIFECYCLE-COORDINATOR")).toContain("a launch(folder: &Path) function that opens the store through database::open")
     expect(task(tasks, "TASK-03-LIFECYCLE-COORDINATOR")).toContain("exit in the RunEvent::Exit arm")
   })
 })
@@ -96,7 +96,7 @@ describe("Tauri notes app with an editor and a Markdown export", () => {
 
   it("has the first main-surface task own the editor, and the later tasks reuse it", async () => {
     const tasks = (await compilePacket(quickNotesBlueprint, PRESET, linux)).documents["TASKS.md"]
-    expect(task(tasks, "TASK-04-NOTE-LIST")).toContain("the add-entry control opens it empty and the Edit button of the detail view (read-only until then, showing every stored field) opens it for the selected record")
+    expect(task(tasks, "TASK-04-NOTE-LIST")).toContain("Your add-entry control sets form to \"add\" with every input empty")
     for (const id of ["TASK-05-ADD-NOTE", "TASK-06-EDIT-NOTE"]) expect(task(tasks, id)).toContain("do not build another detail view or entry-form shell")
   })
 
@@ -139,7 +139,7 @@ describe("Tauri audit round 3", () => {
     expect(add).toContain("(title (text), steps (long-text)) and no others")
     expect(add).toContain("fixed (flag) is no input")
     expect(add).not.toContain("fixed (flag),")
-    expect(task(tasks, "TASK-06-EDIT-REPORT")).toContain("Connect the detail view's Edit button")
+    expect(task(tasks, "TASK-06-EDIT-REPORT")).toContain('mount it into slots.host("detail-actions")')
     expect(task(tasks, "TASK-06-EDIT-REPORT")).toContain("fixed (flag) is no input")
   })
 

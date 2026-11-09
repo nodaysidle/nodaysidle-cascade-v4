@@ -12,7 +12,7 @@ import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers, wa
 import { waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarSourceDetail } from "./waybarContracts"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
-import { TAURI_WIRE_FORMAT, tauriAddHasForm, tauriDocumentInterface, tauriFeatureOps, tauriStoreInterface, tauriTaskPrompt, type TauriData, type TauriFeatureUse } from "./tauriContracts"
+import { TAURI_WIRE_FORMAT, tauriAddHasForm, tauriDocumentInterface, tauriFeatureOps, tauriMainSlotsSentence, tauriStoreInterface, tauriTaskPrompt, type TauriData, type TauriFeatureUse } from "./tauriContracts"
 
 export const DOCUMENT_NAMES = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS.md"] as const
 export type DocumentName = (typeof DOCUMENT_NAMES)[number]
@@ -27,6 +27,8 @@ export interface DataField {
   readonly optional: boolean
   readonly min?: number | null
   readonly max?: number | null
+  // The value the app sets itself when it creates a record (a status such as Not started); null for a field the user types.
+  readonly initial?: string | null
 }
 
 export interface NormalizedBlueprint {
@@ -59,6 +61,7 @@ export interface NormalizedBlueprint {
     readonly narrowsListBy: "none" | "text" | "flag" | "sort"
     readonly showsCurrentTime?: boolean
     readonly readsCurrentDay?: boolean
+    readonly refreshesEverySeconds?: number | null
     readonly invokedBy: InvokedBy
     readonly runsEverySeconds: number | null
     readonly runsDailyAt: string | null
@@ -157,6 +160,7 @@ export interface GraphFeature {
   readonly narrowsListBy: "none" | "text" | "flag" | "sort"
   readonly showsCurrentTime?: boolean
   readonly readsCurrentDay?: boolean
+  readonly refreshesEverySeconds?: number | null
   readonly invokedBy: InvokedBy
   readonly runsEverySeconds: number | null
   readonly runsDailyAt: string | null
@@ -579,6 +583,7 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       narrowsListBy: feature.narrowsListBy ?? "none",
       showsCurrentTime: feature.showsCurrentTime === true,
       readsCurrentDay: feature.readsCurrentDay === true,
+      refreshesEverySeconds: feature.refreshesEverySeconds ?? null,
       invokedBy: feature.invokedBy,
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,
@@ -608,7 +613,7 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       retentionIntent: cleanMeaning(item.retentionIntent),
       storage: item.storage,
       writeMode: item.writeMode,
-      fields: item.fields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional, min: field.min ?? null, max: field.max ?? null })).filter(field => field.name),
+      fields: item.fields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional, min: field.min ?? null, max: field.max ?? null, initial: field.initial ?? null })).filter(field => field.name),
       singleRecord: item.singleRecord,
       entryCount: item.entryCount ?? null,
     }
@@ -984,10 +989,11 @@ const ATOMIC_RENAME_SCRATCH_PLACEMENT = "A temporary file in the destination fil
 
 // A declared bound is part of the field's type everywhere it is stated.
 function rangeNote(field: DataField): string {
-  if (field.min != null && field.max != null) return `, from ${field.min} to ${field.max}`
-  if (field.min != null) return `, at least ${field.min}`
-  if (field.max != null) return `, at most ${field.max}`
-  return ""
+  const initial = field.initial != null && field.initial !== "" ? `, set to "${field.initial}" by the app when the record is created (never typed by the user)` : ""
+  if (field.min != null && field.max != null) return `, from ${field.min} to ${field.max}${initial}`
+  if (field.min != null) return `, at least ${field.min}${initial}`
+  if (field.max != null) return `, at most ${field.max}${initial}`
+  return initial
 }
 
 const VALUE_TYPE_LABEL: Record<DataValueType, string> = {
@@ -1232,13 +1238,16 @@ function hasFilterFeature(features: readonly GraphFeature[], firstMainOwnerId: s
 }
 
 // Tauri: the per-row action area exists only for a feature that acts on a row without the detail view's Edit button (a mark or toggle, a delete).
+// Delete lives in the detail view when the packet has one (an edit feature builds it), else in the row area.
 const needsRowArea = (features: readonly GraphFeature[]): boolean =>
-  features.some(feature => feature.dataOperations.includes("delete") || (feature.dataOperations.includes("update") && !feature.editsRecords))
+  features.some(feature => (feature.dataOperations.includes("delete") && !features.some(other => other.editsRecords)) || (feature.dataOperations.includes("update") && !feature.editsRecords))
 
 // The slots the first main-surface task exposes are the ones the declared operations of the other features need.
 // rowOpensEditor (Tauri): a packet with an edit feature always builds the detail view and opens it from the row.
 function mainSlotsSentence(features: readonly GraphFeature[], detailView = true, filterSlot = true, rowOpensEditor = false, android = false, directAdd = false): string {
   const ops = new Set(features.flatMap(feature => feature.dataOperations))
+  const changes = ops.has("update") || ops.has("delete")
+  if (rowOpensEditor) return tauriMainSlotsSentence({ create: ops.has("create"), directAdd, entryForm: !directAdd && ops.has("create") && features.some(feature => feature.editsRecords && feature.dataOperations.includes("update")), rowArea: changes && needsRowArea(features), detail: changes && features.some(feature => feature.editsRecords), filter: filterSlot })
   const slots = [
     android ? "a status area that carries only the empty-list message (the exact text an acceptance signal quotes, else a short plain sentence) and the form errors" : "a status area shared by every message the main screen shows (empty state, no match, errors)",
     ...(ops.has("create") ? [directAdd ? "an add-entry control: a button that the add task connects to the create command (no stored field takes user input, so build no entry form shell)" : android && !detailView ? "the inline add form shell on the main screen above the list (the add task builds the form fields and validation; an edit task reuses them)" : "an add-entry control that opens the entry form shell (the add task builds the form fields and validation; an edit task reuses them)"] : []),
@@ -1250,10 +1259,10 @@ ${mainDetailControls(features)}, ${rowOpensEditor && features.some(feature => fe
 }
 
 // Tauri: the names the first main task gives its slot hosts, in the order of mainSlotsSentence.
-function tauriSlotHosts(features: readonly GraphFeature[], detailView: boolean, filterSlot: boolean): string[] {
+function tauriSlotHosts(features: readonly GraphFeature[], detailView: boolean, filterSlot: boolean, entryForm = false): string[] {
   const ops = new Set(features.flatMap(feature => feature.dataOperations))
   const changes = ops.has("update") || ops.has("delete")
-  return ["status", ...(ops.has("create") ? ["add"] : []), ...(changes && needsRowArea(features) ? ["row-actions"] : []), ...(changes && detailView ? ["detail"] : []), ...(filterSlot ? ["filter"] : [])]
+  return ["status", ...(ops.has("create") ? ["add"] : []), ...(entryForm ? ["form"] : []), ...(changes && needsRowArea(features) ? ["row-actions"] : []), ...(changes && detailView ? ["detail", "detail-actions"] : []), ...(filterSlot ? ["filter"] : [])]
 }
 
 // The slot a later feature task mounts into, from its declared operations.
@@ -1262,7 +1271,8 @@ function slotFor(owned: readonly GraphFeature[], presetId: PresetId, detailView 
   const ops = new Set(owned.flatMap(feature => feature.dataOperations))
   if (!ops.size && presetId === "tauri2-rust-typescript-desktop") return "no named slot: your own controls, if any (start and stop, an export button), sit in the main content area"
   if (ops.has("create")) return "the add-entry control"
-  if (owned.some(feature => feature.editsRecords)) return detailView ? "the detail view (its Edit control)" : "the per-row action area"
+  if (owned.some(feature => feature.editsRecords)) return detailView ? (presetId === "tauri2-rust-typescript-desktop" ? 'the detail view\'s "detail-actions" slot (its Edit control)' : "the detail view (its Edit control)") : "the per-row action area"
+  if (presetId === "tauri2-rust-typescript-desktop" && ops.has("delete") && !ops.has("update")) return detailView ? 'the detail view\'s "detail-actions" slot (the list rows have no delete control)' : "the per-row action area"
   if (ops.has("update") || ops.has("delete")) return detailView && ops.has("delete") ? "the per-row action area or the detail view, whichever your acceptance criteria describe" : "the per-row action area"
   return android ? "the one area above the list" : "the filter area or the list region"
 }
@@ -1937,8 +1947,8 @@ function refineTauriPhases(phases: readonly GraphPhase[], owners: readonly Graph
   const firstMainOwner = firstMain?.ownerIds[0]
   const detailView = features.some(feature => feature.editsRecords)
   const filters = hasFilterFeature(features, firstMainOwner, "tauri2-rust-typescript-desktop")
-  const slotHosts = tauriSlotHosts(sharedScreenView(features, "tauri2-rust-typescript-desktop"), detailView, filters)
   const entryForm = addHasForm && shared.includes("create") && sharedScreenView(features, "tauri2-rust-typescript-desktop").some(feature => feature.editsRecords && Object.values(feature.operationsByData).some(operations => operations.includes("update")))
+  const slotHosts = tauriSlotHosts(sharedScreenView(features, "tauri2-rust-typescript-desktop"), detailView, filters, entryForm)
   return phases.map(phase => ({
     ...phase,
     tasks: phase.tasks.map(task => {
@@ -2028,6 +2038,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       narrowsListBy: feature.narrowsListBy,
       showsCurrentTime: feature.showsCurrentTime,
       readsCurrentDay: feature.readsCurrentDay,
+      refreshesEverySeconds: feature.refreshesEverySeconds,
       invokedBy: feature.invokedBy,
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,
