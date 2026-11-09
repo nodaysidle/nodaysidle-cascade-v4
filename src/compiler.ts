@@ -1370,6 +1370,11 @@ function buildPhases(
   const phases: GraphPhase[] = [{ id: "PHASE-01-FOUNDATION", title: "Locked foundation", dependencies: [], tasks: [foundationTask] }]
   const owners: GraphOwner[] = []
   const orderedDrafts = topologicalOwnerDrafts(ownerDrafts)
+  // Windowed presets: the first feature that shows the main surface builds the window content and the
+  // shared view state; every later feature extends it instead of inventing its own.
+  const firstMainOwnerId = preset.capabilities.windows
+    ? orderedDrafts.find(draft => draft.kind === "feature" && features.some(feature => feature.ownerId === draft.id && feature.surface === "main"))?.id
+    : undefined
   const coordinates = new Map(orderedDrafts.map((draft, index) => {
     const sequence = index + 2
     const suffix = draft.id.replace(/^OWN-/, "")
@@ -1435,7 +1440,7 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}`,
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.id === firstMainOwnerId ? " You are the first main-surface task: also build the main window content area and the shared view state (the loaded records of every declared data object, the current search query, and the active filter) that later feature tasks extend; later tasks must not replace them." : ""}`,
       validationCommands: draft.kind === "packaging"
         ? [files.focusedTestCommand, ...preset.validationCommands.map(command => command(identity))]
         : [files.focusedTestCommand, ...preset.validationCommands.slice(0, 2).map(command => command(identity))],

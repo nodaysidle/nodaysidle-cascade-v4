@@ -217,6 +217,20 @@ describe("v4 deterministic core", () => {
     const promisedDelete = { ...clean, "TRD.md": `${clean["TRD.md"]}\n- Deletion: Delete Recipe only through an explicit user action.` }
     expect(rules(promisedDelete)).toContain("agent-ready.unrequested-delete")
   })
+
+  it("tells exactly one windowed feature task to build the main window and shared view state", async () => {
+    for (const presetId of ["linux-wayland-gtk4-desktop", "tauri2-rust-typescript-desktop", "android-kotlin-compose"] as const) {
+      const fixture = fixtureCases.find(item => item.presetId === presetId)!
+      const packet = await compilePacket(fixture.blueprint, presetId)
+      const hits = packet.documents["TASKS.md"].match(/You are the first main-surface task/g) ?? []
+      expect(hits.length, presetId).toBe(1)
+    }
+    for (const presetId of ["linux-hyprland-waybar-module", "astro-web"] as const) {
+      const fixture = fixtureCases.find(item => item.presetId === presetId)!
+      const packet = await compilePacket(fixture.blueprint, presetId)
+      expect(packet.documents["TASKS.md"]).not.toContain("first main-surface task")
+    }
+  })
 })
 
 function blueprintSentenceStarts(text: string, summary: string): boolean {
