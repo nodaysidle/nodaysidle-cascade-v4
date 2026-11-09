@@ -1,3 +1,5 @@
+import { ANDROID_DEVICE_COMMANDS, ANDROID_DEVICE_GATE_RULE } from "./androidPlan"
+import { ANDROID_SDK } from "./androidKit"
 import type { FeatureSurface } from "./schema"
 
 export const PRESET_IDS = [
@@ -160,6 +162,9 @@ export interface PresetContract {
     readonly appFilesPlacement: (identity: ProjectIdentity) => string
     readonly documentPlacement: string
     readonly documentAtomicWrite?: string
+    // Per-object decision text when one store kind must not be described by the other store's wording.
+    readonly settingsDecision?: string
+    readonly recordsDecision?: string
   }
   readonly credentialPlacement: string
   readonly permissionPatterns: Readonly<Record<PermissionCapability, string>>
@@ -177,6 +182,12 @@ export interface PresetContract {
   readonly completionEvidence: readonly string[]
   readonly fileBoundary: string
   readonly fileBoundaryDetails?: readonly string[]
+  // Used instead of fileBoundary when no feature touches a user-chosen file.
+  readonly appOnlyFileBoundary?: { readonly boundary: string; readonly details: readonly string[] }
+  // Replaces the shared purpose sentence of a permission when it names a surface the platform lacks.
+  readonly permissionPurposes?: Partial<Readonly<Record<PermissionCapability, string>>>
+  // Gates that need hardware: rendered beside the validation commands, never as mandatory exit-zero gates.
+  readonly deviceGates?: { readonly rule: string; readonly commands: readonly string[] }
   readonly launchCheck: (identity: ProjectIdentity) => string
   readonly options: readonly PresetOption[]
   readonly capabilities: PresetCapabilities
@@ -241,7 +252,7 @@ const webPermissionPatterns: Readonly<Record<PermissionCapability, string>> = {
 const androidPermissionPatterns: Readonly<Record<PermissionCapability, string>> = {
   microphone: "Declare android.permission.RECORD_AUDIO and request it at runtime immediately before recording; denial leaves non-recording screens usable.",
   accessibility: "Use an AccessibilityService only when the product explicitly needs it, with a dedicated service declaration and a non-service fallback.",
-  notifications: "Declare POST_NOTIFICATIONS on Android 13+ and request it from the reminder opt-in flow; denial keeps in-app status available.",
+  notifications: "Declare android.permission.POST_NOTIFICATIONS in AndroidManifest.xml. One flow, owned by PermissionCoordinator.kt: MainActivity.onCreate registers one ActivityResultContracts.RequestPermission launcher and calls PermissionCoordinator.requestOnFirstLaunch; on Android 13+, when the permission is not granted and SettingsRepository.notificationPermissionState is \"unasked\", it launches the request once and records \"granted\" or \"denied\" with recordNotificationPermission. No later launch prompts again; the in-app status reads the real grant, so a grant made in system settings is honored. Below Android 13 nothing is requested. Denial keeps every other feature working and shows in-app status that notifications are off; scheduled work is not a retry and keeps its schedule.",
   filesystem: "Use the Storage Access Framework for user-chosen documents; when a feature reopens a saved document URI later, call ContentResolver.takePersistableUriPermission at selection time and releasePersistableUriPermission when the app stops keeping that URI.",
   network: "Declare INTERNET and keep HTTPS calls behind the repository or service boundary with offline and retry states.",
   camera: "Declare CAMERA and request it at runtime from the capture action; denial leaves non-camera behavior available.",
@@ -800,16 +811,29 @@ const androidCompose: PresetContract = {
   packagingFiles: () => [],
   ownerFiles: androidOwnerFiles,
   registrationFile: (kind, identity) => kind === "permission" ? "app/src/main/AndroidManifest.xml" : `app/src/main/java/${identity.packagePath}/App.kt`,
+  // The kit's AppContainer.kt is where repositories and services are added, so every task that adds one may edit it.
+  registrationFiles: (kind, identity) => {
+    const root = `app/src/main/java/${identity.packagePath}`
+    if (kind === "permission") return ["app/src/main/AndroidManifest.xml"]
+    if (kind === "data") return [`${root}/AppContainer.kt`, `${root}/data/SettingsRepository.kt`]
+    if (kind === "feature") return [`${root}/App.kt`, `${root}/AppContainer.kt`]
+    if (kind === "lifecycle") return [`${root}/${identity.pascalName}Application.kt`, `${root}/AppContainer.kt`]
+    if (kind === "packaging") return [`${root}/App.kt`, `${root}/AppContainer.kt`]
+    return [`${root}/AppContainer.kt`]
+  },
   runtimeMode: () => "android",
   runtimeArchitecture: [
     "MainActivity calls enableEdgeToEdge() before setContent and hosts a Material 3 Compose tree; ViewModels expose immutable StateFlow UI state and call repository or platform-service owners through constructor-injected interfaces.",
     "Navigation 3 uses NavDisplay with rememberNavBackStack and @Serializable NavKey destinations; predictive back is enabled in the manifest and system back pops the NavBackStack.",
     "Collect state with collectAsStateWithLifecycle, run I/O in structured coroutines off the main dispatcher, use SavedStateHandle for process death, and keep Activity instances free of durable state.",
+    `SDK levels come from the kit's app/build.gradle.kts: compileSdk ${ANDROID_SDK.compileSdk}, targetSdk ${ANDROID_SDK.targetSdk}, minSdk ${ANDROID_SDK.minSdk}, build-tools ${ANDROID_SDK.buildTools}; change them only there.`,
   ],
   integrationBoundary: "Use HttpsURLConnection or one typed HTTP client inside a coroutine-backed service or repository owner, map JSON into locked Kotlin data classes before returning, close streams in finally blocks, and expose only privacy-safe typed failures to ViewModels.",
-  recoveryRules: ["Model loading, success, empty, denied, failed, and cancelled states explicitly in immutable UI state.", "Use structured coroutine cancellation, Room transactions, and cache-file cleanup; retries and provider changes always require an explicit user action, and a declared automatic fallback is not a retry."],
+  recoveryRules: ["Model loading, success, empty, denied, failed, and cancelled states explicitly in immutable UI state.", "Use structured coroutine cancellation, Room transactions, and cache-file cleanup; retries and provider changes always require an explicit user action; a declared automatic fallback and a declared schedule (runs every N seconds or daily at a time) are not retries."],
   persistence: {
     enabledDecision: "Persistence: enabled with DataStore for settings and Room for record collections behind repository boundaries.",
+    settingsDecision: "Persistence: Preferences DataStore behind SettingsRepository.",
+    recordsDecision: "Persistence: Room entity and DAO behind a repository.",
     disabledDecision: "Persistence: disabled; ViewModel state is transient and no application records survive process death.",
     settingsPlacement: "Preferences DataStore with typed keys and explicit reset behavior.",
     recordsPlacement: "Room entities, DAO transactions, migrations, and repository APIs for durable records; export the schema and keep PRAGMA user_version-equivalent Room migrations.",
@@ -821,34 +845,37 @@ const androidCompose: PresetContract = {
   credentialPlacement: "Store app-owned credentials with Android Keystore-backed AES-GCM encryption and never expose decrypted values to Compose state.",
   fileBoundary: "Use the Storage Access Framework for user-chosen documents and app-private files for app-owned data; never request broad storage access.",
   fileBoundaryDetails: ["Documents come from ActivityResultContracts.OpenDocument or CreateDocument.", "App files stay in filesDir/files/.", "A persistable URI permission is taken only when the feature reopens a saved document."],
-  launchCheck: identity => `scripts/gradle.sh assembleDebug, adb install -r app/build/outputs/apk/debug/app-debug.apk, and launch applicationId ${identity.packageName}.`,
+  appOnlyFileBoundary: {
+    boundary: "Keep every byte in app-private storage (Room, DataStore, filesDir, cacheDir); no feature opens or saves a user-chosen file and the app requests no storage permission.",
+    details: ["App files, when declared, stay in filesDir/files/.", "No document picker is used."],
+  },
+  permissionPurposes: { "background-execution": "Keep running after the app leaves the foreground only while a declared background feature needs it." },
+  deviceGates: { rule: ANDROID_DEVICE_GATE_RULE, commands: ANDROID_DEVICE_COMMANDS },
+  launchCheck: identity => `./scripts/gradle.sh assembleDebug on every machine; when an adb device is attached, also adb install -r app/build/outputs/apk/debug/app-debug.apk and launch applicationId ${identity.packageName}; with none attached the completion report is PARTIAL and names the skipped launch check.`,
   permissionPatterns: androidPermissionPatterns,
-  lifecycleRules: ["Collect StateFlow with lifecycle-aware Compose APIs.", "Keep durable work in repositories or WorkManager rather than Activity instances.", "Release sensors, media, callbacks, and temporary files when lifecycle ownership ends."],
+  lifecycleRules: ["Collect StateFlow with lifecycle-aware Compose APIs.", "Keep durable work in repositories or WorkManager rather than Activity instances.", "Release callbacks and temporary files when lifecycle ownership ends."],
   accessibilityRules: ["Expose Compose semantics for TalkBack, content descriptions for non-text controls, logical traversal, 48dp targets, scalable text, predictive back, and Compose accessibility tests."],
   validationCommands: [
     () => "./scripts/gradle.sh testDebugUnitTest",
     () => "./scripts/gradle.sh lintDebug",
-    () => "./scripts/gradle.sh connectedDebugAndroidTest",
     () => "./scripts/gradle.sh assembleDebug",
-    () => "adb install -r app/build/outputs/apk/debug/app-debug.apk",
   ],
-  packagingRules: ["Use Gradle Kotlin DSL and a version catalog.", "Build an Android-only APK with the locked applicationId.", "Declare only required permissions and test denied paths.", "Install the debug APK on an identified emulator or device for launch smoke."],
+  packagingRules: ["Use Gradle Kotlin DSL and a version catalog.", "Build an Android-only APK with the locked applicationId.", "Declare only required permissions and test denied paths.", "When an adb device is attached, install the debug APK on it for launch smoke; otherwise report PARTIAL."],
   wiringRules: [
-    "App.kt is the composition root and provides the concrete repositories, services, and platform adapters named in the contracts; fakes and in-memory stores exist only under app/src/test and app/src/androidTest.",
+    "AppContainer.kt (built in the Application class) is the composition root and provides the concrete repositories, services, and platform adapters named in the contracts; App.kt only reads them from it. Fakes and in-memory stores exist only under app/src/test and app/src/androidTest.",
     "The packaging focused test constructs the production composition root and asserts that every provided dependency is the concrete production type, not a fake.",
-    "Before completion, install the APK, complete one acceptance outcome per feature, force-stop the app, relaunch, and confirm that saved records and settings are still present.",
+    "Before completion, when an adb device is attached: install the APK, complete one acceptance outcome per feature, force-stop the app, relaunch, and confirm that saved records and settings are still present. With no device attached, the completion report is PARTIAL and names this check as skipped; the JVM tests that assert the production container's concrete types still run.",
     ...SHARED_WIRING_RULES,
   ],
-  installationDecision: identity => `Re-identify the adb target, run adb install -r app/build/outputs/apk/debug/app-debug.apk, and launch applicationId ${identity.packageName} before collecting device smoke evidence.`,
+  installationDecision: identity => `When \`adb devices\` lists an attached target, re-identify it, run adb install -r app/build/outputs/apk/debug/app-debug.apk, and launch applicationId ${identity.packageName} before collecting device smoke evidence; with no target attached, skip the install and report PARTIAL.`,
   signingDecision: identity => `Sign debug builds with the Gradle debug key and release builds with a protected release keystore for applicationId ${identity.packageName}; never commit keystore material.`,
   outputArtifact: "app-debug.apk",
   artifactPath: () => "app/build/outputs/apk/debug/app-debug.apk",
-  completionEvidence: ["Unit, lint, Compose UI, and required instrumentation tests pass.", "assembleDebug produces the expected APK.", "The manifest contains only derived permissions.", "adb installs and launches the locked applicationId."],
+  completionEvidence: ["Unit tests and lint pass; assembleDebug produces the expected APK.", "The manifest contains only derived permissions.", "With an adb device attached: connectedDebugAndroidTest passes and adb installs and launches the locked applicationId; otherwise the report is PARTIAL and names each skipped device gate."],
   options: [
     { id: "di", label: "Dependency injection", type: "select", values: ["manual", "hilt"], default: "manual", description: "Recorded in the packet. v4.0 ships the manual AppContainer; Hilt generation is next." },
     { id: "navigation", label: "Navigation", type: "select", values: ["navigation3", "navigation-compose"], default: "navigation3", description: "Recorded in the packet. v4.0 documents Navigation 3; option-driven navigation selection is next." },
     { id: "modules", label: "Module layout", type: "select", values: ["single", "feature"], default: "single", description: "Recorded in the packet. v4.0 ships a single app module." },
-    { id: "baselineProfile", label: "Baseline profile", type: "toggle", default: true, description: "Recorded in the packet. Baseline-profile generation is next." },
     { id: "screenshotTests", label: "Screenshot tests", type: "toggle", default: false, description: "Recorded in the packet. Screenshot-test generation is next." },
   ],
   capabilities: {

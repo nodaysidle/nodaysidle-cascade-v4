@@ -10,10 +10,22 @@ function file(path: string, content: string): AndroidKitFile {
   return { path, content: content.trimStart() }
 }
 
+// The one source of SDK levels: the kit's Gradle files and the TRD/AGENTS runtime text both read it.
+export const ANDROID_SDK = { compileSdk: 37, targetSdk: 37, minSdk: 26, buildTools: "37.0.0" } as const
+
+// A declared schedule or notification need decides which kit files ship.
+export function androidKitNeeds(blueprint: NormalizedBlueprint): { schedule: boolean; notifications: boolean } {
+  return {
+    schedule: blueprint.features.some(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null),
+    notifications: blueprint.permissionNeeds.some(item => item.capability === "notifications"),
+  }
+}
+
 export function androidKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint): AndroidKitFile[] {
   const pkg = identity.packageName
   const path = identity.packagePath
   const appName = identity.projectName
+  const needs = androidKitNeeds(blueprint)
   return [
     file("settings.gradle.kts", `import org.gradle.api.initialization.resolve.RepositoriesMode
 
@@ -61,6 +73,9 @@ room = "2.8.5"
 datastore = "1.3.0"
 work = "2.12.0"
 serialization = "1.9.0"
+coroutines = "1.10.2"
+robolectric = "4.16"
+testCore = "1.7.0"
 junit = "4.13.2"
 androidxJunit = "1.2.1"
 espresso = "3.6.1"
@@ -77,6 +92,7 @@ androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = 
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
+androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "work" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
@@ -86,6 +102,9 @@ androidx-compose-material3-window-size = { group = "androidx.compose.material3",
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+androidx-test-core-ktx = { group = "androidx.test", name = "core-ktx", version.ref = "testCore" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-test-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxJunit" }
 androidx-test-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
@@ -106,12 +125,12 @@ ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 
 android {
     namespace = "${pkg}"
-    compileSdk = 37
+    compileSdk = ${ANDROID_SDK.compileSdk}
 
     defaultConfig {
         applicationId = "${pkg}"
-        minSdk = 26
-        targetSdk = 37
+        minSdk = ${ANDROID_SDK.minSdk}
+        targetSdk = ${ANDROID_SDK.targetSdk}
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -129,6 +148,15 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+}
+
+// Room exports its schema here; the data task commits the generated JSON.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 kotlin {
@@ -158,6 +186,10 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core.ktx)
+    testImplementation(libs.androidx.work.testing)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -223,19 +255,21 @@ class ${identity.pascalName}Application : Application() {
     file(`app/src/main/java/${path}/AppContainer.kt`, `package ${pkg}
 
 import android.content.Context
-import ${pkg}.data.SettingsRepository
+${needs.schedule ? "import androidx.work.WorkManager\n" : ""}import ${pkg}.data.SettingsRepository
+import java.time.Clock
 
-// Feature and data tasks add their repositories here and nowhere else.
-class AppContainer(context: Context) {
+// Feature and data tasks add their repositories here and nowhere else. Code that compares a stored
+// date or time with the present moment reads \`clock\`; tests pass a fixed Clock instead.
+class AppContainer(${needs.schedule ? "private val " : ""}context: Context, val clock: Clock = Clock.systemDefaultZone()) {
     val settings = SettingsRepository(context)
-}
+${needs.schedule ? "    val workManager: WorkManager by lazy { WorkManager.getInstance(context) }\n" : ""}}
 `),
     file(`app/src/main/java/${path}/data/SettingsRepository.kt`, `package ${pkg}.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.preferencesDataStore
+${needs.notifications ? "import androidx.datastore.preferences.core.stringPreferencesKey\n" : ""}import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -249,8 +283,42 @@ class SettingsRepository(private val context: Context) {
     suspend fun setCompact(value: Boolean) {
         context.settingsDataStore.edit { it[compact] = value }
     }
+${needs.notifications ? `
+    private val notificationPermission = stringPreferencesKey("notification_permission")
+
+    // "unasked" until the one first-launch request has been answered, then "granted" or "denied".
+    val notificationPermissionState: Flow<String> = context.settingsDataStore.data.map { it[notificationPermission] ?: "unasked" }
+
+    suspend fun recordNotificationPermission(state: String) {
+        require(state == "granted" || state == "denied")
+        context.settingsDataStore.edit { it[notificationPermission] = state }
+    }
+` : ""}}
+`),
+    file(`app/src/test/java/${path}/data/SettingsRepositoryTest.kt`, `package ${pkg}.data
+
+import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+
+// Proves the JVM test setup (Robolectric, coroutines-test, DataStore) works without a device.
+@RunWith(RobolectricTestRunner::class)
+class SettingsRepositoryTest {
+    @Test
+    fun compactListsDefaultsToFalseAndKeepsAWrittenValue() = runTest {
+        val repository = SettingsRepository(ApplicationProvider.getApplicationContext())
+        assertEquals(false, repository.compactLists.first())
+        repository.setCompact(true)
+        assertEquals(true, repository.compactLists.first())
+    }
 }
 `),
+    file("app/src/test/resources/robolectric.properties", "sdk=35\n"),
+    ...(needs.schedule ? scheduleKitFiles(identity) : []),
     file(`app/src/main/java/${path}/App.kt`, `package ${pkg}
 
 import androidx.compose.foundation.layout.padding
@@ -375,19 +443,78 @@ exec "$binary" "$@"
 `),
     file("README.md", `# ${appName} starter kit
 
-Copy the foundation files listed in TASKS.md before TASK-01. Copy packaging-owned files when the packaging
-task starts. The kit is a real Android project with:
+The kit files are copied to the project root before TASK-01 (TASKS.md Working Rules lists them);
+TASK-01 verifies that each exists unchanged. The kit is a real Android project with:
 
 - Compose Material 3 and edge-to-edge in MainActivity.
 - Navigation 3 with serializable NavKey routes.
-- DataStore for settings; Room, KSP, and WorkManager are declared in the build for the data and background tasks.
-- A navigation shell (App.kt) and a container (AppContainer.kt) that carry no product code: feature and data tasks add the
-  entities, DAOs, repositories, ViewModels, and screens their TASKS.md lists.
-- Unit and instrumentation test seams.
+- DataStore for settings; Room (KSP, schema exported to app/schemas) and WorkManager are declared in the build for the data and background tasks.
+- A navigation shell (App.kt) and a container (AppContainer.kt, with an injectable java.time.Clock) that carry no product code:
+  feature and data tasks add the entities, DAOs, repositories, ViewModels, and screens their TASKS.md lists.
+- JVM test dependencies already declared: JUnit, coroutines-test, Robolectric (sdk=35), androidx test core, and work-testing.
+  ./scripts/gradle.sh testDebugUnitTest passes without a device. connectedDebugAndroidTest needs one.
 
-Build with ./scripts/gradle.sh assembleDebug. Set ANDROID_HOME to an SDK with platform 37 and
-build-tools 37.0.0; the script writes local.properties on first run. The first build downloads the
-Gradle distribution and the declared Android dependencies.
+Build with ./scripts/gradle.sh assembleDebug. Set ANDROID_HOME to an SDK with platform ${ANDROID_SDK.compileSdk} and
+build-tools ${ANDROID_SDK.buildTools} (compileSdk ${ANDROID_SDK.compileSdk}, targetSdk ${ANDROID_SDK.targetSdk}, minSdk ${ANDROID_SDK.minSdk}); the script writes
+local.properties on first run. The first build downloads the Gradle distribution and the declared Android
+dependencies; the first unit test run downloads the Robolectric android-all jar.
+`),
+  ]
+}
+
+// Shipped only when a feature declares a schedule: the delay rule is compiled and tested once here,
+// so a scheduled feature's task does not re-derive it.
+function scheduleKitFiles(identity: ProjectIdentity): AndroidKitFile[] {
+  const pkg = identity.packageName
+  const path = identity.packagePath
+  return [
+    file(`app/src/main/java/${path}/platform/ScheduleMath.kt`, `package ${pkg}.platform
+
+import java.time.Clock
+import java.time.Duration
+import java.time.LocalTime
+import java.time.ZonedDateTime
+
+// PeriodicWorkRequest cannot start at an exact time: its first run waits this long, then repeats every period.
+object ScheduleMath {
+    // The wait from now (read from the injected clock) until the next occurrence of \`at\`: today when it
+    // is still ahead, tomorrow when it has passed; exactly at the time waits zero.
+    fun initialDelay(clock: Clock, at: LocalTime): Duration {
+        val now = ZonedDateTime.now(clock)
+        var next = now.toLocalDate().atTime(at).atZone(now.zone)
+        if (next.isBefore(now)) next = now.toLocalDate().plusDays(1).atTime(at).atZone(now.zone)
+        return Duration.between(now, next)
+    }
+}
+`),
+    file(`app/src/test/java/${path}/platform/ScheduleMathTest.kt`, `package ${pkg}.platform
+
+import java.time.Clock
+import java.time.Duration
+import java.time.Instant
+import java.time.LocalTime
+import java.time.ZoneId
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class ScheduleMathTest {
+    private fun clockAt(time: String) = Clock.fixed(Instant.parse("2030-01-15T$time:00Z"), ZoneId.of("UTC"))
+
+    @Test
+    fun waitsUntilTodayWhenTheTimeIsAhead() {
+        assertEquals(Duration.ofHours(1), ScheduleMath.initialDelay(clockAt("08:00"), LocalTime.of(9, 0)))
+    }
+
+    @Test
+    fun waitsUntilTomorrowWhenTheTimeHasPassed() {
+        assertEquals(Duration.ofHours(23), ScheduleMath.initialDelay(clockAt("10:00"), LocalTime.of(9, 0)))
+    }
+
+    @Test
+    fun runsNowWhenExactlyAtTheTime() {
+        assertEquals(Duration.ZERO, ScheduleMath.initialDelay(clockAt("09:00"), LocalTime.of(9, 0)))
+    }
+}
 `),
   ]
 }

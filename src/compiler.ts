@@ -1,6 +1,7 @@
 import { auditAgentReadinessGraph, auditMechanicalGraph, auditPacket, auditProjectGraph, buildValidationLedger, type AuditEntry, type AuditFailure } from "./audit"
 import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetOptionValue, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
+import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers } from "./kits"
@@ -223,6 +224,8 @@ export interface ProjectGraph {
   readonly signingDecision: string
   readonly installationDecision: string
   readonly validationCommands: readonly string[]
+  // Gates that need hardware; rendered beside validationCommands, never as mandatory exit-zero gates.
+  readonly deviceValidation?: { readonly rule: string; readonly commands: readonly string[] }
   readonly packagingRules: readonly string[]
   readonly lifecycleRules: readonly string[]
   readonly accessibilityRules: readonly string[]
@@ -904,6 +907,9 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
     const names = operations.flatMap(operation => operation === "create" ? ["import_file(source)"] : operation === "delete" ? ["remove_file(reference)"] : operation === "read" ? ["file_path(reference)"] : [])
     return [`File operations (OWN-DATA-STORE owns them; feature tasks add no other file access): ${names.join(", ")}. A file is copied into the app folder before its record is inserted, and a failed insert removes the copy.`]
   }
+  if (presetId === "android-kotlin-compose" && item.storage === "settings") {
+    return [`Interface: OWN-DATA-STORE adds one typed Preferences DataStore key per value of ${item.name} to data/SettingsRepository.kt${item.fields.length ? ` (${item.fields.map(field => field.name).join(", ")})` : ""}, each with a Flow reader and a suspend writer; no Room entity or DAO exists for it.`]
+  }
   if (!item.fields.length) return []
   const lines = [
     `Stored fields (one record each, plus a stable generated id): ${item.fields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`,
@@ -926,7 +932,7 @@ function storeInterfaceDetail(presetId: PresetId, item: NormalizedBlueprint["dom
   }
   if (presetId === "android-kotlin-compose") {
     const functions = methods({ create: ["insert"], read: ["observeAll", "getById"], update: ["update"], delete: ["delete"] })
-    return `Interface: OWN-DATA-STORE owns one Room entity ${record}Entity with the stored fields above and one ${record}Dao with exactly: ${functions.join(", ")}; feature tasks use a repository over that DAO and add no entity or query of their own.`
+    return `Interface: OWN-DATA-STORE owns one Room entity ${record}Entity with the stored fields above, one ${record}Dao with exactly: ${functions.join(", ")}, the one RoomDatabase subclass AppDatabase that lists every records entity (version 1, exportSchema = true, schema JSON committed under app/schemas), and ${record}Repository over the DAO, all in its owner file; it constructs the database and repository in AppContainer.kt. Feature tasks use the repository and add no entity or query of their own.`
   }
   if (presetId === "astro-web") return `Interface: the content collection schema declares exactly the stored fields above; pages read entries through getCollection and no page defines its own schema.`
   const functions = methods({ create: ["insert"], read: ["list", "get"], update: ["update"], delete: ["delete"] })
@@ -962,6 +968,34 @@ function contract(
   recovery: readonly string[],
 ): GraphContract {
   return { id, kind, name, featureIds: unique(featureIds), ownerId, decision, details, failureBehavior, recovery: unique(recovery) }
+}
+
+// Features with a declared schedule, with the files the schedule adds beside the feature's owner file.
+function androidScheduledFeatures(preset: PresetContract, identity: ProjectIdentity, features: readonly GraphFeature[]): AndroidScheduledFeature[] {
+  return features.filter(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null).map(feature => {
+    const ownerName = `${pascal(feature.name)}Feature`
+    return {
+      id: feature.id,
+      name: feature.name,
+      pascal: pascal(feature.name),
+      slug: slug(feature.name),
+      implementationFile: preset.ownerFiles({ kind: "feature", slug: slug(ownerName), pascalName: ownerName, identity }).implementationFile,
+      runsEverySeconds: feature.runsEverySeconds,
+      runsDailyAt: feature.runsDailyAt,
+      notifies: feature.resourceIds.includes(permissionResourceId("notifications")),
+    }
+  })
+}
+
+// A feature that is scheduled, or reads a stored date or time, compares with the present moment and needs an injected clock.
+function androidClockFeatureIds(blueprint: NormalizedBlueprint, features: readonly GraphFeature[]): Set<string> {
+  const ids = new Set(features.filter(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null).map(feature => feature.id))
+  for (const item of blueprint.domainData.filter(entry => entry.fields.some(field => field.valueType === "date-time"))) {
+    for (const featureId of dataFeatureIds(item.name, features)) {
+      if (features.find(feature => feature.id === featureId)?.dataOperations.includes("read")) ids.add(featureId)
+    }
+  }
+  return ids
 }
 
 function buildOwnersAndContracts(
@@ -1055,6 +1089,13 @@ function buildOwnersAndContracts(
     ))
   }
 
+  if (preset.id === "android-kotlin-compose") {
+    for (const feature of androidScheduledFeatures(preset, identity, features)) {
+      const schedule = androidScheduleContract(identity, feature)
+      contracts.push(contract(schedule.id, "lifecycle", schedule.name, [feature.id], features.find(item => item.id === feature.id)!.ownerId, schedule.decision, schedule.details, schedule.failureBehavior, schedule.recovery))
+    }
+  }
+
   const dataOwnerId = blueprint.domainData.length || blueprint.persistenceNeeds.length ? "OWN-DATA-STORE" : lifecycleOwnerId
   for (const item of blueprint.domainData) {
     const credentialData = item.storage === "secret"
@@ -1141,6 +1182,10 @@ function buildOwnersAndContracts(
             ? "Persistence: app-owned files kept in the app's own data folder."
             : item.storage === "document"
             ? "Persistence: the document location the user chooses; the app keeps no copy."
+            : preset.persistence.settingsDecision && item.storage === "settings"
+              ? preset.persistence.settingsDecision
+            : preset.persistence.recordsDecision && item.storage === "records"
+              ? preset.persistence.recordsDecision
             : /\bSQLite\b/.test(placement)
               ? preset.persistence.enabledDecision
               : /\bUserDefaults\b/.test(placement)
@@ -1213,7 +1258,7 @@ function buildOwnersAndContracts(
       permissionFeatureIds(item, features),
       "OWN-PERMISSION-COORDINATOR",
       preset.permissionPatterns[item.capability],
-      [`Purpose: ${item.purpose}`, `Denied behavior: ${item.deniedBehavior}`],
+      [`Purpose: ${preset.permissionPurposes?.[item.capability] ?? item.purpose}`, `Denied behavior: ${item.deniedBehavior}`],
       item.deniedBehavior,
       ["Recheck authorization only after an explicit user action and preserve the documented denied path."],
     ))
@@ -1259,14 +1304,15 @@ function buildOwnersAndContracts(
   }
 
   if (preset.fileBoundary) {
+    const appOnly = preset.appOnlyFileBoundary && !blueprint.permissionNeeds.some(item => item.capability === "filesystem")
     contracts.push(contract(
       "CON-PLATFORM-FILES",
       "security",
       "Local file boundary",
       features.map(feature => feature.id),
       "OWN-PACKAGING",
-      preset.fileBoundary,
-      (preset.fileBoundaryDetails ?? []).map(detail => detail.replaceAll("{app-id}", identity.bundleId)),
+      appOnly ? preset.appOnlyFileBoundary!.boundary : preset.fileBoundary,
+      (appOnly ? preset.appOnlyFileBoundary!.details : preset.fileBoundaryDetails ?? []).map(detail => detail.replaceAll("{app-id}", identity.bundleId)),
       "A path outside the declared boundary is rejected and leaves the filesystem unchanged.",
       ["Return to the declared boundary, explain the rejected path, and retry only with an allowed path."],
     ))
@@ -1370,6 +1416,7 @@ function buildPhases(
   astroPlan?: AstroRoutePlan,
   integrationServices: NormalizedBlueprint["externalServices"] = [],
   kitFoundationFiles: readonly string[] = [],
+  androidBlueprint?: NormalizedBlueprint,
 ): { owners: GraphOwner[]; phases: GraphPhase[] } {
   const foundationFiles = unique([
     ...preset.sourceLayout(identity),
@@ -1442,11 +1489,22 @@ function buildPhases(
     const ownedFeatureIds = ownedFeatures.map(feature => feature.id)
     const ownedAcceptance = acceptance.filter(item => item.ownerId === draft.id)
     const routeExtras = placement?.kind === "page" && placement.pageFile !== files.implementationFile ? [placement.pageFile] : []
+    const androidExtras = androidBlueprint
+      ? androidTaskExtras({
+          kind: draft.kind,
+          identity,
+          scheduled: androidScheduledFeatures(preset, identity, ownedFeatures),
+          clockDependent: ownedFeatures.some(feature => androidClockFeatureIds(androidBlueprint, features).has(feature.id)),
+          notifications: androidBlueprint.permissionNeeds.some(item => item.capability === "notifications"),
+          focusedTestFile: files.focusedTestFile,
+        })
+      : undefined
     const filesToCreate = unique([
       files.implementationFile,
       files.focusedTestFile,
       ...routeExtras,
       ...(draft.kind === "packaging" ? preset.packagingFiles(identity) : []),
+      ...(androidExtras?.create ?? []),
     ])
     const registrationTargets = placement?.registrationFile
       ? [placement.registrationFile]
@@ -1458,8 +1516,9 @@ function buildPhases(
           ...(preset.registrationFiles?.("feature", identity) ?? [preset.registrationFile("feature", identity)]),
           ...(preset.registrationFiles?.("integration", identity) ?? [preset.registrationFile("integration", identity)]),
           ...(preset.wiringManifestFiles ?? []),
+          ...(androidExtras?.modify ?? []),
         ])
-      : [...registrationTargets]
+      : unique([...registrationTargets, ...(androidExtras?.modify ?? [])])
     const acceptanceCriteria = buildTaskAcceptanceCriteria(ownedAcceptance, ownedContracts, [files.focusedTestFile])
     const task: GraphTask = {
       id: taskId,
@@ -1474,7 +1533,7 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? " You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them." : ""}`,
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? " You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them." : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
       validationCommands: draft.kind === "packaging"
         ? [files.focusedTestCommand, ...preset.validationCommands.map(command => command(identity))]
         : [files.focusedTestCommand, ...preset.validationCommands.slice(0, 2).map(command => command(identity))],
@@ -1570,11 +1629,17 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     return [files.implementationFile, files.focusedTestFile]
   }))
   const kitFoundationFiles = kitPaths.filter(path => !preset.sourceLayout(identity).includes(path) && !packagingOwned.has(path) && !featureOwnedFiles.has(path))
-  const { owners, phases } = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices, kitFoundationFiles)
+  const { owners, phases } = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices, kitFoundationFiles, presetId === "android-kotlin-compose" ? blueprint : undefined)
   const persistenceEnabled = blueprint.persistenceNeeds.length > 0
   const declaredStorage = new Set(blueprint.persistenceNeeds.map(p => p.storage))
+  const kindDecisions = [
+    declaredStorage.has("settings") ? preset.persistence.settingsDecision : undefined,
+    declaredStorage.has("records") ? preset.persistence.recordsDecision : undefined,
+  ].filter((decision): decision is string => Boolean(decision))
   const persistenceDecision = persistenceEnabled
-    ? astroPlan?.usesContentCollections
+    ? kindDecisions.length
+      ? `Persistence: ${kindDecisions.map(decision => decision.replace(/^Persistence: /, "").replace(/\.$/, "")).join("; ")}.`
+      : astroPlan?.usesContentCollections
       ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.enabledDecision
       : astroPlan?.browserPersistence
         ? preset.persistence.enabledDecision
@@ -1623,6 +1688,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     signingDecision: preset.signingDecision(identity),
     installationDecision: preset.installationDecision(identity),
     validationCommands: preset.validationCommands.map(command => command(identity)),
+    ...(preset.deviceGates ? { deviceValidation: preset.deviceGates } : {}),
     packagingRules: preset.packagingRules,
     lifecycleRules: preset.lifecycleRules,
     accessibilityRules: preset.accessibilityRules,
