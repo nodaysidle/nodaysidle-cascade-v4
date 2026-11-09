@@ -1,4 +1,5 @@
 import { auditAgentReadinessGraph, auditMechanicalGraph, auditPacket, auditProjectGraph, buildValidationLedger, type AuditEntry, type AuditFailure } from "./audit"
+import { CATALOG_PATH } from "./astroKit"
 import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, astroStaticContentSite, dataKey, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetOptionValue, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { androidKitNeeds } from "./androidKit"
@@ -303,7 +304,7 @@ function camelWords(value: string): string {
 }
 
 // Split camelCase and acronym boundaries first so "ExchangeRateAPI" becomes ExchangeRateApi, not Exchangerateapi.
-function pascal(value: string): string {
+export function pascal(value: string): string {
   const result = slug(camelWords(value)).split("-").filter(Boolean).map(part => part[0]!.toUpperCase() + part.slice(1)).join("")
   return /^[A-Za-z]/.test(result) ? result : `Project${result}`
 }
@@ -496,7 +497,21 @@ function normalizationIssue(path: string): never {
   throw new NormalizationError([{ path, rule: "normalization.unusable-meaning", message: "Provider mechanics left no usable product meaning at this path." }])
 }
 
-export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId, atomicAudits?: JevAtomicAuditDecision): NormalizedBlueprint {
+// A static Astro site's content is build-time records: public or internal data with declared fields is always a records
+// collection, whatever storage the provider wrote (intake rejects a document no feature opens; this keeps a direct call
+// correct too). With no service and no feature that opens or saves a file, the browser needs a provider listed for it
+// (notifications, camera, storage...) have no owner, contract, or task on such a site, so they are dropped.
+function astroStaticContentSource(source: SemanticBlueprint): SemanticBlueprint {
+  const opensFiles = source.features.some(feature => feature.userFileAccess !== "none")
+  const isContent = (item: SemanticBlueprint["dataObjects"][number]) => item.fields.length > 0 && (item.sensitivity === "public" || item.sensitivity === "internal")
+  const dataObjects = source.dataObjects.map(item => !opensFiles && isContent(item) && (item.storage === "document" || item.storage === "app-files") ? { ...item, storage: "records" as const } : item)
+  const hasCollections = dataObjects.some(item => item.storage === "records" && isContent(item))
+  if (source.externalServices.length || opensFiles || !hasCollections) return { ...source, dataObjects }
+  return { ...source, dataObjects, platformNeeds: [], features: source.features.map(feature => ({ ...feature, usesPlatformNeeds: [] })) }
+}
+
+export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId, atomicAudits?: JevAtomicAuditDecision): NormalizedBlueprint {
+  const source = presetId === "astro-web" ? astroStaticContentSource(input) : input
   if (!PRESETS[presetId]) throw new NormalizationError([{ path: "$preset", rule: "normalization.unknown-preset", message: "The selected preset is not available." }])
   const projectName = source.productName.normalize("NFKC").trim().replace(/\s+/g, " ")
   const summary = cleanMeaning(source.summary)
@@ -998,7 +1013,7 @@ function storeInterfaceDetail(presetId: PresetId, item: NormalizedBlueprint["dom
   }
   if (presetId === "astro-web") {
     const name = `${record}Entries`
-    return `Interface: src/content.config.ts (from the kit) declares exactly the stored fields above and no page defines its own schema. OWN-DATA-STORE creates src/lib/contentcatalog.ts exporting list${name}() (all entries of the "${dataKey(item.name)}" collection read with getCollection, sorted by id) and get${record}Entry(id) (one entry or undefined). Every page and component reads this data only through these functions and never calls getCollection itself; render(entry) from astro:content is the one other use, on a detail page. Its test mocks astro:content with vi.mock and covers an empty collection, the sort order, and an unknown id.`
+    return `Interface: src/content.config.ts (from the kit) declares exactly the stored fields above and no page defines its own schema. OWN-DATA-STORE creates src/lib/contentcatalog.ts, starting from kit/src/lib/contentcatalog.ts, exporting list${name}() (all entries of the "${dataKey(item.name)}" collection read with getCollection, sorted ascending by id, the file name without extension) and get${record}Entry(id) (one entry or undefined). Every page and component reads this data only through these functions and never calls getCollection itself; render(entry) from astro:content is the one other use, on a detail page. Its test mocks astro:content with vi.mock and covers an empty collection, the sort order, and an unknown id.`
   }
   const functions = methods({ create: ["insert"], read: ["list", "get"], update: ["update"], delete: ["delete"] })
   const kinds = new Set(item.fields.map(field => field.valueType))
@@ -1605,7 +1620,7 @@ function buildPhases(
   const kitFoundationTest = kitPaths.includes(foundationTest)
   const foundationCriteria = [
     "Every foundation file exists at the exact listed path.",
-    `The locked identity is ${identity.bundleId}.`,
+    `The locked identity is ${identity.bundleId}${preset.id === "astro-web" ? ', recorded as the "identity" field of package.json' : ""}.`,
     `The implementation marker is ${preset.implementationMarker}${preset.id === "linux-hyprland-waybar-module" ? ` (the Waybar module key prefix; this module's key is custom/${identity.slug})` : preset.id === "linux-wayland-gtk4-desktop" ? ` (adw::Application::builder() with application_id ${identity.bundleId} in src/main.rs)` : ""}.`,
     ...(preset.id === "astro-web" ? ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS.map(script => `package.json defines npm run ${script}.`) : []),
   ]
@@ -1717,7 +1732,7 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(sharedScreenView(features, preset.id))}` : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(sharedScreenView(ownedFeatures, preset.id), preset.id)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${sharedScreenView(ownedFeatures, preset.id).some(feature => opsOnAny(feature).includes("update")) && sharedScreenView(features, preset.id).some(feature => opsOnAny(feature).includes("create")) ? " If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them; a single mark or toggle action needs no form." : ""}` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? " Content entry files under src/content/ are also yours: create one file per entry the idea names and delete that collection's sample-entry.md; keep the sample entry when the idea names none (see Content Seed Requirements)." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "lifecycle" && blueprint ? waybarLifecycleNote(blueprint) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(sharedScreenView(features, preset.id))}` : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(sharedScreenView(ownedFeatures, preset.id), preset.id)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${sharedScreenView(ownedFeatures, preset.id).some(feature => opsOnAny(feature).includes("update")) && sharedScreenView(features, preset.id).some(feature => opsOnAny(feature).includes("create")) ? " If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them; a single mark or toggle action needs no form." : ""}` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? " Content entry files under src/content/ are also yours: create one file per entry the idea names, named with a two-digit numeric prefix in the order the idea lists them (01-, 02-), and delete that collection's 01-sample-entry.md; keep the sample entry when the idea names none (see Content Seed Requirements)." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "lifecycle" && blueprint ? waybarLifecycleNote(blueprint) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
       // An Astro page or packaging test asserts on the HTML that a production build emits into dist/, so the build runs first.
       validationCommands: unique([
         ...(preset.id === "astro-web" && (draft.kind === "feature" || draft.kind === "packaging") ? ["npm run build"] : []),
@@ -1872,7 +1887,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     })
     return [files.implementationFile, files.focusedTestFile]
   }))
-  const kitFoundationFiles = kitPaths.filter(path => !preset.sourceLayout(identity).includes(path) && !packagingOwned.has(path) && !featureOwnedFiles.has(path))
+  const kitFoundationFiles = kitPaths.filter(path => !preset.sourceLayout(identity).includes(path) && !packagingOwned.has(path) && !featureOwnedFiles.has(path) && !(preset.id === "astro-web" && path === CATALOG_PATH))
   const built = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices, kitFoundationFiles, blueprint, kitPaths)
   const owners = built.owners
   const phases = presetId === "tauri2-rust-typescript-desktop" ? refineTauriPhases(built.phases, owners, features, blueprint, kitPaths) : presetId === "linux-wayland-gtk4-desktop" ? refineGtkPhases(built.phases, blueprint) : built.phases
@@ -2045,10 +2060,12 @@ export interface PacketManifest {
 
 // One manifest shape for the CLI and the desktop app, so `cascade verify` accepts either export.
 export function buildPacketManifest(packet: CompiledPacket, blueprint: SemanticBlueprint, presetId: PresetId, options: Readonly<Record<string, PresetOptionValue>>): PacketManifest {
+  // A static site records what it is: no server adapter, and none of the browser capabilities the preset could offer.
+  const staticSite = !!packet.graph.astroPlan?.staticSite
   return {
     schema: "nodaysidle.cascade.packet.v4",
     compiler: { version: "4.0.0" },
-    preset: { id: presetId, options, capabilities: PRESETS[presetId].capabilities },
+    preset: { id: presetId, options: staticSite ? Object.fromEntries(Object.entries(options).filter(([key]) => key !== "adapter")) : options, capabilities: staticSite ? { ...PRESETS[presetId].capabilities, notifications: false, microphone: false, camera: false, location: false, network: false, fileAccess: "none" } : PRESETS[presetId].capabilities },
     blueprint,
     documents: Object.fromEntries(DOCUMENT_NAMES.map(name => [name, { sha256: packet.hashes[name]! }])),
     kit: packet.kit.map(file => ({ path: file.name, sha256: file.sha256 })),

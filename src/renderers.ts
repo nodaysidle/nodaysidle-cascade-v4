@@ -61,7 +61,8 @@ function contentSeedSection(graph: ProjectGraph): string[] {
     ...seedLines,
     `Starter sample entries, one per collection (the collection loads them, so pages build and lists are not empty): ${graph.astroPlan.seedContentPaths.join(", ")}. Their values are placeholders, not facts.`,
     "When the idea supplies no entries for a collection, keep its sample entry unchanged and invent nothing; the site owner replaces it with real entries after delivery, and no task rewrites it. When the idea names entries, OWN-DATA-STORE creates one file per named entry and deletes that collection's sample entry. Test fixtures live only under tests/.",
-    "A long-text field renders as paragraphs split on blank lines; the markdown body renders only on a detail page. Lists and ordered sets render in the order the feature declares.",
+    "A long-text field renders as paragraphs split on blank lines; the markdown body renders only on a detail page.",
+    "Order: the content files carry no order field, so every list is in ascending entry id (the file name without extension, compared as text) unless the feature behavior names a sort by one of its own declared fields, which the page then applies to the list it reads. Entry files are named with a two-digit numeric prefix (01-, 02-, ...) so the file order is the order the owner wants; a new entry takes the next prefix.",
   ]))]
 }
 

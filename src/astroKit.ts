@@ -1,4 +1,4 @@
-import type { DataField, NormalizedBlueprint } from "./compiler"
+import { pascal, type DataField, type NormalizedBlueprint } from "./compiler"
 import type { ProjectIdentity } from "./presets"
 import { ASTRO_BUDGET_TEXT, ASTRO_PERFORMANCE_BUDGET, astroCollections, astroDateNotes, fieldKey, astroNavLinks, placeAstroFeatures, type AstroCollection } from "./astroWeb"
 
@@ -6,6 +6,8 @@ export interface AstroKitFile {
   readonly path: string
   readonly content: string
 }
+
+export const CATALOG_PATH = "src/lib/contentcatalog.ts"
 
 function file(path: string, content: string): AstroKitFile {
   return { path, content: content.trimStart() }
@@ -62,14 +64,50 @@ ${entries.join("\n")}
 `
 }
 
+// The catalog the data contract names, for every collection that has a declared data object; the data task starts from it.
+function contentCatalog(collections: readonly AstroCollection[]): string {
+  const withData = collections.filter(item => item.dataName)
+  return `import { getCollection } from "astro:content"
+
+const byId = <T extends { id: string }>(entries: readonly T[]): T[] => [...entries].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+${withData.map(item => {
+    const name = pascal(item.dataName)
+    return `
+export async function list${name}Entries() {
+  return byId(await getCollection(${JSON.stringify(item.name)}))
+}
+
+export async function get${name}Entry(id: string) {
+  return (await getCollection(${JSON.stringify(item.name)})).find(entry => entry.id === id)
+}
+`
+  }).join("")}`
+}
+
+const SHOWN_AS: Record<string, (key: string) => string> = {
+  flag: key => `{entry.data.${key} ? "Yes" : "No"}`,
+  date: key => `{entry.data.${key}.toISOString().slice(0, 10)}`,
+  "date-time": key => `{entry.data.${key}.toISOString()}`,
+  "text-list": key => `{entry.data.${key}.join(", ")}`,
+}
+
+// The detail page shows every declared field. It reads the entries through the catalog function the data contract names;
+// only a collection with no declared data object (the generic fallback) has no catalog and reads getCollection itself.
 function detailPage(item: AstroCollection): string {
   const keys = pageKeys(item.fields)
+  const list = item.dataName ? `list${pascal(item.dataName)}Entries` : ""
+  const fields = item.fields.map(field => {
+    const key = fieldKey(field.name)
+    const shown = (SHOWN_AS[field.valueType] ?? ((name: string) => `{entry.data.${name}}`))(key)
+    const row = `<dt>${esc(field.name)}</dt><dd>${shown}</dd>`
+    return field.optional ? `      {entry.data.${key} !== undefined && <>${row}</>}` : `      ${row}`
+  })
   return `---
 import BaseLayout from "../../layouts/BaseLayout.astro"
-import { getCollection, render } from "astro:content"
-
+import { ${list ? "" : "getCollection, "}render } from "astro:content"
+${list ? `import { ${list} } from "../../lib/contentcatalog"\n` : ""}
 export async function getStaticPaths() {
-  const entries = await getCollection("${item.name}")
+  const entries = await ${list ? `${list}()` : `getCollection("${item.name}")`}
   return entries.map(entry => ({ params: { slug: entry.id }, props: { entry } }))
 }
 
@@ -79,6 +117,9 @@ const { Content } = await render(entry)
 <BaseLayout title={entry.data.${keys.title}} ${keys.description ? `description={entry.data.${keys.description}}` : ""}>
   <article>
     <h1>{entry.data.${keys.title}}</h1>
+    <dl>
+${fields.join("\n")}
+    </dl>
     <Content />
   </article>
 </BaseLayout>
@@ -121,6 +162,7 @@ describe("built pages", () => {
       const html = readFileSync(path, "utf8")
       expect(html, path + ": html lang").toMatch(/<html[^>]*\\slang="[a-zA-Z-]+"/)
       expect((html.match(/<h1[\\s>]/g) ?? []).length, path + ": exactly one h1").toBe(1)
+      expect(html, path + ": viewport meta").toMatch(/<meta name="viewport" content="width=device-width/)
       expect(html, path + ": title").toMatch(/<title>[^<]+<\\/title>/)
       for (const image of html.match(/<img\\b[^>]*>/g) ?? []) expect(image, path + ": img alt").toMatch(/\\salt=/)
     }
@@ -199,9 +241,10 @@ export function astroKit(identity: ProjectIdentity, blueprint: NormalizedBluepri
     const item = collections.find(candidate => placement?.kind === "page" && placement.pageFile === `src/pages/${candidate.name}/[slug].astro`)
     return feature.surface === "item-page" && item ? [file(`src/pages/${item.name}/[slug].astro`, detailPage(item))] : []
   })
+  const catalog = collections.some(item => item.dataName) ? [file(CATALOG_PATH, contentCatalog(collections))] : []
   const content = collections.length ? [
     file("src/content.config.ts", contentConfig(collections)),
-    ...collections.map(item => file(`src/content/${item.name}/sample-entry.md`, `---
+    ...collections.map(item => file(`src/content/${item.name}/01-sample-entry.md`, `---
 ${item.fields.map(field => `${fieldKey(field.name)}: ${SEED_FOR[field.valueType]}`).join("\n")}
 ---
 
@@ -210,11 +253,13 @@ Sample content. Keep it when the idea supplies no entries; the site owner replac
   ] : []
   // Only pages copied before TASK-01 may be required here; a shell or detail page belongs to the task that owns it.
   const pageFiles = ["src/pages/index.astro", "src/pages/404.astro"]
-  const ownedFiles = [...shells, ...detailPages].map(item => item.path)
+  const ownedFiles = [...shells, ...detailPages, ...catalog].map(item => item.path)
 
   const files: AstroKitFile[] = [
     file("package.json", JSON.stringify({
       name: identity.slug,
+      // The locked identity has no other file to live in on a web site; the contract test asserts it.
+      identity: identity.bundleId,
       private: true,
       type: "module",
       version: "0.1.0",
@@ -328,11 +373,16 @@ import BaseLayout from "../layouts/BaseLayout.astro"
 `),
     ...shells,
     ...content,
+    ...catalog,
     ...detailPages,
     file("tests/contract.test.ts", `import { existsSync, readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 
 describe("contract", () => {
+  it("records the locked identity in package.json", () => {
+    expect(JSON.parse(readFileSync("package.json", "utf8")).identity).toBe(${JSON.stringify(identity.bundleId)})
+  })
+
   it("has the required pages", () => {
     for (const page of ${JSON.stringify(pageFiles)}) expect(existsSync(page), page).toBe(true)
   })
