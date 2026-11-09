@@ -339,7 +339,17 @@ fn the_root_disk_reader_returns_a_consistent_reading() {
 `)
   }
   if (has("battery")) {
-    parts.push(`pub fn parse_capacity(text: &str) -> Result<u8, String> {
+    parts.push(`pub const POWER_SUPPLY_DIR_ENV: &str = "MODULE_POWER_SUPPLY_DIR";
+pub const POWER_SUPPLY_DIR: &str = "/sys/class/power_supply";
+
+/// The charge percentage (BAT*/capacity) and the charging state (BAT*/status) of one battery.
+#[derive(Debug, PartialEq)]
+pub struct BatteryReading {
+    pub charge_percent: u8,
+    pub charging_state: &'static str,
+}
+
+pub fn parse_capacity(text: &str) -> Result<u8, String> {
     let value: u8 = text
         .trim()
         .parse()
@@ -350,13 +360,35 @@ fn the_root_disk_reader_returns_a_consistent_reading() {
     Ok(value)
 }
 
-pub struct BatteryReader;
+/// sysfs status text to the stated set: charging, discharging, full, not charging, unknown (any other text is unknown).
+pub fn parse_status(text: &str) -> &'static str {
+    match text.trim() {
+        "Charging" => "charging",
+        "Discharging" => "discharging",
+        "Full" => "full",
+        "Not charging" => "not charging",
+        _ => "unknown",
+    }
+}
+
+/// The first BAT* supply in name order under dir.
+pub struct BatteryReader {
+    pub dir: std::path::PathBuf,
+}
+
+impl BatteryReader {
+    /// Production reads /sys/class/power_supply unless MODULE_POWER_SUPPLY_DIR names a fixture tree.
+    pub fn from_env() -> Self {
+        let dir =
+            std::env::var(POWER_SUPPLY_DIR_ENV).unwrap_or_else(|_| String::from(POWER_SUPPLY_DIR));
+        BatteryReader { dir: dir.into() }
+    }
+}
 
 impl SystemReader for BatteryReader {
-    type Reading = u8;
-    /// The charge percentage of the first BAT* supply, in name order.
-    fn read(&self) -> Result<u8, String> {
-        let mut supplies: Vec<String> = std::fs::read_dir("/sys/class/power_supply")
+    type Reading = BatteryReading;
+    fn read(&self) -> Result<BatteryReading, String> {
+        let mut supplies: Vec<String> = std::fs::read_dir(&self.dir)
             .map_err(|error| format!("cannot list power supplies: {error}"))?
             .filter_map(|entry| entry.ok())
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
@@ -366,9 +398,11 @@ impl SystemReader for BatteryReader {
         let name = supplies
             .first()
             .ok_or_else(|| String::from("no battery found"))?;
-        parse_capacity(&read_text(&format!(
-            "/sys/class/power_supply/{name}/capacity"
-        ))?)
+        let file = |leaf: &str| read_text(&format!("{}/{name}/{leaf}", self.dir.display()));
+        Ok(BatteryReading {
+            charge_percent: parse_capacity(&file("capacity")?)?,
+            charging_state: parse_status(&file("status")?),
+        })
     }
 }
 `)
@@ -377,6 +411,43 @@ fn battery_capacity_is_a_percentage() {
     assert_eq!(parse_capacity("87\\n"), Ok(87));
     assert!(parse_capacity("101").is_err());
     assert!(parse_capacity("full").is_err());
+}
+
+#[test]
+fn battery_status_maps_to_the_stated_set() {
+    assert_eq!(parse_status("Charging\\n"), "charging");
+    assert_eq!(parse_status("Discharging"), "discharging");
+    assert_eq!(parse_status("Full"), "full");
+    assert_eq!(parse_status("Not charging"), "not charging");
+    assert_eq!(parse_status("Unknown"), "unknown");
+    assert_eq!(parse_status("Something new"), "unknown");
+}
+
+#[test]
+fn the_first_battery_supplies_capacity_and_status_and_an_absent_one_fails() {
+    let dir = std::env::temp_dir().join(format!("power-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let reader = BatteryReader { dir: dir.clone() };
+    assert!(reader.read().is_err());
+    for (supply, capacity, status) in [
+        ("BAT1", "20", "Discharging"),
+        ("BAT0", "81", "Charging"),
+        ("AC", "1", "Unknown"),
+    ] {
+        std::fs::create_dir_all(dir.join(supply)).expect("supply dir");
+        std::fs::write(dir.join(supply).join("capacity"), capacity).expect("capacity file");
+        std::fs::write(dir.join(supply).join("status"), status).expect("status file");
+    }
+    assert_eq!(
+        reader.read(),
+        Ok(BatteryReading {
+            charge_percent: 81,
+            charging_state: "charging"
+        })
+    );
+    std::fs::remove_file(dir.join("BAT0").join("status")).expect("remove status");
+    assert!(reader.read().is_err());
+    std::fs::remove_dir_all(&dir).expect("cleanup");
 }
 `)
   }
