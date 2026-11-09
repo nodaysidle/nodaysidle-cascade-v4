@@ -886,7 +886,7 @@ const VALUE_TYPE_LABEL: Record<DataValueType, string> = {
 
 // The stored shape and the exact operations the declared features perform, so every task that
 // touches the store uses one schema and builds no operation nobody asked for.
-function dataShapeDetails(item: NormalizedBlueprint["domainData"][number], features: readonly GraphFeature[]): string[] {
+function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainData"][number], features: readonly GraphFeature[]): string[] {
   if (!item.fields.length) return []
   const users = features.filter(feature => dataFeatureIds(item.name, features).includes(feature.id))
   const operations = unique(users.flatMap(feature => feature.dataOperations))
@@ -895,8 +895,27 @@ function dataShapeDetails(item: NormalizedBlueprint["domainData"][number], featu
   ]
   if (operations.length) {
     lines.push(`Store operations, exactly these and no others: ${operations.map(operation => `${operation} (${users.filter(feature => feature.dataOperations.includes(operation)).map(feature => feature.id).join(", ")})`).join("; ")}.`)
+    lines.push(storeInterfaceDetail(presetId, item, operations))
   }
   return lines
+}
+
+// One concrete interface per preset, owned by the data owner, so feature tasks call it and never invent storage access.
+function storeInterfaceDetail(presetId: PresetId, item: NormalizedBlueprint["domainData"][number], operations: readonly DataOperation[]): string {
+  const base = slug(item.name).replaceAll("-", "_")
+  const record = pascal(item.name)
+  const methods = (names: Record<DataOperation, string[]>) => operations.flatMap(operation => names[operation])
+  if (presetId === "tauri2-rust-typescript-desktop") {
+    const commands = methods({ create: [`create_${base}`], read: [`list_${base}`, `get_${base}`], update: [`update_${base}`], delete: [`delete_${base}`] })
+    return `Interface: OWN-DATA-STORE owns every Tauri command for ${item.name} and registers them in src-tauri/src/lib.rs: ${commands.join(", ")}. Each takes and returns the stored fields above (ids are i64) and returns the allowlisted error enum on failure; feature tasks call them with invoke and add no Rust command of their own.`
+  }
+  if (presetId === "android-kotlin-compose") {
+    const functions = methods({ create: ["insert"], read: ["observeAll", "getById"], update: ["update"], delete: ["delete"] })
+    return `Interface: OWN-DATA-STORE owns one Room entity ${record}Entity with the stored fields above and one ${record}Dao with exactly: ${functions.join(", ")}; feature tasks use a repository over that DAO and add no entity or query of their own.`
+  }
+  if (presetId === "astro-web") return `Interface: the content collection schema declares exactly the stored fields above; pages read entries through getCollection and no page defines its own schema.`
+  const functions = methods({ create: ["insert"], read: ["list", "get"], update: ["update"], delete: ["delete"] })
+  return `Interface: OWN-DATA-STORE defines struct ${record} with the stored fields above (id: i64) and trait ${record}Store with exactly: ${functions.join(", ")}; every function returns Result with a typed error, and feature tasks call the trait and add no other storage access.`
 }
 
 function persistencePlacement(
@@ -1030,7 +1049,7 @@ function buildOwnersAndContracts(
       ? (credentialServices.length
         ? unique(credentialServices.flatMap(service => credentialDetails(preset.id, identity, service.name, service.credentialRequirement)))
         : credentialDetails(preset.id, identity, item.name, "credential"))
-      : [...dataShapeDetails(item, features), `Retention: ${item.retention}`, `Sensitivity: ${item.sensitivity}`]
+      : [...dataShapeDetails(preset.id, item, features), `Retention: ${item.retention}`, `Sensitivity: ${item.sensitivity}`]
     contracts.push(contract(
       `CON-DATA-${slug(item.name).toUpperCase()}`,
       "data",

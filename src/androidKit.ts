@@ -168,7 +168,7 @@ dependencies {
     file("app/src/main/AndroidManifest.xml", `<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:name=".HabitApplication"
+        android:name=".${identity.pascalName}Application"
         android:allowBackup="true"
         android:label="${appName}"
         android:supportsRtl="true"
@@ -193,25 +193,25 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import ${pkg}.App
-import ${pkg}.ui.theme.HabitTheme
+import ${pkg}.ui.theme.${identity.pascalName}Theme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            HabitTheme {
-                App((application as HabitApplication).container)
+            ${identity.pascalName}Theme {
+                App((application as ${identity.pascalName}Application).container)
             }
         }
     }
 }
 `),
-    file(`app/src/main/java/${path}/HabitApplication.kt`, `package ${pkg}
+    file(`app/src/main/java/${path}/${identity.pascalName}Application.kt`, `package ${pkg}
 
 import android.app.Application
 
-class HabitApplication : Application() {
+class ${identity.pascalName}Application : Application() {
     lateinit var container: AppContainer
 
     override fun onCreate() {
@@ -223,88 +223,11 @@ class HabitApplication : Application() {
     file(`app/src/main/java/${path}/AppContainer.kt`, `package ${pkg}
 
 import android.content.Context
-import ${pkg}.data.HabitDatabase
-import ${pkg}.data.HabitRepository
 import ${pkg}.data.SettingsRepository
 
+// Feature and data tasks add their repositories here and nowhere else.
 class AppContainer(context: Context) {
-    private val database = HabitDatabase.create(context)
-    val repository = HabitRepository(database.habitDao())
     val settings = SettingsRepository(context)
-}
-`),
-    file(`app/src/main/java/${path}/data/HabitEntity.kt`, `package ${pkg}.data
-
-import androidx.room.Entity
-import androidx.room.PrimaryKey
-
-@Entity(tableName = "habits")
-data class HabitEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val name: String,
-    val lastDoneEpochDay: Long? = null,
-)
-`),
-    file(`app/src/main/java/${path}/data/HabitDao.kt`, `package ${pkg}.data
-
-import androidx.room.Dao
-import androidx.room.Delete
-import androidx.room.Insert
-import androidx.room.Query
-import androidx.room.Update
-import kotlinx.coroutines.flow.Flow
-
-@Dao
-interface HabitDao {
-    @Query("SELECT * FROM habits ORDER BY name")
-    fun observe(): Flow<List<HabitEntity>>
-
-    @Insert
-    suspend fun insert(habit: HabitEntity)
-
-    @Update
-    suspend fun update(habit: HabitEntity)
-
-    @Delete
-    suspend fun delete(habit: HabitEntity)
-}
-`),
-    file(`app/src/main/java/${path}/data/HabitDatabase.kt`, `package ${pkg}.data
-
-import android.content.Context
-import androidx.room.Database
-import androidx.room.Room
-import androidx.room.RoomDatabase
-
-@Database(entities = [HabitEntity::class], version = 1, exportSchema = false)
-abstract class HabitDatabase : RoomDatabase() {
-    abstract fun habitDao(): HabitDao
-
-    companion object {
-        fun create(context: Context): HabitDatabase =
-            Room.databaseBuilder(context, HabitDatabase::class.java, "habits.sqlite3").build()
-    }
-}
-`),
-    file(`app/src/main/java/${path}/data/HabitRepository.kt`, `package ${pkg}.data
-
-import java.time.LocalDate
-import kotlinx.coroutines.flow.Flow
-
-class HabitRepository(private val dao: HabitDao) {
-    val habits: Flow<List<HabitEntity>> = dao.observe()
-
-    suspend fun add(name: String) {
-        if (name.isNotBlank()) dao.insert(HabitEntity(name = name.trim()))
-    }
-
-    suspend fun markDone(habit: HabitEntity) {
-        dao.update(habit.copy(lastDoneEpochDay = LocalDate.now().toEpochDay()))
-    }
-
-    suspend fun remove(habit: HabitEntity) {
-        dao.delete(habit)
-    }
 }
 `),
     file(`app/src/main/java/${path}/data/SettingsRepository.kt`, `package ${pkg}.data
@@ -330,16 +253,12 @@ class SettingsRepository(private val context: Context) {
 `),
     file(`app/src/main/java/${path}/App.kt`, `package ${pkg}
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
-import ${pkg}.data.HabitEntity
-import ${pkg}.feature.HabitViewModel
-import ${pkg}.feature.HomeScreen
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
@@ -349,17 +268,10 @@ import kotlinx.serialization.Serializable
 @Serializable
 data object HomeRoute : NavKey
 
-@Serializable
-data class HabitRoute(val id: Long) : NavKey
-
+// The composition root: the first main-surface feature task replaces the home entry's content and
+// registers its routes here; the container carries every repository.
 @Composable
-fun App(container: AppContainer) {
-    val viewModel: HabitViewModel = viewModel(
-        factory = viewModelFactory {
-            initializer { HabitViewModel(container.repository) }
-        },
-    )
-    val habits by viewModel.habits.collectAsStateWithLifecycle()
+fun App(@Suppress("UNUSED_PARAMETER") container: AppContainer) {
     val backStack = rememberNavBackStack(HomeRoute)
 
     NavDisplay(
@@ -367,123 +279,12 @@ fun App(container: AppContainer) {
         onBack = { backStack.removeLastOrNull() },
         entryProvider = entryProvider {
             entry<HomeRoute> {
-                HomeScreen(
-                    habits = habits,
-                    onAdd = viewModel::add,
-                    onDone = viewModel::markDone,
-                    onOpen = { habit: HabitEntity -> backStack.add(HabitRoute(habit.id)) },
-                )
-            }
-            entry<HabitRoute> { key ->
-                val habit = habits.firstOrNull { it.id == key.id }
-                HomeScreen(
-                    habits = listOfNotNull(habit),
-                    onAdd = viewModel::add,
-                    onDone = viewModel::markDone,
-                    onOpen = {},
-                )
+                Scaffold { padding ->
+                    Text("${appName}", modifier = Modifier.padding(padding).padding(16.dp))
+                }
             }
         },
     )
-}
-`),
-    file(`app/src/main/java/${path}/feature/HabitViewModel.kt`, `package ${pkg}.feature
-
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import ${pkg}.data.HabitEntity
-import ${pkg}.data.HabitRepository
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
-
-class HabitViewModel(private val repository: HabitRepository) : ViewModel() {
-    val habits: StateFlow<List<HabitEntity>> = repository.habits.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = emptyList(),
-    )
-
-    fun add(name: String) {
-        viewModelScope.launch { repository.add(name) }
-    }
-
-    fun markDone(habit: HabitEntity) {
-        viewModelScope.launch { repository.markDone(habit) }
-    }
-
-    fun remove(habit: HabitEntity) {
-        viewModelScope.launch { repository.remove(habit) }
-    }
-}
-`),
-    file(`app/src/main/java/${path}/feature/HomeScreen.kt`, `package ${pkg}.feature
-
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import ${pkg}.data.HabitEntity
-
-@Composable
-fun HomeScreen(
-    habits: List<HabitEntity>,
-    onAdd: (String) -> Unit,
-    onDone: (HabitEntity) -> Unit,
-    onOpen: (HabitEntity) -> Unit,
-) {
-    var draft by remember { mutableStateOf("") }
-    Surface(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
-        Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Habits", style = MaterialTheme.typography.headlineLarge)
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    label = { Text("New habit") },
-                    modifier = Modifier.weight(1f),
-                )
-                Button(onClick = {
-                    if (draft.isNotBlank()) {
-                        onAdd(draft)
-                        draft = ""
-                    }
-                }) { Text("Add") }
-            }
-            if (habits.isEmpty()) {
-                Text("No habits yet. Add one above to start today.", style = MaterialTheme.typography.bodyLarge)
-            } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(habits, key = { it.id }) { habit ->
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(habit.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                            Text(if (habit.lastDoneEpochDay != null) "Done today" else "Not done")
-                            Button(onClick = { onDone(habit) }) { Text("Done") }
-                            Button(onClick = { onOpen(habit) }) { Text("Open") }
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 `),
     file(`app/src/main/java/${path}/ui/theme/Theme.kt`, `package ${pkg}.ui.theme
@@ -503,7 +304,7 @@ private val Colors = darkColorScheme(
 )
 
 @Composable
-fun HabitTheme(content: @Composable () -> Unit) {
+fun ${identity.pascalName}Theme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = Colors, content = content)
 }
 `),
@@ -516,23 +317,15 @@ fun HabitTheme(content: @Composable () -> Unit) {
     </style>
 </resources>
 `),
-    file(`app/src/test/java/${path}/StreakTest.kt`, `package ${pkg}
+    file(`app/src/test/java/${path}/RouteTest.kt`, `package ${pkg}
 
-import ${pkg}.data.HabitEntity
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-class StreakTest {
+class RouteTest {
     @Test
-    fun aHabitDoneTodayIsMarkedDone() {
-        val habit = HabitEntity(name = "Walk", lastDoneEpochDay = 20_000)
-        assertEquals(20_000, habit.lastDoneEpochDay)
-    }
-
-    @Test
-    fun aNewHabitIsNotDone() {
-        val habit = HabitEntity(name = "Walk")
-        assertEquals(null, habit.lastDoneEpochDay)
+    fun homeRouteIsTheStartDestination() {
+        assertEquals("HomeRoute", HomeRoute::class.simpleName)
     }
 }
 `),
@@ -587,8 +380,9 @@ task starts. The kit is a real Android project with:
 
 - Compose Material 3 and edge-to-edge in MainActivity.
 - Navigation 3 with serializable NavKey routes.
-- Room for habits and DataStore for settings.
-- A ViewModel exposing StateFlow and collectAsStateWithLifecycle.
+- DataStore for settings; Room, KSP, and WorkManager are declared in the build for the data and background tasks.
+- A navigation shell (App.kt) and a container (AppContainer.kt) that carry no product code: feature and data tasks add the
+  entities, DAOs, repositories, ViewModels, and screens their TASKS.md lists.
 - Unit and instrumentation test seams.
 
 Build with ./scripts/gradle.sh assembleDebug. Set ANDROID_HOME to an SDK with platform 37 and
