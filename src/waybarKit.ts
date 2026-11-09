@@ -10,17 +10,17 @@ export function waybarSystemKit(sources: readonly SystemSource[], crate: string)
   if (sources.length === 0) return []
   const has = (source: SystemSource) => sources.includes(source)
   const net = has("network-received") || has("network-sent")
-  const sizes = net || has("memory")
+  const sizes = net || has("memory") || has("disk-space")
   const parts: string[] = [`/// Operating-system sources, each read through SystemReader so tests inject their own reader.
 pub trait SystemReader {
     type Reading;
     fn read(&self) -> Result<Self::Reading, String>;
 }
-
+${sources.some(source => source !== "disk-space") ? `
 fn read_text(path: &str) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|error| format!("cannot read {path}: {error}"))
 }
-`]
+` : ""}`]
   const tests: string[] = []
   if (net) {
     parts.push(`/// A counter that went backwards (reset or interface change) is a change of 0 for that sample.
@@ -183,6 +183,66 @@ fn meminfo_gives_used_bytes() {
 }
 `)
   }
+  if (has("disk-space")) {
+    parts.push(`#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DiskSpace {
+    pub free_bytes: u64,
+    pub used_bytes: u64,
+    pub total_bytes: u64,
+}
+
+/// free = available blocks x fragment size (what a normal user can still write), total = blocks x fragment
+/// size, used = total - free-to-root blocks x fragment size (the same rule df uses).
+pub fn disk_space_from(
+    fragment_size: u64,
+    blocks: u64,
+    blocks_free: u64,
+    blocks_available: u64,
+) -> DiskSpace {
+    let total_bytes = blocks.saturating_mul(fragment_size);
+    DiskSpace {
+        free_bytes: blocks_available.saturating_mul(fragment_size),
+        used_bytes: total_bytes.saturating_sub(blocks_free.saturating_mul(fragment_size)),
+        total_bytes,
+    }
+}
+
+/// The root file system, read through statvfs("/") (the nix crate wraps it safely).
+pub struct DiskSpaceReader;
+
+impl SystemReader for DiskSpaceReader {
+    type Reading = DiskSpace;
+    #[allow(clippy::useless_conversion)]
+    fn read(&self) -> Result<DiskSpace, String> {
+        let stat = nix::sys::statvfs::statvfs("/")
+            .map_err(|error| format!("cannot read the root disk: {error}"))?;
+        Ok(disk_space_from(
+            u64::from(stat.fragment_size()),
+            u64::from(stat.blocks()),
+            u64::from(stat.blocks_free()),
+            u64::from(stat.blocks_available()),
+        ))
+    }
+}
+`)
+    tests.push(`#[test]
+fn disk_space_is_free_used_and_total_from_the_statvfs_fields() {
+    let space = disk_space_from(4096, 1000, 300, 250);
+    assert_eq!(space.total_bytes, 4_096_000);
+    assert_eq!(space.free_bytes, 1_024_000);
+    assert_eq!(space.used_bytes, 2_867_200);
+    assert_eq!(disk_space_from(4096, 0, 0, 0).total_bytes, 0);
+}
+
+#[test]
+fn the_root_disk_reader_returns_a_consistent_reading() {
+    let space = DiskSpaceReader.read().expect("statvfs of /");
+    assert!(space.total_bytes > 0);
+    assert!(space.used_bytes <= space.total_bytes);
+    assert!(space.free_bytes <= space.total_bytes);
+}
+`)
+  }
   if (has("battery")) {
     parts.push(`pub fn parse_capacity(text: &str) -> Result<u8, String> {
     let value: u8 = text
@@ -231,6 +291,9 @@ fn battery_capacity_is_a_percentage() {
   ]
   if (sizes) {
     files.push({ name: "src/platform/units.rs", content: `/// Decimal SI units, fixed for every size and rate this module shows: 1 kB = 1000 B, 1 Mb = 1,000,000 bits.
+/// Decimals are fixed: a size shows 2, a rate shows 1 (a size below 1000 B is a whole number of bytes).
+pub const SIZE_DECIMALS: usize = 2;
+pub const RATE_DECIMALS: usize = 1;
 const SIZE_UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
 const RATE_UNITS: [&str; 4] = ["b/s", "kb/s", "Mb/s", "Gb/s"];
 
@@ -285,6 +348,14 @@ fn rates_are_bytes_times_eight_over_seconds_in_decimal_units() {
 }
 
 #[test]
+fn decimals_are_fixed_at_two_for_sizes_and_one_for_rates() {
+    assert_eq!(format_size(3_670_016_000, SIZE_DECIMALS), "3.67 GB");
+    assert_eq!(format_size(496_330_000_000, SIZE_DECIMALS), "496.33 GB");
+    assert_eq!(format_size(500_000_000_000, SIZE_DECIMALS), "500.00 GB");
+    assert_eq!(format_bit_rate(10_000_000.0, RATE_DECIMALS), "10.0 Mb/s");
+}
+
+#[test]
 fn sizes_use_a_1000_base_and_label_the_largest_unit() {
     assert_eq!(format_size(3_670_016_000, 2), "3.67 GB");
     assert_eq!(format_size(999, 2), "999 B");
@@ -294,4 +365,51 @@ fn sizes_use_a_1000_base_and_label_the_largest_unit() {
 ` })
   }
   return files
+}
+
+// The one place the time-zone rule lives: instants are stored as UTC epoch milliseconds and converted only here.
+export function waybarLocalTimeKit(crate: string): WaybarKitSource[] {
+  return [
+    { name: "src/platform/local_time.rs", content: `use chrono::{DateTime, FixedOffset, Local, TimeZone};
+
+/// HH:MM, 24-hour, zero-padded, for a UTC epoch in milliseconds seen at a fixed UTC offset in seconds.
+pub fn clock_at_offset(epoch_ms: i64, offset_seconds: i32) -> Option<String> {
+    let offset = FixedOffset::east_opt(offset_seconds)?;
+    let instant: DateTime<FixedOffset> = offset.timestamp_millis_opt(epoch_ms).single()?;
+    Some(instant.format("%H:%M").to_string())
+}
+
+/// HH:MM in the user's local time zone (the system time zone) for a UTC epoch in milliseconds; the only
+/// place a stored instant becomes a local time.
+pub fn local_clock(epoch_ms: i64) -> Option<String> {
+    let instant = Local.timestamp_millis_opt(epoch_ms).single()?;
+    Some(instant.format("%H:%M").to_string())
+}
+` },
+    { name: "tests/local_time_tests.rs", content: `use ${crate}::platform::local_time::*;
+
+#[test]
+fn an_instant_is_shown_as_zero_padded_24_hour_time_at_the_offset() {
+    // 2026-06-21T03:05:00Z
+    let epoch_ms = 1_782_011_100_000;
+    assert_eq!(clock_at_offset(epoch_ms, 0).as_deref(), Some("03:05"));
+    assert_eq!(
+        clock_at_offset(epoch_ms, 2 * 3600).as_deref(),
+        Some("05:05")
+    );
+    assert_eq!(
+        clock_at_offset(epoch_ms, -8 * 3600).as_deref(),
+        Some("19:05")
+    );
+    assert!(clock_at_offset(epoch_ms, 100_000).is_none());
+}
+
+#[test]
+fn the_local_clock_is_always_hh_mm() {
+    let text = local_clock(1_782_011_100_000).expect("local time");
+    assert_eq!(text.len(), 5);
+    assert_eq!(&text[2..3], ":");
+}
+` },
+  ]
 }

@@ -28,6 +28,9 @@ export function auditCapabilities(blueprint: SemanticBlueprint, preset: PresetCo
     if (feature.systemSource !== "none" && preset.id !== "linux-hyprland-waybar-module") {
       issues.push({ path: `${path}.systemSource`, rule: "capability.system-source", message: `Feature '${feature.name}' reads an operating-system source, which ${preset.label} does not provide; set systemSource to none.` })
     }
+    if (((feature.thresholds ?? []).length > 0 || (feature.labelTemplate ?? "").trim() !== "") && preset.id !== "linux-hyprland-waybar-module") {
+      issues.push({ path: `${path}.thresholds`, rule: "capability.waybar-label", message: `Feature '${feature.name}' declares a module label or severity thresholds, which only a bar module has; leave thresholds empty and labelTemplate empty.` })
+    }
     if (feature.usesTray && !preset.capabilities.tray) {
       issues.push({ path: `${path}.usesTray`, rule: "capability.tray", message: `Feature '${feature.name}' needs a tray, but ${preset.label} has no tray surface.` })
     }

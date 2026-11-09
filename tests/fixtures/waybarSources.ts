@@ -31,7 +31,7 @@ export const netSpeedBlueprint: SemanticBlueprint = {
   goals: ["Show the download speed at a glance", "Show the total downloaded since boot"],
   nonGoals: ["Per-interface breakdowns"],
   features: [
-    base("Download speed readout", "Every 5 seconds read the total received bytes from the system and show the change since the stored sample as megabits per second.", "After two measurements 5 seconds apart with a received counter increase of 6,250,000 bytes the label is 10.0 Mb/s.", { usesPlatformNeeds: ["background-execution"], usesData: ["Last sample"], dataOperations: [{ data: "Last sample", operations: ["create", "update"] }], invokedBy: "schedule", runsEverySeconds: 5, systemSource: "network-received" }),
+    base("Download speed readout", "Every 5 seconds read the total received bytes from the system and show the change since the stored sample as megabits per second.", "After two measurements 5 seconds apart with a received counter increase of 6,250,000 bytes the label is 10.0 Mb/s.", { usesPlatformNeeds: ["background-execution"], usesData: ["Last sample"], dataOperations: [{ data: "Last sample", operations: ["create", "update"] }], invokedBy: "schedule", runsEverySeconds: 5, systemSource: "network-received", labelTemplate: "{value}" }),
     base("Downloaded since boot notification", "Clicking the module sends one notification with the total received bytes since boot.", "With a total received counter of 3,670,016,000 bytes the notification body contains 3.67 GB.", { usesPlatformNeeds: ["notifications"], usesData: ["Last sample"], dataOperations: [{ data: "Last sample", operations: ["read"] }], invokedBy: "click", systemSource: "network-received" }),
   ],
   dataObjects: [
@@ -53,7 +53,7 @@ export const airQualityBlueprint: SemanticBlueprint = {
   nonGoals: ["Several cities"],
   features: [
     base("Scheduled index refresh", "Every 1200 seconds request the index for the saved city and keep the last good one.", "A failed fetch leaves the cached row unchanged.", { usesPlatformNeeds: ["network", "background-execution"], usesData: ["Saved city", "Cached air quality index"], usesServices: ["Air quality service"], dataOperations: [{ data: "Saved city", operations: ["read"] }, { data: "Cached air quality index", operations: ["create", "update"] }], invokedBy: "schedule", runsEverySeconds: 1200, buildsOn: ["Air quality index display"] }),
-    base("Air quality index display", "Show the cached index of the saved city, or -- when none is cached for it.", "With a cached index of 42 for the saved city the label contains 42.", { usesData: ["Saved city", "Cached air quality index"], dataOperations: [{ data: "Saved city", operations: ["read"] }, { data: "Cached air quality index", operations: ["read"] }] }),
+    base("Air quality index display", "Show the cached index of the saved city, or -- when none is cached for it.", "With a cached index of 42 for the saved city the label contains 42.", { usesData: ["Saved city", "Cached air quality index"], dataOperations: [{ data: "Saved city", operations: ["read"] }, { data: "Cached air quality index", operations: ["read"] }], labelTemplate: "AQI {value}" }),
     base("Open city page on click", "Clicking the module opens the saved city's page.", "Clicking opens the city page address for the saved identifier.", { usesPlatformNeeds: ["network"], usesData: ["Saved city"], usesServices: ["Air quality service"], dataOperations: [{ data: "Saved city", operations: ["read"] }], invokedBy: "click" }),
   ],
   dataObjects: [
@@ -74,9 +74,54 @@ export const allSourcesBlueprint: SemanticBlueprint = (() => {
   const all = structuredClone(netSpeedBlueprint)
   all.productName = "System Glance"
   all.features[1]!.systemSource = "network-sent"
-  for (const [name, source] of [["Load readout", "load-average"], ["Memory readout", "memory"], ["Battery readout", "battery"]] as const) {
+  for (const [name, source] of [["Load readout", "load-average"], ["Memory readout", "memory"], ["Battery readout", "battery"], ["Disk readout", "disk-space"]] as const) {
     all.features.push(base(name, `Shows the ${source} reading.`, `The label shows the ${source} reading.`, { usesData: ["Last sample"], dataOperations: [{ data: "Last sample", operations: ["read"] }], systemSource: source }))
   }
   all.ideaCoverage = [{ sentence: 1, features: all.features.map(feature => feature.name), outsideFeatures: "none" }]
   return all
 })()
+
+// Disk free space: a declared disk-space source, one stored reading, and a red limit that is a lower bound.
+export const freeSpaceBlueprint: SemanticBlueprint = {
+  productName: "Free Space",
+  summary: "Shows the free space of the root disk in a Waybar module, measured every 60 seconds, and turns red below 10 GB.",
+  targetUsers: ["People who watch their disk"],
+  goals: ["Show the free space at a glance"],
+  nonGoals: ["Other disks"],
+  features: [
+    base("Free space refresh", "Every 60 seconds read the free, used, and total space of the root disk and store the reading.", "After a refresh the stored reading holds the free bytes of the root disk.", { usesPlatformNeeds: ["background-execution"], usesData: ["Disk reading"], dataOperations: [{ data: "Disk reading", operations: ["create", "update"] }], invokedBy: "schedule", runsEverySeconds: 60, systemSource: "disk-space", buildsOn: ["Free space label"] }),
+    base("Free space label", "Show the stored free space as the module label.", "With 3,670,016,000 free bytes the label is 3.67 GB free.", { usesData: ["Disk reading"], dataOperations: [{ data: "Disk reading", operations: ["read"] }], labelTemplate: "{value} free", thresholds: [{ state: "critical", comparison: "below", value: 10000000000 }] }),
+  ],
+  dataObjects: [
+    { name: "Disk reading", purpose: "The last free, used, and total bytes of the root disk.", sensitivity: "internal", retentionIntent: "Keep until replaced.", storage: "records", writeMode: "direct", singleRecord: true, fields: [{ name: "Free bytes", valueType: "whole-number", optional: false }, { name: "Used bytes", valueType: "whole-number", optional: false }, { name: "Total bytes", valueType: "whole-number", optional: false }] },
+  ],
+  externalServices: [],
+  platformNeeds: ["background-execution"],
+  qualityRequirements: ["Text short enough for a bar."],
+  productConstraints: ["Everything stays on the device."],
+  ideaCoverage: [{ sentence: 1, features: ["Free space refresh", "Free space label"], outsideFeatures: "none" }],
+}
+
+// A fetched time of day for a saved city name: a text identifier, an instant stored as date-time, a label template.
+export const sunTimesBlueprint: SemanticBlueprint = {
+  productName: "Sun Times",
+  summary: "Shows today's sunset time of one saved city in a Waybar module, fetched every 21600 seconds.",
+  targetUsers: ["People who plan their evening"],
+  goals: ["Show the sunset time of the saved city"],
+  nonGoals: ["Several cities"],
+  features: [
+    base("Scheduled sunset refresh", "Every 21600 seconds request the sunset of the saved city and keep the last good one.", "A failed fetch leaves the stored reading unchanged.", { usesPlatformNeeds: ["network", "background-execution"], usesData: ["Saved city", "Sunset reading"], usesServices: ["Sunset service"], dataOperations: [{ data: "Saved city", operations: ["read"] }, { data: "Sunset reading", operations: ["create", "update"] }], invokedBy: "schedule", runsEverySeconds: 21600, buildsOn: ["Sunset label"] }),
+    base("Sunset label", "Show the stored sunset of the saved city as a local time, or -- when none is stored for it.", "With a stored sunset of 17:42 UTC and a local time zone of UTC+2 the label is Sunset 19:42.", { usesData: ["Saved city", "Sunset reading"], dataOperations: [{ data: "Saved city", operations: ["read"] }, { data: "Sunset reading", operations: ["read"] }], labelTemplate: "Sunset {value}" }),
+  ],
+  dataObjects: [
+    { name: "Saved city", purpose: "The one city the user chose.", sensitivity: "internal", retentionIntent: "Keep until the user changes it.", storage: "settings", writeMode: "atomic-replace", singleRecord: false, fields: [{ name: "City", valueType: "text", optional: false }] },
+    { name: "Sunset reading", purpose: "The last good sunset instant and the city it was fetched for.", sensitivity: "internal", retentionIntent: "Keep until replaced.", storage: "records", writeMode: "direct", singleRecord: true, fields: [{ name: "Sunset instant", valueType: "date-time", optional: false }, { name: "City", valueType: "text", optional: false }] },
+  ],
+  externalServices: [
+    { name: "Sunset service", purpose: "Provide the sunset instant of a city.", dataSent: ["City"], credentialRequired: false, endpoint: "https://api.example.org/sun?city={value}", webPage: "", requestValueFrom: "City", requestValueType: "text", responseFields: [{ name: "Sunset instant", valueType: "date-time", optional: false }] },
+  ],
+  platformNeeds: ["network", "background-execution"],
+  qualityRequirements: ["Text short enough for a bar."],
+  productConstraints: ["Send only the city to the service."],
+  ideaCoverage: [{ sentence: 1, features: ["Scheduled sunset refresh", "Sunset label"], outsideFeatures: "none" }],
+}

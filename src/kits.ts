@@ -3,8 +3,8 @@ import { astroKit } from "./astroKit"
 import { tauriKitFiles, tauriKitReadme, tauriKitUses } from "./tauriKit"
 import type { NormalizedBlueprint } from "./compiler"
 import type { PresetId, ProjectIdentity } from "./presets"
-import { WAYBAR_FAILURE_RULE, waybarSources } from "./waybarContracts"
-import { waybarSystemKit } from "./waybarKit"
+import { WAYBAR_EMPTY_LABEL, WAYBAR_FAILURE_RULE, waybarKitParts } from "./waybarContracts"
+import { waybarLocalTimeKit, waybarSystemKit } from "./waybarKit"
 
 export interface KitFile {
   readonly path: string
@@ -631,7 +631,8 @@ export function waybarLaunchers(blueprint: NormalizedBlueprint): { readonly page
   const pages = click === undefined ? [] : blueprint.externalServices
     .filter(service => service.webPage !== "" && click.resourceIds.some(id => id.startsWith("service:") && alnum(id.slice("service:".length)) === alnum(service.name)))
     .map(service => service.webPage)
-  return { pages, notifies: click?.resourceIds.includes("permission:notifications") ?? false }
+  // The notifications permission text names notify in launcher.rs, so a declared notifications need ships it even before a click feature uses it.
+  return { pages, notifies: blueprint.platformNeeds.includes("notifications") || (click?.resourceIds.includes("permission:notifications") ?? false) }
 }
 
 export interface WaybarRoles {
@@ -685,10 +686,14 @@ export function waybarTaskNotes(blueprint: NormalizedBlueprint, featureNames: re
     for (const service of blueprint.externalServices.filter(item => item.requestValueFrom !== "")) {
       notes.push(`The stored record carries the value of the saved setting '${service.requestValueFrom}' it was fetched for; write it with every successful fetch.`)
     }
-    notes.push("Set ModuleOutput.value to the numeric reading when the label shows one; only when the acceptance criteria state warning or critical thresholds (amber is warning, red is critical), set WARNING_ABOVE and CRITICAL_ABOVE in src/module.rs to them and compare the raw value, otherwise leave both None so the class is normal. Set ModuleOutput.tooltip to the label text unless the acceptance criteria state tooltip wording. If the acceptance criteria name wording for the state before the first successful refresh, set exactly that wording as the default of Settings.text in src/config.rs (for example '--').")
+    notes.push(`Set ModuleOutput.value to the raw numeric reading in the unit the declared thresholds use (bytes for a size) when the label shows one; severity is the kit's: THRESHOLDS in src/module.rs is generated from the declared thresholds${blueprint.features.some(feature => feature.thresholds.length) ? "" : " (none are declared, so the class is always normal)"} and no task edits it. Set ModuleOutput.tooltip to the label text unless the acceptance criteria state tooltip wording. The empty label is ${WAYBAR_EMPTY_LABEL}, the kit default of Settings.text; do not change it.`)
+    if (blueprint.persistenceNeeds.some(need => need.storage === "records")) {
+      notes.push("Also replace stored_output in src/module.rs: it returns the label (through the same label function) for the record already stored, without measuring or fetching, or None when no record is stored; refresh uses it to rebuild cache.json after a reboot when a refresh fails.")
+    }
   }
   if (roles.labelOwners.some(name => featureNames.includes(name))) {
-    notes.push("You own the pure label function for the stored reading: export a function that takes the stored record and the saved settings and returns the ModuleOutput (text, tooltip, class). It never reads cache.json, fetches, measures, or schedules; the refresh-loop owner calls it from fetch_output. When the record's saved-setting value (the field named after the setting the service request uses) differs from the current saved setting, it returns the empty state, never another place's value.")
+    const keyed = blueprint.externalServices.filter(item => item.requestValueFrom !== "")
+    notes.push(`You own the pure label function for the stored reading: export label(reading, settings) -> ModuleOutput, where reading is the stored record or none (an Option over a reference to this product's stored record type) and ModuleOutput has text, tooltip, class, value; with no reading it returns the empty state. It never reads cache.json, fetches, measures, or schedules; the refresh-loop owner calls it from fetch_output.${keyed.length ? ` When the record's saved-setting value (the field named ${keyed.map(item => `'${item.requestValueFrom}'`).join(", ")}) differs from the current saved setting, it returns the empty state, never another place's value.` : ""}`)
   }
   if (roles.clickOwner !== undefined && featureNames.includes(roles.clickOwner)) {
     notes.push("You are the click-action owner: replace the body of click in src/module.rs and change its signature to click(settings: &Settings, launcher: &dyn Launcher), updating run_action to pass &SystemLauncher (click is the composition root of the click path); the Waybar fragment (already bound to --action click) needs no change, and no other --action name is added unless a feature declares one. A failed click returns Err (exit 2, message on stderr) and writes neither the store nor the cache.")
@@ -714,6 +719,19 @@ export function waybarHookSummary(blueprint: NormalizedBlueprint, taskIdForFeatu
   return ` src/module.rs ships two hooks: fetch_output (the refresh loop body) is replaced by ${refreshTask ?? "no task, because no feature declares a schedule or background work; it stays the empty-state base"}, and click (the --action click body) is replaced by ${clickTask ?? "no task, because no feature declares invokedBy click; it stays a no-op and the fragment binds no on-click"}. The service loop (module::serve_until and run_service, SIGTERM handling) belongs to OWN-LIFECYCLE-COORDINATOR; no other task edits it.`
 }
 
+// A Rust f64 literal for a finite declared number (the schema bounds it to +-1e15, so no exponent form appears).
+function rustFloat(value: number): string {
+  return Number.isInteger(value) ? `${value}.0` : String(value)
+}
+
+// rustfmt keeps one struct literal on the opening line of the slice and several one per block.
+function rustThresholds(thresholds: NormalizedBlueprint["features"][number]["thresholds"]): string {
+  const literal = (item: (typeof thresholds)[number], indent: string) => [`Threshold {`, `    class: ${item.state === "critical" ? "CLASS_CRITICAL" : "CLASS_WARNING"},`, `    comparison: Comparison::${item.comparison === "above" ? "Above" : "Below"},`, `    value: ${rustFloat(item.value)},`, "}"].map((line, index) => index === 0 ? line : indent + line).join("\n")
+  if (thresholds.length === 0) return ""
+  if (thresholds.length === 1) return literal(thresholds[0]!, "")
+  return `\n${thresholds.map(item => `    ${literal(item, "    ")},`).join("\n")}\n`
+}
+
 function waybarKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, options: Readonly<Record<string, string | boolean | readonly string[]>> = {}): KitFile[] {
   const slug = identity.slug
   const crate = crateName(slug)
@@ -725,7 +743,10 @@ function waybarKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, op
   const settingKeys = roles.settingKeys.map(key => JSON.stringify(key)).join(", ")
   const launchers = waybarLaunchers(blueprint)
   const launches = launchers.pages.length > 0 || launchers.notifies
-  const systemFiles = waybarSystemKit(waybarSources(blueprint), crate)
+  const parts = waybarKitParts(blueprint)
+  const thresholds = blueprint.features.flatMap(feature => feature.thresholds)
+  const systemFiles = [...waybarSystemKit(parts.sources, crate), ...(parts.localTime ? waybarLocalTimeKit(crate) : [])]
+  const extraDeps = [...(parts.disk ? ['nix = { version = "0.30", default-features = false, features = ["fs"] }'] : []), ...(parts.localTime ? ['chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }'] : [])].join("\n")
   const platformMods = systemFiles.filter(item => item.name.startsWith("src/platform/")).map(item => item.name.slice("src/platform/".length, -3))
   const helperNames = [...(records ? ["sqlite.rs"] : []), ...platformMods.map(name => `${name}.rs`), ...(secrets ? ["credentials.rs"] : []), ...(http ? ["http.rs"] : []), ...(launches ? ["launcher.rs"] : [])]
   const packageDepends = [...(secrets ? ["dbus"] : []), ...(launchers.pages.length ? ["xdg-utils"] : []), ...(launchers.notifies ? ["libnotify"] : [])].map(name => `'${name}'`).join(" ")
@@ -746,9 +767,9 @@ Shipped helpers:
   there is no cache, or the stale state when the cached reading is older than twice the service interval).
   run_service registers SIGTERM and SIGINT and runs serve_until, which loops on settings.refresh_seconds and calls
   refresh, which calls fetch_output; a failed fetch_output returns Err and refresh then marks the cache stale.
-  fetch_output (the refresh loop body) and click (the --action click body) are the two hooks that feature tasks
-  replace; the lifecycle task alone adds shutdown cleanup after serve_until; everything else stays.${platformMods.includes("units") ? "\n- src/platform/units.rs: the one decimal SI convention for sizes and rates (1 kB = 1000 B; bits per second = bytes x 8 / seconds); do not format sizes or rates anywhere else." : ""}${platformMods.includes("system_source") ? "\n- src/platform/system_source.rs: the SystemReader trait and one reader per declared system source; a failed read is a failed refresh." : ""}
-- src/config.rs, src/paths.rs: atomic JSON settings under XDG config. refresh_seconds is the service refresh
+  fetch_output (the refresh loop body), stored_output (the label of the already stored record, for the cache
+  rebuilt after a reboot) and click (the --action click body) are the hooks that feature tasks replace; the lifecycle task alone adds shutdown cleanup after serve_until; everything else stays.${platformMods.includes("units") ? "\n- src/platform/units.rs: the one decimal SI convention for sizes and rates (1 kB = 1000 B; bits per second = bytes x 8 / seconds); do not format sizes or rates anywhere else." : ""}${platformMods.includes("system_source") ? "\n- src/platform/system_source.rs: the SystemReader trait and one reader per declared system source; a failed read is a failed refresh." : ""}
+${platformMods.includes("local_time") ? "- src/platform/local_time.rs: the one place a stored UTC epoch in milliseconds becomes a local HH:MM (chrono); store instants as UTC and call it only when rendering.\n" : ""}- src/config.rs, src/paths.rs: atomic JSON settings under XDG config. refresh_seconds is the service refresh
   interval (default ${roles.intervalSeconds} seconds${roles.scheduled ? ", the declared runsEverySeconds" : ", because no feature declares a schedule"}); the Waybar fragment interval is a different value (how often Waybar re-reads the cache).
 - src/platform/atomic_file.rs${helperNames.map(name => ", " + name).join("")}: only the platform boundaries this blueprint declares.
 - resources/waybar/config.jsonc and style.css: the module fragment.
@@ -765,11 +786,11 @@ Rules the kit encodes:
 - STALE_SUFFIX in src/module.rs (default "${WAYBAR_STALE_SUFFIX}") is the one stale marker; use the wording the
   acceptance criteria state if they state one, and change only that constant.
 - Classes: the output class is exactly one of normal, warning, critical, stale, empty, and resources/waybar/style.css
-  colours each. render_with sets it: empty before the first successful refresh (text is settings.text), stale when
-  the last refresh failed or the reading is older than twice the service interval (the text keeps the last value
-  plus STALE_SUFFIX, and stale wins over warning and critical), otherwise normal, warning, or critical from
-  ModuleOutput.value against WARNING_ABOVE and CRITICAL_ABOVE. Both limits are None, so every fresh reading is
-  normal, until a feature's acceptance criteria state thresholds.${launches ? `
+  colours each. render_with sets it: empty before the first successful refresh (text is settings.text, default
+  "${WAYBAR_EMPTY_LABEL}"), stale when the last refresh failed or the reading is older than twice the service
+  interval (the text keeps the last value plus STALE_SUFFIX, and stale wins over warning and critical; stale is
+  derived at render time, never stored), otherwise normal, warning, or critical from ModuleOutput.value against
+  THRESHOLDS (strict above or below, critical wins). THRESHOLDS is generated from the declared thresholds${thresholds.length ? "" : " and is empty here, so every fresh reading is normal"}.${launches ? `
 - src/platform/launcher.rs: the Launcher trait and SystemLauncher (std::process::Command) with ${[...(launchers.pages.length ? ["open_url (xdg-open)"] : []), ...(launchers.notifies ? ["notify (notify-send)"] : [])].join(" and ")}; features take a &dyn Launcher so tests inject a recording or failing one.` : ""}
 - Time is injected: render_with, refresh, and interval_seconds take the clock and the settings as parameters,
   so tests never sleep or read the system clock.
@@ -808,7 +829,7 @@ rust-version = "1.85"
 clap = { version = "4.6", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-${optionalDeps}
+${optionalDeps}${extraDeps ? "\n" + extraDeps : ""}
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 signal-hook = "0.3"
 dirs = "7"
@@ -894,10 +915,24 @@ pub const CLASS_WARNING: &str = "warning";
 pub const CLASS_CRITICAL: &str = "critical";
 pub const CLASS_STALE: &str = "stale";
 pub const CLASS_EMPTY: &str = "empty";
-/// Severity limits on ModuleOutput.value. Both stay None (every fresh reading is "normal") unless a
-/// feature's acceptance criteria state thresholds; then the owner task sets them here and nowhere else.
-pub const WARNING_ABOVE: Option<f64> = None;
-pub const CRITICAL_ABOVE: Option<f64> = None;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Comparison {
+    Above,
+    Below,
+}
+
+/// One declared severity limit on ModuleOutput.value: strictly above or strictly below value.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Threshold {
+    pub class: &'static str,
+    pub comparison: Comparison,
+    pub value: f64,
+}
+
+/// The declared thresholds (generated from the blueprint; no task edits them). Empty means every fresh
+/// reading is "normal".
+pub const THRESHOLDS: &[Threshold] = &[${rustThresholds(thresholds)}];
+pub const EMPTY_TEXT: &str = "${WAYBAR_EMPTY_LABEL}";
 pub const ACTION_CLICK: &str = "click";
 pub const ACTION_REFRESH: &str = "refresh";
 /// The whole --action vocabulary; the Waybar fragment binds only ACTION_CLICK.
@@ -946,21 +981,32 @@ pub fn empty_state(settings: &Settings) -> ModuleOutput {
     }
 }
 
-/// The class vocabulary is exactly normal, warning, critical, stale, empty.
-pub fn severity_class_with(
-    value: Option<f64>,
-    warning_above: Option<f64>,
-    critical_above: Option<f64>,
-) -> &'static str {
-    match value {
-        Some(value) if critical_above.is_some_and(|limit| value > limit) => CLASS_CRITICAL,
-        Some(value) if warning_above.is_some_and(|limit| value > limit) => CLASS_WARNING,
-        _ => CLASS_NORMAL,
+/// The class vocabulary is exactly normal, warning, critical, stale, empty. A threshold matches when the
+/// raw value is strictly above or strictly below its limit; critical wins over warning.
+pub fn severity_class_with(value: Option<f64>, thresholds: &[Threshold]) -> &'static str {
+    let Some(value) = value else {
+        return CLASS_NORMAL;
+    };
+    let matches = |class: &str| {
+        thresholds.iter().any(|item| {
+            item.class == class
+                && match item.comparison {
+                    Comparison::Above => value > item.value,
+                    Comparison::Below => value < item.value,
+                }
+        })
+    };
+    if matches(CLASS_CRITICAL) {
+        CLASS_CRITICAL
+    } else if matches(CLASS_WARNING) {
+        CLASS_WARNING
+    } else {
+        CLASS_NORMAL
     }
 }
 
 pub fn severity_class(value: Option<f64>) -> &'static str {
-    severity_class_with(value, WARNING_ABOVE, CRITICAL_ABOVE)
+    severity_class_with(value, THRESHOLDS)
 }
 
 pub fn read_cache(path: &Path) -> Option<Cache> {
@@ -1017,18 +1063,41 @@ pub fn fetch_output(settings: &Settings, _now_unix: u64) -> Result<ModuleOutput,
     Ok(empty_state(settings))
 }
 
-/// One refresh: write the label from fetch_output, or on failure keep the last cache marked stale.
-pub fn refresh(cache_path: &Path, settings: &Settings, now: u64) -> Result<(), String> {
-    match fetch_output(settings, now) {
+/// HOOK: the refresh-loop owner returns the label of the record already stored, without measuring or
+/// fetching, or None when nothing is stored. refresh uses it to rebuild cache.json (lost at reboot) when a
+/// refresh fails. The base stores nothing.
+pub fn stored_output(_settings: &Settings, _now_unix: u64) -> Option<ModuleOutput> {
+    None
+}
+
+/// One refresh with the fetch and the stored-record label as parameters, so tests inject both: write the
+/// label from fetch; on failure keep the last cache marked stale, or with no cache rebuild it from the stored
+/// record marked stale. Stale is never stored in a record.
+pub fn refresh_with(
+    cache_path: &Path,
+    settings: &Settings,
+    now: u64,
+    fetch: impl FnOnce(&Settings, u64) -> Result<ModuleOutput, String>,
+    stored: impl FnOnce(&Settings, u64) -> Option<ModuleOutput>,
+) -> Result<(), String> {
+    match fetch(settings, now) {
         Ok(output) => write_cache(cache_path, &output, now),
         Err(error) => {
             if let Some(mut cache) = read_cache(cache_path) {
                 cache.output.class = String::from(CLASS_STALE);
                 write_cache(cache_path, &cache.output, cache.updated_unix)?;
+            } else if let Some(mut output) = stored(settings, now) {
+                output.class = String::from(CLASS_STALE);
+                write_cache(cache_path, &output, now)?;
             }
             Err(error)
         }
     }
+}
+
+/// One refresh: the production fetch_output and stored_output.
+pub fn refresh(cache_path: &Path, settings: &Settings, now: u64) -> Result<(), String> {
+    refresh_with(cache_path, settings, now, fetch_output, stored_output)
 }
 
 /// HOOK: the click-action owner task replaces this body; the base does nothing.
@@ -1107,7 +1176,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             schema_version: 1,
-            text: String::from("${identity.projectName}"),
+            text: String::from("${WAYBAR_EMPTY_LABEL}"),
             tooltip: String::from("${identity.projectName}"),
             refresh_seconds: ${roles.intervalSeconds},
             enabled: true,
@@ -1201,8 +1270,7 @@ ${records ? `pub fn database_path() -> PathBuf {
 }
 `),
     file("src/platform/mod.rs", String.raw`
-pub mod atomic_file;
-${[...(secrets ? ["pub mod credentials;"] : []), ...(http ? ["pub mod http;"] : []), ...(launches ? ["pub mod launcher;"] : []), "pub mod runtime;", ...(records ? ["pub mod sqlite;"] : []), ...platformMods.map(name => `pub mod ${name};`)].join("\n")}
+${["atomic_file", ...(secrets ? ["credentials"] : []), ...(http ? ["http"] : []), ...(launches ? ["launcher"] : []), "runtime", ...(records ? ["sqlite"] : []), ...platformMods].sort().map(name => `pub mod ${name};`).join("\n")}
 `),
     file("src/platform/atomic_file.rs", String.raw`
 use std::fs;
@@ -1475,6 +1543,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use ${crate}::config::Settings;
 use ${crate}::module::{self, Cache, ModuleOutput, STALE_SUFFIX};
+use ${crate}::module::{Comparison, Threshold};
 
 fn cached(text: &str, updated_unix: u64) -> Cache {
     Cache {
@@ -1521,19 +1590,54 @@ fn fresh_cache_is_shown_and_old_cache_is_marked_stale() {
 }
 
 #[test]
-fn severity_comes_from_stated_thresholds_only_and_stale_wins() {
-    assert_eq!(module::severity_class_with(Some(9.0), None, None), "normal");
+fn severity_comes_from_declared_thresholds_in_both_directions_and_stale_wins() {
+    assert_eq!(module::severity_class_with(Some(9.0), &[]), "normal");
+    let above = [
+        Threshold {
+            class: "warning",
+            comparison: Comparison::Above,
+            value: 1.0,
+        },
+        Threshold {
+            class: "critical",
+            comparison: Comparison::Above,
+            value: 2.0,
+        },
+    ];
     for (value, class) in [
         (None, "normal"),
         (Some(1.0), "normal"),
         (Some(1.5), "warning"),
+        (Some(2.0), "warning"),
         (Some(2.5), "critical"),
     ] {
-        assert_eq!(
-            module::severity_class_with(value, Some(1.0), Some(2.0)),
-            class
-        );
+        assert_eq!(module::severity_class_with(value, &above), class);
     }
+    let below = [
+        Threshold {
+            class: "warning",
+            comparison: Comparison::Below,
+            value: 20.0,
+        },
+        Threshold {
+            class: "critical",
+            comparison: Comparison::Below,
+            value: 10.0,
+        },
+    ];
+    for (value, class) in [
+        (None, "normal"),
+        (Some(20.0), "normal"),
+        (Some(19.9), "warning"),
+        (Some(10.0), "warning"),
+        (Some(9.9), "critical"),
+    ] {
+        assert_eq!(module::severity_class_with(value, &below), class);
+    }
+    assert_eq!(
+        module::severity_class(Some(1.0)),
+        module::severity_class_with(Some(1.0), module::THRESHOLDS)
+    );
     let settings = Settings::default();
     let mut loud = cached("9.9", 1000);
     loud.output.class = String::from("critical");
@@ -1557,6 +1661,43 @@ fn refresh_writes_the_cache_with_the_injected_clock() {
     module::refresh(&path, &settings, 42).expect("refresh");
     let cache = module::read_cache(&path).expect("cache written");
     assert_eq!(cache.updated_unix, 42);
+}
+
+#[test]
+fn a_failed_refresh_rebuilds_a_lost_cache_from_the_stored_record_and_keeps_an_existing_one() {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let path = directory.path().join("cache.json");
+    let settings = Settings::default();
+    let stored = |_: &Settings, _: u64| Some(cached("14:05", 0).output);
+    let failing = |_: &Settings, _: u64| Err(String::from("unreachable"));
+    // No cache and nothing stored: the failed refresh leaves no cache (the empty state).
+    assert!(module::refresh_with(&path, &settings, 10, failing, |_, _| None).is_err());
+    assert!(module::read_cache(&path).is_none());
+    // No cache but a stored record: the cache is rebuilt from it, marked stale.
+    assert!(module::refresh_with(&path, &settings, 10, failing, stored).is_err());
+    let rebuilt = module::read_cache(&path).expect("cache rebuilt");
+    assert_eq!(rebuilt.output.text, "14:05");
+    assert_eq!(rebuilt.output.class, "stale");
+    // An existing cache is kept (marked stale) and the stored record is not consulted.
+    module::refresh_with(
+        &path,
+        &settings,
+        20,
+        |_, _| Ok(cached("15:00", 0).output),
+        stored,
+    )
+    .expect("fresh refresh");
+    assert!(module::refresh_with(&path, &settings, 30, failing, stored).is_err());
+    let kept = module::read_cache(&path).expect("cache kept");
+    assert_eq!(kept.output.text, "15:00");
+    assert_eq!(kept.output.class, "stale");
+    assert_eq!(kept.updated_unix, 20);
+}
+
+#[test]
+fn the_empty_state_is_the_fixed_placeholder() {
+    assert_eq!(Settings::default().text, "${WAYBAR_EMPTY_LABEL}");
+    assert_eq!(module::EMPTY_TEXT, "${WAYBAR_EMPTY_LABEL}");
 }
 
 #[test]
