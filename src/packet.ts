@@ -1,23 +1,11 @@
 import { createHash } from "node:crypto"
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path"
-import { DOCUMENT_NAMES, packetForExport, type CompiledPacket } from "./compiler"
-import { PRESETS, type PresetId, type PresetOptionValue } from "./presets"
+import { DOCUMENT_NAMES, buildPacketManifest, packetForExport, type CompiledPacket, type PacketManifest } from "./compiler"
+import type { PresetId, PresetOptionValue } from "./presets"
 import type { SemanticBlueprint } from "./schema"
 
-export interface PacketManifest {
-  readonly schema: "nodaysidle.cascade.packet.v4"
-  readonly compiler: { readonly version: string }
-  readonly preset: {
-    readonly id: PresetId
-    readonly options: Readonly<Record<string, PresetOptionValue>>
-    readonly capabilities: (typeof PRESETS)[PresetId]["capabilities"]
-  }
-  readonly blueprint: SemanticBlueprint
-  readonly documents: Record<string, { readonly sha256: string }>
-  readonly kit: readonly { readonly path: string; readonly sha256: string }[]
-  readonly validation: { readonly status: "pass" | "fail"; readonly ledger: CompiledPacket["ledger"] }
-}
+export { buildPacketManifest, type PacketManifest } from "./compiler"
 
 export function sha256(bytes: string | Buffer): string {
   return createHash("sha256").update(bytes).digest("hex")
@@ -29,18 +17,6 @@ export function kitFiles(root: string): string[] {
     const path = join(root, entry)
     return statSync(path).isDirectory() ? kitFiles(path) : [path]
   })
-}
-
-export function buildPacketManifest(packet: CompiledPacket, blueprint: SemanticBlueprint, presetId: PresetId, options: Readonly<Record<string, PresetOptionValue>>): PacketManifest {
-  return {
-    schema: "nodaysidle.cascade.packet.v4",
-    compiler: { version: "4.0.0" },
-    preset: { id: presetId, options, capabilities: PRESETS[presetId].capabilities },
-    blueprint,
-    documents: Object.fromEntries(DOCUMENT_NAMES.map(name => [name, { sha256: packet.hashes[name] }])),
-    kit: packet.kit.map(file => ({ path: file.name, sha256: file.sha256 })),
-    validation: { status: packet.exportable ? "pass" : "fail", ledger: packet.ledger },
-  }
 }
 
 export function writePacketAtomic(packet: CompiledPacket, blueprint: SemanticBlueprint, presetId: PresetId, options: Readonly<Record<string, PresetOptionValue>>, outDir: string): string {

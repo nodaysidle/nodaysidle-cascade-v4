@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { describe, expect, it } from "vitest"
+import { exportPacketTo } from "../src/bridge"
 import { DOCUMENT_NAMES, compilePacket } from "../src/compiler"
 import { PRESETS, PRESET_IDS } from "../src/presets"
 import { bareWaybarBlueprint, fixtureCases } from "./fixtures/blueprints"
@@ -133,6 +134,23 @@ describe("v4 deterministic core", () => {
     const packet = await compilePacket(gtk.blueprint, gtk.presetId)
     const everything = [...Object.values(packet.documents), ...packet.kit.map(file => file.content)].join("\n")
     expect(everything).not.toMatch(/Downloads|EXDEV|named_folder/)
+  })
+
+  it("desktop export writes the same blueprint.json manifest the CLI verifies", async () => {
+    const fixture = fixtureCases.find(item => item.presetId === "linux-wayland-gtk4-desktop")!
+    const packet = await compilePacket(fixture.blueprint, fixture.presetId)
+    let sent: { name: string; content: string }[] = []
+    await exportPacketTo("/unused", packet, async <T,>(_command: string, args?: Record<string, unknown>) => {
+      sent = (args as { files: { name: string; content: string }[] }).files
+      return "/unused/out" as T
+    }, { blueprint: fixture.blueprint, presetId: fixture.presetId, options: {} })
+    const manifest = JSON.parse(sent.find(file => file.name === "blueprint.json")!.content)
+    expect(manifest.schema).toBe("nodaysidle.cascade.packet.v4")
+    expect(manifest.preset.id).toBe(fixture.presetId)
+    expect(manifest.blueprint.productName).toBe(fixture.blueprint.productName)
+    expect(Object.keys(manifest.documents)).toEqual([...DOCUMENT_NAMES])
+    expect(manifest.kit.length).toBe(packet.kit.length)
+    expect(manifest.validation.status).toBe("pass")
   })
 })
 

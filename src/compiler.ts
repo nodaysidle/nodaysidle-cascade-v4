@@ -1623,9 +1623,36 @@ export function packetForExport(packet: CompiledPacket): readonly ExportFile[] {
   ]
 }
 
-// The validated provider blueprint, exported as blueprint.json so audits see exactly what was declared.
-export async function blueprintExportFile(blueprint: SemanticBlueprint): Promise<ExportFile> {
-  const content = `${JSON.stringify(blueprint, null, 2)}\n`
+export interface PacketManifest {
+  readonly schema: "nodaysidle.cascade.packet.v4"
+  readonly compiler: { readonly version: string }
+  readonly preset: {
+    readonly id: PresetId
+    readonly options: Readonly<Record<string, PresetOptionValue>>
+    readonly capabilities: (typeof PRESETS)[PresetId]["capabilities"]
+  }
+  readonly blueprint: SemanticBlueprint
+  readonly documents: Record<string, { readonly sha256: string }>
+  readonly kit: readonly { readonly path: string; readonly sha256: string }[]
+  readonly validation: { readonly status: "pass" | "fail"; readonly ledger: CompiledPacket["ledger"] }
+}
+
+// One manifest shape for the CLI and the desktop app, so `cascade verify` accepts either export.
+export function buildPacketManifest(packet: CompiledPacket, blueprint: SemanticBlueprint, presetId: PresetId, options: Readonly<Record<string, PresetOptionValue>>): PacketManifest {
+  return {
+    schema: "nodaysidle.cascade.packet.v4",
+    compiler: { version: "4.0.0" },
+    preset: { id: presetId, options, capabilities: PRESETS[presetId].capabilities },
+    blueprint,
+    documents: Object.fromEntries(DOCUMENT_NAMES.map(name => [name, { sha256: packet.hashes[name]! }])),
+    kit: packet.kit.map(file => ({ path: file.name, sha256: file.sha256 })),
+    validation: { status: packet.exportable ? "pass" : "fail", ledger: packet.ledger },
+  }
+}
+
+// blueprint.json: the validated provider blueprint plus preset, options, and every file hash.
+export async function blueprintExportFile(packet: CompiledPacket, blueprint: SemanticBlueprint, presetId: PresetId, options: Readonly<Record<string, PresetOptionValue>>): Promise<ExportFile> {
+  const content = `${JSON.stringify(buildPacketManifest(packet, blueprint, presetId, options), null, 2)}\n`
   return { name: BLUEPRINT_FILE_NAME, content, sha256: await sha256(content) }
 }
 

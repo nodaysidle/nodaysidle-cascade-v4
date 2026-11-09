@@ -643,7 +643,7 @@ export function mountApp(
 
   async function exportTo(parent: string): Promise<string> {
     if (!state.packet || !canExport(state)) throw { kind: "invalid-packet", classification: "export-locked" }
-    const path = await exportPacketTo(parent, state.packet, undefined, state.saveBlueprint ? state.blueprint : undefined)
+    const path = await exportPacketTo(parent, state.packet, undefined, state.saveBlueprint && state.blueprint ? { blueprint: state.blueprint, presetId: state.form.presetId, options: presetOptionValues() } : undefined)
     dispatch({ type: "export-succeeded", path })
     announce("Packet exported.", "success")
     return path

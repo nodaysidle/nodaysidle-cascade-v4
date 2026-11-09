@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core"
 import { blueprintExportFile, packetForExport, verifyPacketHashes, type CompiledPacket } from "./compiler"
+import type { PresetId, PresetOptionValue } from "./presets"
 import type { SemanticBlueprint } from "./schema"
 import type { JevRequest } from "./jev"
 import type { ProviderRequest } from "./pipeline"
@@ -85,7 +86,7 @@ export async function exportPacketTo(
   parent: string,
   packet: CompiledPacket,
   invokeCommand: CommandInvoker = tauriInvoker,
-  blueprint?: SemanticBlueprint,
+  manifest?: { readonly blueprint: SemanticBlueprint; readonly presetId: PresetId; readonly options: Readonly<Record<string, PresetOptionValue>> },
 ): Promise<string> {
   if (!packet.exportable || !(await verifyPacketHashes(packet))) {
     throw { kind: "invalid-packet", classification: "preview-hash-mismatch" }
@@ -93,6 +94,6 @@ export async function exportPacketTo(
   return invokeCommand<string>("export_packet", {
     parent,
     slug: packet.projectSlug,
-    files: [...packetForExport(packet), ...(blueprint ? [await blueprintExportFile(blueprint)] : [])],
+    files: [...packetForExport(packet), ...(manifest ? [await blueprintExportFile(packet, manifest.blueprint, manifest.presetId, manifest.options)] : [])],
   })
 }
