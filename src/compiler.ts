@@ -4,6 +4,7 @@ import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionC
 import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
+import { refineGtkPhases } from "./gtkContracts"
 import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers, waybarHookSummary, waybarTaskNotes } from "./kits"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
@@ -962,7 +963,13 @@ function storeInterfaceDetail(presetId: PresetId, item: NormalizedBlueprint["dom
   }
   if (presetId === "astro-web") return `Interface: the content collection schema declares exactly the stored fields above; pages read entries through getCollection and no page defines its own schema.`
   const functions = methods({ create: ["insert"], read: ["list", "get"], update: ["update"], delete: ["delete"] })
-  return `Interface: OWN-DATA-STORE defines struct ${record} with the stored fields above (id: i64) and trait ${record}Store with exactly: ${functions.join(", ")}; every function returns Result with a typed error, and feature tasks call the trait and add no other storage access. OWN-DATA-STORE creates the table in its own transactional migration: the kit opens the database at PRAGMA user_version 1 with no tables, so the migration runs when the version is below 2 and sets it to 2; date-time values are stored as i64 epoch milliseconds (UTC) and date values as YYYY-MM-DD text; ordered lists of text lines are stored as a JSON text column; list returns records by descending id unless a feature states another order, with id as the final tie-break.`
+  const kinds = new Set(item.fields.map(field => field.valueType))
+  const storageTypes = [
+    ...(kinds.has("date-time") ? ["date-time values are stored as i64 epoch milliseconds (UTC)"] : []),
+    ...(kinds.has("date") ? ["date values as YYYY-MM-DD text"] : []),
+    ...(kinds.has("text-list") ? ["ordered lists of text lines as a JSON text column"] : []),
+  ].map(part => `; ${part}`).join("")
+  return `Interface: OWN-DATA-STORE defines struct ${record} with the stored fields above (id: i64) and trait ${record}Store with exactly: ${functions.join(", ")}; every function returns Result with a typed error, and feature tasks call the trait and add no other storage access. OWN-DATA-STORE creates the table in its own transactional migration: the kit opens the database at PRAGMA user_version 1 with no tables, so the migration runs when the version is below 2 and sets it to 2${storageTypes}; list returns records by descending id unless a feature states another order, and any stated order breaks ties by descending id.`
 }
 
 function persistencePlacement(
@@ -1024,6 +1031,26 @@ function androidClockFeatureIds(blueprint: NormalizedBlueprint, features: readon
     }
   }
   return ids
+}
+
+// GTK also gives the clock to the features that write a stored date or time, not only to those that read one.
+function gtkClockFeatureIds(blueprint: NormalizedBlueprint, features: readonly GraphFeature[]): Set<string> {
+  const ids = androidClockFeatureIds(blueprint, features)
+  for (const item of blueprint.domainData.filter(entry => entry.fields.some(field => field.valueType === "date" || field.valueType === "date-time"))) {
+    for (const feature of features.filter(candidate => dataFeatureIds(item.name, features).includes(candidate.id))) {
+      if (opsOn(feature, item.name).some(operation => operation === "create" || operation === "update")) ids.add(feature.id)
+    }
+  }
+  return ids
+}
+
+// The detail view of the first main-surface task holds the Edit and Delete controls when a feature declares them.
+function mainDetailControls(features: readonly GraphFeature[]): string {
+  const controls = [
+    ...(features.some(feature => feature.dataOperations.includes("update")) ? ["an Edit button"] : []),
+    ...(features.some(feature => feature.dataOperations.includes("delete")) ? ["a Delete button"] : []),
+  ]
+  return controls.length ? ` and holds ${controls.join(" and ")}, built here as inert controls that the feature task declaring the operation connects` : ""
 }
 
 function buildOwnersAndContracts(
@@ -1465,6 +1492,7 @@ function buildPhases(
   integrationServices: NormalizedBlueprint["externalServices"] = [],
   kitFoundationFiles: readonly string[] = [],
   blueprint?: NormalizedBlueprint,
+  kitPaths: readonly string[] = [],
 ): { owners: GraphOwner[]; phases: GraphPhase[] } {
   const foundationFiles = unique([
     ...preset.sourceLayout(identity),
@@ -1473,6 +1501,8 @@ function buildPhases(
     ...(astroPlan?.seedContentPaths ?? []),
   ])
   const foundationTest = foundationFiles.find(file => /(?:Tests|tests|test)\//.test(file) || /ContractTest/.test(file)) ?? foundationFiles[0]!
+  // A foundation test that the kit already ships is extended, not created.
+  const kitFoundationTest = kitPaths.includes(foundationTest)
   const foundationCriteria = [
     "Every foundation file exists at the exact listed path.",
     `The locked identity is ${identity.bundleId}.`,
@@ -1492,7 +1522,7 @@ function buildPhases(
     focusedTests: [foundationTest],
     acceptanceIds: [],
     acceptanceCriteria: foundationCriteria,
-    prompt: `Create the ${preset.label} foundation with identity ${identity.bundleId}. Use only the locked stack. Kit files are copied before this task (see Working Rules): verify each listed kit file exists unchanged and create every other listed file before any later task modifies it.${preset.id === "astro-web" ? " package.json must define npm run check, test, test:a11y, build, and audit:performance before any later validation gate." : ""} Add a contract test that fails on stack or identity drift.`,
+    prompt: `Create the ${preset.label} foundation with identity ${identity.bundleId}. Use only the locked stack. Kit files are copied before this task (see Working Rules): verify each listed kit file exists unchanged${kitFoundationTest ? ` (except ${foundationTest}, which you extend)` : ""} and create every other listed file before any later task modifies it.${preset.id === "astro-web" ? " package.json must define npm run check, test, test:a11y, build, and audit:performance before any later validation gate." : ""} Add a test to ${foundationTest} that fails on stack or identity drift${kitFoundationTest ? "; keep the kit tests in it passing" : ""}.`,
     validationCommands: preset.foundationValidationCommands
       ?? preset.validationCommands.slice(0, 2).map(command => command(identity)),
   }
@@ -1583,7 +1613,7 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? " You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. Expose three named slots in the shared files: a per-row action area on every list row, an add-entry control, and a detail view for the selected record; later feature tasks build their controls in their own files and mount them into these slots, editing only the shared registration files." : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId}: build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.` : ""}${draft.kind === "packaging" ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => androidClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time from an injected clock (a trait or closure passed in), and write the tests with a fixed clock." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. Expose three named slots in the shared files: a per-row action area on every list row, an add-entry control, and a detail view for the selected record that shows every stored field${mainDetailControls(features)}; later feature tasks build their controls in their own files and mount them into these slots, editing only the shared registration files.` : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId}: build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.` : ""}${draft.kind === "packaging" ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
       validationCommands: draft.kind === "packaging"
         ? [files.focusedTestCommand, ...preset.validationCommands.map(command => command(identity))]
         : [files.focusedTestCommand, ...preset.validationCommands.slice(0, 2).map(command => command(identity))],
@@ -1721,9 +1751,9 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     return [files.implementationFile, files.focusedTestFile]
   }))
   const kitFoundationFiles = kitPaths.filter(path => !preset.sourceLayout(identity).includes(path) && !packagingOwned.has(path) && !featureOwnedFiles.has(path))
-  const built = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices, kitFoundationFiles, blueprint)
+  const built = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices, kitFoundationFiles, blueprint, kitPaths)
   const owners = built.owners
-  const phases = presetId === "tauri2-rust-typescript-desktop" ? refineTauriPhases(built.phases, owners, features, blueprint, kitPaths) : built.phases
+  const phases = presetId === "tauri2-rust-typescript-desktop" ? refineTauriPhases(built.phases, owners, features, blueprint, kitPaths) : presetId === "linux-wayland-gtk4-desktop" ? refineGtkPhases(built.phases, blueprint) : built.phases
   const persistenceEnabled = blueprint.persistenceNeeds.length > 0
   const declaredStorage = new Set(blueprint.persistenceNeeds.map(p => p.storage))
   const kindDecisions = [
