@@ -1,4 +1,4 @@
-import { auditAgentReadinessGraph, auditMechanicalGraph, auditPacket, auditProjectGraph, buildValidationLedger, type AuditEntry, type AuditFailure } from "./audit"
+import { auditGraphContent, auditGraphStructure, auditPacket, buildValidationLedger, type AuditEntry, type AuditFailure } from "./audit"
 import { CATALOG_PATH } from "./astroKit"
 import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, astroStaticContentSite, dataKey, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetOptionValue, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
@@ -2228,7 +2228,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
 }
 
 export function assertGraphReadyForRendering(graph: ProjectGraph): void {
-  const firstFailure = auditProjectGraph(graph)[0]
+  const firstFailure = auditGraphStructure(graph)[0]
   if (firstFailure) throw new GraphConstructionError(firstFailure)
 }
 
@@ -2260,10 +2260,10 @@ export async function compileNormalizedPacket(
 ): Promise<CompiledPacket> {
   onProgress?.("preset-compiler")
   const graph = compileProjectGraph(blueprint, presetId, presetOptions)
+  // compileProjectGraph already refused any structural graph failure; what is left is the provider's own text.
   onProgress?.("mechanical-audit")
-  const mechanicalIssues = auditMechanicalGraph(graph)
   onProgress?.("agent-readiness-audit")
-  const readinessIssues = auditAgentReadinessGraph(graph)
+  const contentIssues = auditGraphContent(graph)
   onProgress?.("rendering")
   const documents = renderPacket(graph)
   const repeatedDocuments = renderPacket(graph)
@@ -2275,7 +2275,7 @@ export async function compileNormalizedPacket(
   const hashes = await hashDocuments(documents)
   const kit = await Promise.all(presetKit(presetId, graph.identity, graph.blueprint, graph.presetOptions)
     .map(async file => ({ name: `kit/${file.path}`, content: file.content, sha256: await sha256(file.content) })))
-  const failures = [...mechanicalIssues, ...readinessIssues, ...renderIssues, ...packetIssues]
+  const failures = [...contentIssues, ...renderIssues, ...packetIssues]
   const ledger = buildValidationLedger(failures)
   return deepFreeze({
     presetId,

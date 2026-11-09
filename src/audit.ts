@@ -94,11 +94,6 @@ function hasDependencyCycle(nodes: readonly { readonly id: string; readonly depe
   return nodes.some(node => visit(node.id))
 }
 
-function contractText(graph: ProjectGraph, id: string): string {
-  const item = graph.contracts.find(contract => contract.id === id)
-  return item ? [item.decision, ...item.details, item.failureBehavior, ...item.recovery].join("\n") : ""
-}
-
 function missingMarkers(text: string, markers: readonly string[]): string[] {
   const normalized = text.toLowerCase()
   return markers.filter(marker => !normalized.includes(marker.toLowerCase()))
@@ -367,13 +362,12 @@ function collectGraphFailures(graph: ProjectGraph): AuditFailure[] {
   for (const feature of graph.features) {
     const text = [feature.behavior, ...feature.inputs, ...feature.outputs, feature.failureBehavior, ...feature.acceptanceOutcomes].join(" ")
     if (/\bdocumented defaults?\b/i.test(text) || (/\binterval elapses\b/i.test(text) && !concreteValue.test(text))) {
-      failures.push(failure("contract.decisions", feature.id, `${feature.id} refers to a default or interval that the blueprint never states.`))
+      failures.push(failure("content.unstated-default", feature.id, `${feature.id} refers to a default or interval that the blueprint never states.`))
     }
   }
 
   const credentialContracts = graph.contracts.filter(contract => contract.kind === "credential" || (["data", "persistence"] as const).includes(contract.kind as "data" | "persistence") && credentialLike(`${contract.id} ${contract.name}`))
   for (const item of credentialContracts) {
-    const text = contractText(graph, item.id)
     if (item.ownerId !== "OWN-CREDENTIAL-VAULT") {
       failures.push(failure("contract.persistence-ownership", item.id, `${item.id} must be owned by OWN-CREDENTIAL-VAULT, not ${item.ownerId}.`))
     }
@@ -397,14 +391,15 @@ function collectGraphFailures(graph: ProjectGraph): AuditFailure[] {
   return failures
 }
 
-const mechanicalGraphRules = new Set(["graph.ids", "graph.references", "graph.cycles", "graph.dependencies", "graph.ownership", "graph.create-before-modify"])
+// Graph rules about the provider's own text: a repair can fix them, so they gate export instead of stopping the compiler.
+const contentGraphRules = new Set(["security.executable-injection", "content.unstated-default"])
 
-export function auditMechanicalGraph(graph: ProjectGraph): AuditFailure[] {
-  return collectGraphFailures(graph).filter(item => mechanicalGraphRules.has(item.rule))
+export function auditGraphStructure(graph: ProjectGraph): AuditFailure[] {
+  return collectGraphFailures(graph).filter(item => !contentGraphRules.has(item.rule))
 }
 
-export function auditAgentReadinessGraph(graph: ProjectGraph): AuditFailure[] {
-  return collectGraphFailures(graph).filter(item => !mechanicalGraphRules.has(item.rule))
+export function auditGraphContent(graph: ProjectGraph): AuditFailure[] {
+  return collectGraphFailures(graph).filter(item => contentGraphRules.has(item.rule))
 }
 
 export function auditProjectGraph(graph: ProjectGraph): AuditFailure[] {
