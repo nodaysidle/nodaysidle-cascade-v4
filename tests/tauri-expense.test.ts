@@ -30,7 +30,7 @@ describe("Tauri expense log: recovery, form ownership, and boilerplate", () => {
 
   it("has the add task build the fields and the choice picker, and the first task only the shell", async () => {
     const tasks = (await compilePacket(expenseLogBlueprint, PRESET, linux)).documents["TASKS.md"]
-    expect(task(tasks, "TASK-04-EXPENSE-LIST")).toContain("You build only the shell, no field input, no Edit button, and no Delete button.")
+    expect(task(tasks, "TASK-04-EXPENSE-LIST")).toContain("You build only the Add button and the empty shell, no field input, no Edit button, and no Delete button")
     const add = task(tasks, "TASK-05-ADD-EXPENSE")
     expect(add).toContain("amount (number), category (text), spent_on (date)")
     expect(add).toContain("opens with its initial option selected (Expense category: Food, Rent, Travel, Other; initially Other)")

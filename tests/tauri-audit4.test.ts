@@ -69,7 +69,7 @@ describe("Tauri audit round 4: idea box", () => {
     const tasks = (await compilePacket(ideaBoxBlueprint, PRESET, linux)).documents["TASKS.md"]
     const list = task(tasks, "TASK-04-IDEA-LIST")
     expect(list).toContain("{ ideas: Ideas[], loadError: string | null, selectedId: number | null, query: string, form:")
-    expect(list).toContain('slots.host("status"), slots.host("add"), slots.host("form"), slots.host("detail"), slots.host("detail-actions"), slots.host("filter")')
+    expect(list).toContain('slots.host("status"), slots.host("form"), slots.host("detail"), slots.host("detail-actions"), slots.host("filter")')
     expect(list).not.toContain("row-actions")
     expect(list).not.toContain("a per-row action area")
     expect(list).toContain("the filter feature writes query")

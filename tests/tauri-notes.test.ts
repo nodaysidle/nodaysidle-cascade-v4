@@ -48,7 +48,7 @@ describe("Tauri habit tracker with a calendar-day record", () => {
     for (const id of ["TASK-05-ADD-HABIT", "TASK-06-EDIT-HABIT-NAME", "TASK-07-MARK-DONE-TODAY"]) {
       expect(task(tasks, id)).toContain("do not show a launch-load error message (that one belongs to TASK-04-HABIT-LIST)")
     }
-    expect(task(tasks, "TASK-04-HABIT-LIST")).toContain("You build only the shell, no field input, no Edit button, and no Delete button.")
+    expect(task(tasks, "TASK-04-HABIT-LIST")).toContain("You build only the Add button and the empty shell, no field input, no Edit button, and no Delete button")
   })
 
   it("names JSON keys, update semantics, and list order in the data contract", async () => {
@@ -96,7 +96,7 @@ describe("Tauri notes app with an editor and a Markdown export", () => {
 
   it("has the first main-surface task own the editor, and the later tasks reuse it", async () => {
     const tasks = (await compilePacket(quickNotesBlueprint, PRESET, linux)).documents["TASKS.md"]
-    expect(task(tasks, "TASK-04-NOTE-LIST")).toContain("Your add-entry control sets form to \"add\" with every input empty")
+    expect(task(tasks, "TASK-04-NOTE-LIST")).toContain("sets form to \"add\"; the add task's inputs empty themselves")
     for (const id of ["TASK-05-ADD-NOTE", "TASK-06-EDIT-NOTE"]) expect(task(tasks, id)).toContain("do not build another detail view or entry-form shell")
   })
 
