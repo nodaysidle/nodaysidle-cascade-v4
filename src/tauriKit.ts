@@ -844,7 +844,7 @@ Exec=${wayland ? "env GDK_BACKEND=wayland " : ""}$INSTALL_DIR/bin/$SLUG.AppImage
 Icon=$SLUG
 Terminal=false
 Type=Application
-Categories=Development;
+Categories=Utility;
 StartupWMClass=${identity.bundleId}
 DESKTOP
 echo "Installed $APP_NAME under $INSTALL_DIR"
