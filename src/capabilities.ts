@@ -1,0 +1,49 @@
+import type { PresetContract } from "./presets"
+import type { SemanticBlueprint, SemanticIssue } from "./schema"
+
+// The preset declares what the platform can express. The blueprint declares what the product
+// needs. This is the gate that stops a Wayland packet from promising macOS-only automation.
+export function auditCapabilities(blueprint: SemanticBlueprint, preset: PresetContract): SemanticIssue[] {
+  const issues: SemanticIssue[] = []
+  const supportedSurfaces = new Set(preset.capabilities.surfaces)
+  blueprint.features.forEach((feature, index) => {
+    const path = `features[${index}]`
+    if (feature.usesTray && !preset.capabilities.tray) {
+      issues.push({ path: `${path}.usesTray`, rule: "capability.tray", message: `Feature '${feature.name}' needs a tray, but ${preset.label} has no tray surface.` })
+    }
+    if (feature.clipboardWatch && !preset.capabilities.clipboardWatch) {
+      issues.push({ path: `${path}.clipboardWatch`, rule: "capability.clipboard-watch", message: `Feature '${feature.name}' watches the clipboard in the background, which ${preset.label} cannot do on this platform.` })
+    }
+    if (feature.usesPlatformNeeds.includes("audio-input") && !preset.capabilities.microphone) {
+      issues.push({ path: `${path}.usesPlatformNeeds`, rule: "capability.microphone", message: `Feature '${feature.name}' needs microphone capture, which ${preset.label} does not provide.` })
+    }
+    if (feature.usesPlatformNeeds.includes("camera") && !preset.capabilities.camera) {
+      issues.push({ path: `${path}.usesPlatformNeeds`, rule: "capability.camera", message: `Feature '${feature.name}' needs camera capture, which ${preset.label} does not provide.` })
+    }
+    if (feature.usesPlatformNeeds.includes("location") && !preset.capabilities.location) {
+      issues.push({ path: `${path}.usesPlatformNeeds`, rule: "capability.location", message: `Feature '${feature.name}' needs location, which ${preset.label} does not provide.` })
+    }
+    if (feature.usesPlatformNeeds.includes("accessibility-control") && !preset.capabilities.accessibilityControl) {
+      issues.push({ path: `${path}.usesPlatformNeeds`, rule: "capability.accessibility-control", message: `Feature '${feature.name}' needs to control another application, which ${preset.label} cannot do.` })
+    }
+    if (feature.usesPlatformNeeds.includes("global-hotkey") && preset.capabilities.globalShortcuts === "none") {
+      issues.push({ path: `${path}.usesPlatformNeeds`, rule: "capability.global-shortcut", message: `Feature '${feature.name}' needs a global shortcut, which ${preset.label} cannot register.` })
+    }
+    if (feature.usesPlatformNeeds.includes("notifications") && !preset.capabilities.notifications) {
+      issues.push({ path: `${path}.usesPlatformNeeds`, rule: "capability.notifications", message: `Feature '${feature.name}' needs notifications, which ${preset.label} does not provide.` })
+    }
+    if (feature.usesPlatformNeeds.includes("background-execution") && !preset.capabilities.background) {
+      issues.push({ path: `${path}.usesPlatformNeeds`, rule: "capability.background", message: `Feature '${feature.name}' needs background execution, which ${preset.label} does not provide.` })
+    }
+    if (feature.usesPlatformNeeds.includes("launch-at-login") && !preset.capabilities.background) {
+      issues.push({ path: `${path}.usesPlatformNeeds`, rule: "capability.launch-at-login", message: `Feature '${feature.name}' needs launch at login, which ${preset.label} does not provide.` })
+    }
+    if (feature.userFileAccess !== "none" && preset.capabilities.fileAccess === "none") {
+      issues.push({ path: `${path}.userFileAccess`, rule: "capability.file-access", message: `Feature '${feature.name}' opens or saves a user file, but ${preset.label} has no file picker.` })
+    }
+    if (!supportedSurfaces.has(feature.surface)) {
+      issues.push({ path: `${path}.surface`, rule: "capability.surface", message: `Feature '${feature.name}' uses surface ${feature.surface}, which ${preset.label} does not render.` })
+    }
+  })
+  return issues
+}
