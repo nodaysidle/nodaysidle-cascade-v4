@@ -253,10 +253,17 @@ function renderTRD(graph: ProjectGraph): string {
   ].join("\n\n") + "\n"
 }
 
+// The foundation test that the kit already ships is extended by the foundation task, so it is a file to modify.
+function foundationTestToExtend(task: GraphTask | undefined, kitPaths: readonly string[]): string {
+  const test = task?.focusedTests[0]
+  return task?.id === "TASK-01-FOUNDATION" && test && kitPaths.includes(test) ? test : ""
+}
+
 function renderTask(task: GraphTask, kitPaths: readonly string[] = []): string {
   // The foundation task does not create a file the kit already copied; it verifies it.
-  const foundationKit = task.id === "TASK-01-FOUNDATION" ? task.filesToCreate.filter(file => kitPaths.includes(file)) : []
-  const created = task.filesToCreate.filter(file => !foundationKit.includes(file))
+  const extended = foundationTestToExtend(task, kitPaths)
+  const foundationKit = task.id === "TASK-01-FOUNDATION" ? task.filesToCreate.filter(file => kitPaths.includes(file) && file !== extended) : []
+  const created = task.filesToCreate.filter(file => !foundationKit.includes(file) && file !== extended)
   return [
     `### ${task.id} — ${task.title}`,
     "",
@@ -268,7 +275,7 @@ function renderTask(task: GraphTask, kitPaths: readonly string[] = []): string {
     `- Acceptance IDs: ${task.acceptanceIds.join(", ") || "none"}`,
     `- Files to create: ${created.join("; ") || "none"}`,
     ...(foundationKit.length ? [`- Files to verify (kit-copied before this task): ${foundationKit.join("; ")}`] : []),
-    `- Files to modify: ${task.filesToModify.join("; ") || "none"}`,
+    `- Files to modify: ${[...(extended ? [extended] : []), ...task.filesToModify].join("; ") || "none"}`,
     `- Focused tests: ${task.focusedTests.join("; ")}`,
     `- Acceptance criteria: ${task.acceptanceCriteria.join("; ")}`,
     `- Task prompt: ${task.prompt}`,
@@ -329,7 +336,7 @@ function renderAGENTS(graph: ProjectGraph): string {
     section("Lifecycle Rules", bullets(graph.lifecycleRules)),
     section("Accessibility Rules", bullets(graph.accessibilityRules)),
     section("Owner Map", bullets([
-      `OWN-FOUNDATION — Foundation — ${graph.foundationFiles.join("; ")} — ${graph.phases[0]?.tasks[0]?.focusedTests[0] ?? "contract tests"} — create PHASE-01-FOUNDATION — modify none`,
+      `OWN-FOUNDATION — Foundation — ${graph.foundationFiles.join("; ")} — ${graph.phases[0]?.tasks[0]?.focusedTests[0] ?? "contract tests"} — create PHASE-01-FOUNDATION — modify ${foundationTestToExtend(graph.phases[0]?.tasks[0], graph.kitPaths) || "none"}`,
       ...graph.owners.map(owner => `${owner.id} — ${owner.name} — ${owner.implementationFile} — ${owner.focusedTestFile} — create ${owner.createPhaseId} — later phases that edit this owner's own file: ${owner.modifyPhaseIds.join(", ") || "none"}`),
       ...sharedModifyLines(graph),
     ])),

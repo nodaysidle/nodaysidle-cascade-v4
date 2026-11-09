@@ -23,7 +23,10 @@ function crateName(slug: string): string {
 function shortSummary(text: string): string {
   const sentence = text.split(/(?<=[.!?])\s/)[0]!.replace(/[.!?]$/, "")
   if (sentence.length <= 80) return sentence
-  return sentence.slice(0, 80).replace(/\s+\S*$/, "")
+  // Prefer the last clause that fits, then drop any dangling article or preposition, so the summary never ends mid-phrase.
+  const clause = sentence.slice(0, 80).match(/^(.*\S)\s*[,;:]/s)
+  if (clause) return clause[1]!
+  return sentence.slice(0, 80).replace(/\s+\S*$/, "").replace(/(\s+(?:a|an|the|of|to|for|with|and|or|that|who|which|in|on|by|never))+$/i, "")
 }
 
 function xmlEscape(value: string): string {
@@ -129,6 +132,14 @@ use adw::prelude::*;
 
 use crate::state::AppState;
 
+/// The production owners, built without a display so a test can construct them. Each owner task adds its owner here.
+#[derive(Default)]
+pub struct Services {}
+
+pub fn build_services(_data_dir: &std::path::Path) -> Services {
+    Services::default()
+}
+
 pub fn build_window(application: &adw::Application) -> adw::ApplicationWindow {
     let window = adw::ApplicationWindow::builder()
         .application(application)
@@ -149,6 +160,7 @@ pub fn build_window(application: &adw::Application) -> adw::ApplicationWindow {
     toast.set_child(Some(&toolbar));
     window.set_content(Some(&toast));
     let _state = AppState::default();
+    let _services = build_services(&crate::paths::data_dir());
     window
 }
 `),

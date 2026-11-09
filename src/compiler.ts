@@ -1111,9 +1111,9 @@ function androidStampFeatureIds(blueprint: NormalizedBlueprint, features: readon
   return ids
 }
 
-// GTK also gives the clock to the features that write a stored date or time, not only to those that read one.
+// GTK gives the clock to the features that write a stored date or time and to the scheduled ones; a feature that only reads and shows a stored date compares nothing with now.
 function gtkClockFeatureIds(blueprint: NormalizedBlueprint, features: readonly GraphFeature[]): Set<string> {
-  const ids = androidClockFeatureIds(blueprint, features)
+  const ids = new Set(features.filter(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null || feature.runsAtField !== null).map(feature => feature.id))
   for (const item of blueprint.domainData.filter(entry => entry.fields.some(field => field.valueType === "date" || field.valueType === "date-time"))) {
     for (const feature of features.filter(candidate => dataFeatureIds(item.name, features).includes(candidate.id))) {
       if (opsOn(feature, item.name).some(operation => operation === "create" || operation === "update")) ids.add(feature.id)
@@ -1713,7 +1713,7 @@ function buildPhases(
     // Android exposes a detail view (and an edit that reuses the add form) only when a feature declares the item-page surface.
     // A filter slot is exposed only when a feature other than the first main-surface one narrows or reorders the list (reads only, user-started).
     const filterSlot = features.some(feature => feature.ownerId !== firstMainOwnerId && feature.surface === "main" && feature.invokedBy === "user-control" && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read"))
-    const detailView = preset.id === "android-kotlin-compose" ? features.some(feature => feature.surface === "item-page") : features.some(feature => feature.editsRecords || feature.dataOperations.includes("delete"))
+    const detailView = preset.id === "android-kotlin-compose" || preset.id === "linux-wayland-gtk4-desktop" ? features.some(feature => feature.surface === "item-page") : features.some(feature => feature.editsRecords || feature.dataOperations.includes("delete"))
     const androidExtras = preset.id === "android-kotlin-compose" && blueprint
       ? androidTaskExtras({
           kind: draft.kind,
@@ -1973,7 +1973,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     features,
     acceptance,
     requirements,
-    contracts: presetId === "linux-wayland-gtk4-desktop" ? refineGtkContracts(contracts) : contracts,
+    contracts: presetId === "linux-wayland-gtk4-desktop" ? refineGtkContracts(contracts, blueprint) : contracts,
     owners,
     phases,
     foundationFiles: unique([...preset.sourceLayout(identity), ...kitFoundationFiles, ...(astroPlan?.foundationExtras ?? []), ...(astroPlan?.seedContentPaths ?? [])]),

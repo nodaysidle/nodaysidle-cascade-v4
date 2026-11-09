@@ -1,4 +1,4 @@
-import { allocateStableIds, type GraphContract, type GraphPhase, type NormalizedBlueprint } from "./compiler"
+import { allocateStableIds, pascal, slug, type GraphContract, type GraphPhase, type NormalizedBlueprint } from "./compiler"
 import { gtkKitFlags, rustKitHelpers } from "./kits"
 import type { PresetContract } from "./presets"
 
@@ -55,7 +55,11 @@ export function gtkSpecialize(preset: PresetContract, blueprint: NormalizedBluep
       ...(flags.background ? ["Use a systemd user unit only for a declared background feature; no daemon starts otherwise."] : []),
       "Reopen the main window from the launcher; there is no Dock or menu-bar concept.",
     ],
-    wiringRules: preset.wiringRules.map(rule => rule.startsWith("Kit helpers that no contract names")
+    wiringRules: preset.wiringRules.map(rule => rule.startsWith("The packaging focused test constructs")
+      ? "src/app.rs exposes the display-free `build_services(data_dir: &Path) -> Services` (the kit ships it with an empty Services struct; each owner task adds its owner to Services there) and build_window consumes it. The packaging focused test calls build_services with a temporary directory, never build_window, and asserts that every injected platform dependency in Services is the concrete production type."
+      : rule.includes("an empty list shows one centered message saying how to fill it;")
+        ? rule.replace("an empty list shows one centered message saying how to fill it;", "an empty list shows one centered message, which is the exact empty-list text an acceptance criterion gives and otherwise says how to fill the list;")
+        : rule).map(rule => rule.startsWith("Kit helpers that no contract names")
       ? `${secrets || http ? "Kit helpers that no contract names are optional; do not call a credential or HTTP helper only to satisfy the wiring gate. " : ""}Every owner named in TRD.md must be reachable from the production composition root.`
       : flags.settings ? rule : rule.replace("settings are grouped rows with the label on the left and the control on the right, a switch or checkbox on the same line as its label, and a short note under each group; ", "")),
   }
@@ -96,14 +100,19 @@ export function gtkStoreInterface(item: NormalizedBlueprint["domainData"][number
     ...(operations.includes("update") ? [`update(&self, record: &${record}) returns Ok with the stored ${record}`] : []),
     ...(operations.includes("delete") ? ["delete(&self, id: i64) returns Ok with no value"] : []),
   ]
-  return `Interface: OWN-DATA-STORE defines struct ${record} (id: i64, ${rustFields}), struct New${record} (the same fields without id), the one error enum StoreError that every store trait shares (thiserror; variants Sqlite, NotFound(i64), Closed), and trait ${record}Store with exactly these functions, each returning Err(StoreError) on failure: ${signatures.join("; ")}${operations.includes("update") || operations.includes("delete") ? "; update and delete return StoreError::NotFound for an id that is not stored" : ""}. DataStore in src/platform/datastore.rs implements every store trait over one Database held in a std::sync::Mutex around an Option of Database, is created by DataStore::open(path: &Path) returning Ok with the DataStore or Err(StoreError), and has close(&self) that takes the Database out of the mutex and drops it; every later store call returns StoreError::Closed. Feature tasks call the trait and add no other storage access. DataStore creates table ${base} (${columns}) in its own transactional migration: the kit opens the database at PRAGMA user_version 1 with no tables, so the migration runs when the version is below 2 and sets it to 2; list returns records by descending id unless a feature states another order, and any stated order breaks ties by descending id.`
+  return `Interface: OWN-DATA-STORE defines struct ${record} (id: i64, ${rustFields}), struct New${record} (the same fields without id), the one error enum StoreError that every store trait shares (thiserror; variants Sqlite, NotFound(i64), Closed), and trait ${record}Store with exactly these functions, each returning Err(StoreError) on failure: ${signatures.join("; ")}${operations.includes("update") || operations.includes("delete") ? `; ${["update", "delete"].filter(operation => operations.includes(operation)).join(" and ")} return${operations.includes("update") && operations.includes("delete") ? "" : "s"} StoreError::NotFound for an id that is not stored` : ""}. DataStore in src/platform/datastore.rs implements every store trait over one Database held in a std::sync::Mutex around an Option of Database, is created by DataStore::open(path: &Path) returning Ok with the DataStore or Err(StoreError), and has close(&self) that takes the Database out of the mutex and drops it; every later store call returns StoreError::Closed. Feature tasks call the trait and add no other storage access. DataStore creates table ${base} (${columns}) in its own transactional migration: the kit opens the database at PRAGMA user_version 1 with no tables, so the migration runs when the version is below 2 and sets it to 2; list returns records by descending id unless a feature states another order, and any stated order breaks ties by descending id.`
 }
 
 // The generic write-failure sentences name no surface; on GTK the owning feature task shows a toast.
-export function refineGtkContracts(contracts: readonly GraphContract[]): GraphContract[] {
+export function refineGtkContracts(contracts: readonly GraphContract[], blueprint: NormalizedBlueprint): GraphContract[] {
+  const has = (operation: string, edits?: boolean) => blueprint.features.some(feature => feature.dataOperations.includes(operation as never) && (edits === undefined || feature.editsRecords === edits))
+  const phrase = (names: string[]) => names.join(" or ")
+  const dialog = phrase([...(has("create") ? ["add"] : []), ...(blueprint.features.some(feature => feature.editsRecords) ? ["edit"] : [])])
+  const rows = phrase([...(has("delete") ? ["removal"] : []), ...(has("update", false) ? ["mark"] : [])])
+  const kept = [...(dialog ? [`a failed ${dialog} leaves its dialog open`] : []), ...(rows ? [`a failed ${rows} leaves the row in the list`] : [])].join(", and ")
   const swap = (text: string): string => text
-    .replace("A failed write leaves the prior durable state valid and the new state visibly unsaved.", `A failed write leaves the prior durable state valid and the owning feature task shows an AdwToast reading "${SAVE_TOAST}" ("${REMOVE_TOAST}" for a removal).`)
-    .replace("Preserve the last valid record and expose a bounded correction or rebuild path.", "Keep the last valid record; a failed add or edit leaves its dialog open, and a failed removal or mark leaves the row in the list.")
+    .replace("A failed write leaves the prior durable state valid and the new state visibly unsaved.", `A failed write leaves the prior durable state valid and the owning feature task shows an AdwToast reading "${SAVE_TOAST}"${has("delete") ? ` ("${REMOVE_TOAST}" for a removal)` : ""}; that toast is the only message for a store failure.`)
+    .replace("Preserve the last valid record and expose a bounded correction or rebuild path.", `Keep the last valid record${kept ? `; ${kept}` : ""}.`)
     .replace("Retry through the same atomic boundary without duplicating the record.", "Retry only from an explicit user action.")
   return contracts.map(item => item.kind === "data" || item.kind === "persistence" ? { ...item, failureBehavior: swap(item.failureBehavior), recovery: item.recovery.map(swap) } : item)
 }
@@ -116,17 +125,32 @@ export function refineGtkPhases(phases: readonly GraphPhase[], blueprint: Normal
   const operations = new Set(blueprint.features.flatMap(feature => feature.dataOperations))
   const featureIds = allocateStableIds("FEAT", blueprint.features.map(feature => feature.name))
   const byId = new Map(blueprint.features.map((feature, index) => [featureIds[index]!, feature]))
-  // A bound that depends on today's date or year needs the date as an argument, so the validator is testable at its limit.
+  // A bound that depends on today's date (only a stored date or date-time can have one) needs the date as an argument, so the validator is testable at its limit.
   const writesNumeric = (feature: NormalizedBlueprint["features"][number]) => blueprint.domainData.some(item =>
-    item.fields.some(field => field.valueType === "number" || field.valueType === "whole-number" || field.valueType === "date")
+    item.fields.some(field => field.valueType === "number" || field.valueType === "whole-number" || field.valueType === "date" || field.valueType === "date-time")
     && (feature.operationsByData[referenceKey(item.name)] ?? []).some(operation => operation === "create" || operation === "update"))
-  const slotNote = [
-    ...(operations.has("create") ? ["the add-entry control is an Add button in the AdwHeaderBar that opens an empty AdwDialog shell (title, Cancel, a content area and a Save slot) that the add task fills with its form and closes on a successful save"] : []),
-    "the status area is one label or AdwStatusPage under the filter area that shows the empty-state, no-match and load-error messages, one at a time",
-    "each list row is an AdwActionRow whose suffix box is the per-row action area",
-    "the filter area is a GtkSearchEntry above the list",
-    ...(operations.has("update") || operations.has("delete") ? ["activating a row pushes the detail page, an AdwNavigationPage on an AdwNavigationView that sits inside the ToastOverlay, so Back returns to the list; the feature tasks connect the buttons on it"] : []),
-  ].join("; ")
+  // The slots follow the first main-surface prompt, which the compiler built from the declared operations: a slot it does not expose is not described here.
+  const slotNote = (prompt: string): string => {
+    const detail = prompt.includes("a detail view for the selected record")
+    const filter = prompt.includes("a filter area above the list")
+    return [
+      ...(operations.has("create") ? ["the add-entry control is an Add button in the AdwHeaderBar that opens an empty AdwDialog shell (title, Cancel, a content area and a Save slot) that the add task fills with its form and closes on a successful save"] : []),
+      `the status area is one label or AdwStatusPage${filter ? " under the filter area" : " above the list"} that shows the ${filter ? "empty-state, no-match" : "empty-state"} and load-error messages, one at a time`,
+      "each list row is an AdwActionRow whose suffix box is the per-row action area",
+      ...(filter ? ["the filter area is a GtkSearchEntry above the list"] : []),
+      ...(detail ? ["activating a row pushes the detail page, an AdwNavigationPage on an AdwNavigationView that sits inside the ToastOverlay, so Back returns to the list; the feature tasks connect the buttons on it"] : []),
+      ...(!detail && (operations.has("update") || operations.has("delete")) ? ["there is no detail page and no AdwNavigationView: every row control lives in the per-row action area"] : []),
+    ].join("; ")
+  }
+  // A text or number the user types is the &str of one GtkEntry (never a GtkSpinButton, which clamps out-of-range input before validate sees it).
+  const validateNote = (owned: readonly NormalizedBlueprint["features"][number][]): string[] => {
+    const item = blueprint.domainData.find(entry => owned.some(feature => (feature.operationsByData[referenceKey(entry.name)] ?? []).includes("create")))
+    if (!item) return []
+    const names = item.fields.map(field => field.name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value")
+    const numeric = item.fields.some(field => field.valueType === "number" || field.valueType === "whole-number")
+    return [`The validate function is validate_${slug(item.name).replaceAll("-", "_")}(${names.map(name => `${name}: &str`).join(", ")}) returning Ok with New${pascal(item.name)} or Err(ValidationError), where ValidationError is an enum in your file with one variant per rejected rule; it trims and parses its text arguments${numeric ? " (a number is typed in a GtkEntry and parsed by validate, never set through a GtkSpinButton range, so an out-of-range value reaches validate and disables Save)" : ""}, and an edit task calls the same function.`]
+  }
+  const editForm = " If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them; a single mark or toggle action needs no form."
   return phases.map(phase => ({
     ...phase,
     tasks: phase.tasks.map(task => {
@@ -135,13 +159,17 @@ export function refineGtkPhases(phases: readonly GraphPhase[], blueprint: Normal
       const firstMain = task.prompt.includes("You are the first main-surface task")
       const notes = [
         ...(records && task.ownerIds[0] === "OWN-DATA-STORE" ? ["The kit's Database::migrate already sets user_version to 1 and creates no table: run the table migration through Database::connection() inside one transaction (unchecked_transaction on the shared connection) when user_version is below 2 and set it to 2. Do not edit src/platform/sqlite.rs."] : []),
-        ...(firstMain ? [`GTK shape of the slots: ${slotNote}.`] : []),
-        ...(!firstMain && owned.some(feature => feature.dataOperations.includes("create")) ? ["Build the entry form (one input per field the user supplies; a field the app sets itself, such as a flag with a fixed starting value, is not an input) and its display-free validate function in your own file and export both; the dialog shell from the first main-surface task only hosts the form, and an edit task reuses them."] : []),
-        ...(owned.some(writesNumeric) ? [`A validation bound that depends on today's date or year is a parameter of the validate function (for example current_year: i32), never read inside it; src/app.rs supplies it from ${clock ? "the Clock trait" : "glib::DateTime::now_local()"} and tests pass fixed values at and beyond the bound.`] : []),
-        ...(!firstMain && owned.some(feature => feature.surface === "main" && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read")) ? ["Narrow the list through the filter area, and show the no-match message in the shared status area, never in a second message widget."] : []),
-        ...(writes.length ? [`Write failure: when the store returns StoreError, show an AdwToast on the window's ToastOverlay reading "${writes.every(operation => operation === "delete") ? REMOVE_TOAST : SAVE_TOAST}"; ${[...(writes.includes("create") ? ["a failed add keeps its dialog open with the entered values"] : []), ...(writes.includes("update") ? ["a failed edit keeps its form open and a failed mark leaves the row unchanged"] : []), ...(writes.includes("delete") ? ["a failed removal leaves the row in the list"] : [])].join(", ")}.`] : []),
+        ...(firstMain ? [`GTK shape of the slots: ${slotNote(task.prompt)}.`, `Empty state: you own the empty-list message of the main screen. Show it in the status area whenever the loaded list has no records, chosen by a display-free function that your tests assert on. Its text is the exact empty-list text that an acceptance criterion gives; when none does, it is one sentence that ${operations.has("create") ? "names the Add button" : "says how the list gets its records"}.`] : []),
+        ...(!firstMain && owned.some(feature => feature.dataOperations.includes("create")) ? ["Build the entry form (one input per field the user supplies; a field the app sets itself, such as a flag with a fixed starting value, is not an input) and its display-free validate function in your own file and export both; the dialog shell from the first main-surface task only hosts the form, and an edit task reuses them.", ...validateNote(owned.filter(feature => feature.dataOperations.includes("create")))] : []),
+        ...(owned.some(writesNumeric) ? [`Only when an acceptance criterion states a bound that depends on today's date or year, that bound is a parameter of the validate function (for example current_year: i32), never read inside it; a fixed range written as literals stays a constant in validate and adds no parameter; src/app.rs supplies it from ${clock ? "the Clock trait" : "glib::DateTime::now_local()"} and tests pass fixed values at and beyond the bound.`] : []),
+        ...(!firstMain && owned.some(feature => feature.surface === "main" && feature.invokedBy === "user-control" && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read")) ? ["Narrow the list through the filter area, and show the no-match message in the shared status area, never in a second message widget; the clear-search button sits in the status area beside the no-match text. The first main-surface task's load returns a Result: you render its Err as the load-error message in that status area."] : []),
+        ...(writes.length ? [`Write failure: when the store returns StoreError, show an AdwToast on the window's ToastOverlay reading "${writes.every(operation => operation === "delete") ? REMOVE_TOAST : SAVE_TOAST}"; ${[...(writes.includes("create") ? ["a failed add keeps its dialog open with the entered values"] : []), ...(writes.includes("update") ? [owned.some(feature => feature.editsRecords) ? "a failed edit keeps its form open" : "a failed mark leaves the row unchanged"] : []), ...(writes.includes("delete") ? ["a failed removal leaves the row in the list"] : [])].join(", ")}.`] : []),
       ]
-      return notes.length ? { ...task, prompt: `${task.prompt} ${notes.join(" ")}` } : task
+      // A mark or toggle has no form, so the edit-form reuse sentence does not apply; the status message of a read-only list follows the exposed filter slot.
+      const base = task.prompt
+        .replace(editForm, owned.some(feature => feature.editsRecords) ? editForm : "")
+        .replace(" (empty state, no match, errors)", task.prompt.includes("a filter area above the list") ? " (empty state, no match, errors)" : " (empty state, errors)")
+      return notes.length ? { ...task, prompt: `${base} ${notes.join(" ")}` } : { ...task, prompt: base }
     }),
   }))
 }

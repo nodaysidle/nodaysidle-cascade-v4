@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { compilePacket } from "../src/compiler"
 import type { SemanticBlueprint } from "../src/schema"
 import { giftIdeasBlueprint, wineCellarBlueprint } from "./fixtures/gtkProducts"
-import { snippetLibraryBlueprint } from "./fixtures/gtkRecords"
+import { ops, snippetLibraryBlueprint } from "./fixtures/gtkRecords"
 
 const PRESET = "linux-wayland-gtk4-desktop"
 
@@ -51,24 +51,36 @@ describe("GTK packet for an offline records app with no settings", () => {
     expect(packet.documents["TRD.md"]).toContain("systemd user unit")
   })
 
-  it("gives the first main-surface task a detail view with Edit and Delete, and hands each control to its feature task", async () => {
+  it("exposes a detail page only when a feature declares the item-page surface, else Edit and Delete live in the per-row action area", async () => {
     const { documents } = await compilePacket(snippetLibraryBlueprint, PRESET)
     const list = task(documents["TASKS.md"], "TASK-04-SNIPPET-LIST")
-    expect(list).toContain("shows every stored field and holds an Edit button and a Delete button")
-    expect(list).toContain("AdwNavigationPage")
+    expect(list).not.toMatch(/a detail view|pushes the detail page|AdwNavigationPage|AdwNavigationView that sits/)
+    expect(list).toContain("there is no detail page and no AdwNavigationView")
+    expect(list).toContain("a per-row action area")
     expect(task(documents["TASKS.md"], "TASK-07-EDIT-SNIPPET")).toContain("mount into the slots exposed by TASK-04")
+    expect(task(documents["TASKS.md"], "TASK-07-EDIT-SNIPPET")).toContain("the per-row action area")
+
+    const withDetail = structuredClone(snippetLibraryBlueprint)
+    withDetail.features.push({ ...withDetail.features[0]!, name: "Snippet page", surface: "item-page", dataOperations: ops("Snippets", "read") })
+    withDetail.ideaCoverage = [{ sentence: 1, features: withDetail.features.map(item => item.name), outsideFeatures: "none" }]
+    const detail = await compilePacket(withDetail, PRESET)
+    expect(detail.failures).toEqual([])
+    const detailList = task(detail.documents["TASKS.md"], "TASK-04-SNIPPET-LIST")
+    expect(detailList).toContain("AdwNavigationPage")
+    expect(detailList).not.toContain("there is no detail page")
 
     const readOnly = structuredClone(snippetLibraryBlueprint)
     readOnly.features = readOnly.features.filter(feature => feature.name === "Snippet list")
     readOnly.ideaCoverage = [{ sentence: 1, features: ["Snippet list"], outsideFeatures: "none" }]
     const plain = await compilePacket(readOnly, PRESET)
-    expect(task(plain.documents["TASKS.md"], "TASK-04-SNIPPET-LIST")).not.toMatch(/Edit button|Delete button/)
+    expect(task(plain.documents["TASKS.md"], "TASK-04-SNIPPET-LIST")).not.toMatch(/Edit button|Delete button|no detail page/)
   })
 
   it("injects the kit Clock into every feature that writes a stored date-time", async () => {
     const packet = await compilePacket(snippetLibraryBlueprint, PRESET)
     const tasks = packet.documents["TASKS.md"]
-    for (const id of ["TASK-04-SNIPPET-LIST", "TASK-05-ADD-SNIPPET", "TASK-07-EDIT-SNIPPET"]) expect(task(tasks, id), id).toContain("Clock trait in src/platform/clock.rs")
+    for (const id of ["TASK-05-ADD-SNIPPET", "TASK-07-EDIT-SNIPPET"]) expect(task(tasks, id), id).toContain("Clock trait in src/platform/clock.rs")
+    expect(task(tasks, "TASK-04-SNIPPET-LIST")).not.toContain("Time rule")
     expect(task(tasks, "TASK-06-DELETE-SNIPPET")).not.toContain("Time rule")
     expect(kitFile(packet, "src/platform/clock.rs")).toContain("fn now_millis")
     expect(kitFile(packet, "src/platform/mod.rs")).toContain("pub mod clock;")
@@ -111,7 +123,9 @@ describe("GTK packet precision for search, forms, store interface and lifecycle"
     expect(list).toContain("an empty AdwDialog shell")
     expect(list).toContain("the status area is one label or AdwStatusPage")
     expect(list).toContain("the filter area is a GtkSearchEntry")
-    expect(list).toContain("activating a row pushes the detail page")
+    expect(list).not.toContain("activating a row pushes the detail page")
+    expect(list).toContain("Empty state: you own the empty-list message")
+    expect(list).toContain("names the Add button")
     expect(task(documents["TASKS.md"], "TASK-05-ADD-BOTTLE")).toContain("validate function in your own file and export both")
     const edit = task(documents["TASKS.md"], "TASK-06-EDIT-BOTTLE")
     expect(edit).toContain("reuse the form fields and validation that the add task exports")
@@ -156,9 +170,59 @@ describe("GTK packet precision for search, forms, store interface and lifecycle"
   it("gives a mark-only product no form reuse, and no current-year parameter without a numeric field", async () => {
     const documents = await compile(giftIdeasBlueprint)
     const mark = task(documents["TASKS.md"], "TASK-06-MARK-IDEA-BOUGHT")
-    expect(mark).toContain("a single mark or toggle action needs no form")
+    expect(mark).not.toContain("reuse the form fields")
+    expect(mark).not.toContain("a failed edit")
     expect(mark).toContain("a failed mark leaves the row unchanged")
     expect(documents["TASKS.md"]).not.toContain("current_year")
     expect(task(documents["TASKS.md"], "TASK-04-UNBOUGHT-IDEA-LIST")).not.toContain("a detail view for the selected record")
+  })
+
+  it("exposes no filter slot, no no-match status and no filter-area wording when no later feature filters the list", async () => {
+    const documents = await compile(giftIdeasBlueprint)
+    const list = task(documents["TASKS.md"], "TASK-04-UNBOUGHT-IDEA-LIST")
+    expect(list).not.toMatch(/filter area|GtkSearchEntry|no match/)
+    expect(list).toContain("(empty state, errors)")
+    expect(list).toContain("the status area is one label or AdwStatusPage above the list")
+    const wine = task((await compile(wineCellarBlueprint))["TASKS.md"], "TASK-04-BOTTLE-LIST")
+    expect(wine).toContain("the filter area is a GtkSearchEntry above the list")
+    expect(wine).toContain("(empty state, no match, errors)")
+  })
+
+  it("states the validate signature, a GtkEntry for numbers and the search-task status wiring", async () => {
+    const documents = await compile(wineCellarBlueprint)
+    const add = task(documents["TASKS.md"], "TASK-05-ADD-BOTTLE")
+    expect(add).toContain("validate_bottles(name: &str, vintage_year: &str, bottle_count: &str) returning Ok with NewBottles or Err(ValidationError)")
+    expect(add).toContain("never set through a GtkSpinButton range")
+    expect(add).toContain("a fixed range written as literals stays a constant")
+    expect(task(documents["TASKS.md"], "TASK-08-SEARCH-BOTTLES")).toContain("clear-search button sits in the status area beside the no-match text")
+  })
+
+  it("keeps store-failure wording, delete leftovers and the kit composition function consistent across the docs", async () => {
+    const wine = await compile(wineCellarBlueprint)
+    expect(wine["TRD.md"]).toContain("update and delete return StoreError::NotFound")
+    expect(wine["TRD.md"]).toContain("that toast is the only message for a store failure")
+    expect(wine["TRD.md"]).toContain("build_services(data_dir: &Path) -> Services")
+    expect(wine["TRD.md"]).toContain("a failed add or edit leaves its dialog open, and a failed removal leaves the row in the list")
+    const gift = await compile(giftIdeasBlueprint)
+    expect(gift["TRD.md"]).toContain("a failed add leaves its dialog open, and a failed mark leaves the row in the list")
+    expect(gift["TRD.md"]).not.toMatch(/update and delete return|failed removal|failed edit/)
+    expect(gift["TRD.md"]).toMatch(/update returns StoreError::NotFound/)
+    const packet = await compilePacket(giftIdeasBlueprint, PRESET)
+    expect(kitFile(packet, "src/app.rs")).toContain("pub fn build_services(")
+  })
+
+  it("lists the kit-shipped foundation test under Files to modify and in the Owner Map, never under both", async () => {
+    const { documents } = await compilePacket(wineCellarBlueprint, PRESET)
+    const foundation = task(documents["TASKS.md"], "TASK-01-FOUNDATION")
+    expect(foundation).toMatch(/- Files to modify: tests\/contract_tests\.rs/)
+    expect(foundation).not.toMatch(/- Files to create:[^\n]*tests\/contract_tests\.rs/)
+    expect(documents["AGENTS.md"]).toMatch(/OWN-FOUNDATION[^\n]*modify tests\/contract_tests\.rs/)
+  })
+
+  it("ends the metainfo summary on a clause, never mid-phrase", async () => {
+    const blueprint = structuredClone(snippetLibraryBlueprint)
+    blueprint.summary = "Password Hints stores short reminders about what a password is for, never the password itself."
+    const packet = await compilePacket(blueprint, PRESET)
+    expect(kitFile(packet, "resources/com.snippet.library.metainfo.xml")).toContain("<summary>Password Hints stores short reminders about what a password is for</summary>")
   })
 })
