@@ -531,9 +531,9 @@ export function evaluateJevPreflight(outcomes: readonly JevOutcome[], selectedPr
 }
 
 /**
- * Add-only healing: the declared blueprint is cloned and every inferred need that is not
- * already declared is appended in the seven-value canonical order. Declared order is
- * preserved exactly and nothing is ever removed, reordered, or renamed.
+ * Add-only healing: every inferred need that is not already declared and that some feature uses is
+ * appended in the canonical order. Declared order is preserved exactly and nothing is ever removed,
+ * reordered, or renamed.
  */
 export function healBlueprintPlatformNeeds(
   blueprint: SemanticBlueprint,
@@ -541,7 +541,9 @@ export function healBlueprintPlatformNeeds(
 ): { readonly blueprint: SemanticBlueprint; readonly addedPlatformNeeds: readonly JevPlatformNeed[] } {
   const declared = new Set<PlatformNeed>(blueprint.platformNeeds)
   const inferred = new Set<JevPlatformNeed>(inferredNeeds)
-  const addedPlatformNeeds = JEV_PLATFORM_NEEDS.filter(need => inferred.has(need) && !declared.has(need))
+  // Intake rejects a product need no feature uses, and verify re-runs intake on the exported blueprint: add only needs a feature uses.
+  const used = new Set<PlatformNeed>(blueprint.features.flatMap(feature => feature.usesPlatformNeeds))
+  const addedPlatformNeeds = JEV_PLATFORM_NEEDS.filter(need => inferred.has(need) && !declared.has(need) && used.has(need))
   return {
     blueprint: { ...blueprint, platformNeeds: [...blueprint.platformNeeds, ...addedPlatformNeeds] },
     addedPlatformNeeds,
@@ -611,7 +613,8 @@ export function evaluateJevAtomicAudit(outcomes: readonly JevOutcome[], blueprin
     ...blueprint,
     features: blueprint.features.map((feature, index) => {
       const need = confidentFeatureNeeds.get(index)
-      return need && !feature.usesPlatformNeeds.includes(need)
+      // The clipboard need also needs a declared clipboardAccess (read or write), which Jev does not infer.
+      return need && !feature.usesPlatformNeeds.includes(need) && !(need === "clipboard" && feature.clipboardAccess === "none")
         ? { ...feature, usesPlatformNeeds: [...feature.usesPlatformNeeds, need] }
         : feature
     }),
