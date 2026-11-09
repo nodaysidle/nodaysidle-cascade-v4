@@ -79,7 +79,7 @@ const FeatureSchema = z.strictObject({
   // A fixed local time of day the feature runs, as HH:MM; null otherwise.
   runsDailyAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().default(null),
   // The operating-system source the feature reads a measurement from; none when it reads no system counter. Only a bar-module preset accepts a value other than none.
-  systemSource: z.enum(["none", "network-received", "network-sent", "load-average", "memory", "battery", "disk-space"]).default("none"),
+  systemSource: z.enum(["none", "network-received", "network-sent", "load-average", "memory", "battery", "disk-space", "temperature"]).default("none"),
   // Severity limits on the raw numeric reading the module label shows (bytes for a size, bits per second for a rate, a plain number otherwise): a reading above or below value turns the module warning (amber) or critical (red). Empty when the idea states no limit. Only a bar-module preset uses it.
   thresholds: z.array(z.strictObject({ state: z.enum(["warning", "critical"]), comparison: z.enum(["above", "below"]), value: z.number().min(-1e15).max(1e15) })).max(4).optional(),
   // The exact module label for a fresh reading, with {value} standing for the formatted reading (for example "{value}" or "Sunset {value}"); empty for a feature that does not compose the label. Only a bar-module preset uses it.

@@ -268,4 +268,57 @@ describe("Waybar system sources, units, and one failure rule", () => {
       expect(rules(freeSpaceBlueprint, "linux-wayland-gtk4-desktop")).toContain("capability.system-source")
     })
   })
+
+  describe("temperature source, click page value, and packaging expectation (audit round 4)", () => {
+    const heat = (() => {
+      const blueprint = structuredClone(freeSpaceBlueprint)
+      blueprint.features[0]!.systemSource = "temperature"
+      blueprint.features[1]!.thresholds = [{ state: "warning", comparison: "above", value: 70 }]
+      return blueprint
+    })()
+
+    it("reads the CPU temperature through one declared source with an overridable sensor directory", async () => {
+      expect(rules(heat)).toEqual([])
+      const packet = await compilePacket(heat, ID)
+      expect(packet.failures).toEqual([])
+      const trd = packet.documents["TRD.md"]
+      expect(trd).toContain("System source: /sys/class/thermal/thermal_zone*/temp")
+      expect(trd).toContain("MODULE_THERMAL_DIR")
+      expect(trd).toContain("the highest zone is taken")
+      expect(trd).toContain("rounds to the nearest degree")
+      expect(trd).toContain("With no saved setting, no reachable service, or no thermal zone, --action refresh exits 2")
+      const source = packet.kit.find(file => file.name === "kit/src/platform/system_source.rs")!.content
+      expect(source).toContain("pub struct TemperatureReader")
+      expect(source).toContain("MODULE_THERMAL_DIR")
+      expect(source).not.toContain("fn read_text")
+      expect(packet.kit.find(file => file.name === "kit/tests/system_source_tests.rs")!.content).toContain("temperature_is_the_highest_zone_in_celsius")
+      const tasks = packet.documents["TASKS.md"]
+      expect(tasks).toContain("class with severity_class(value)")
+    })
+
+    it("drops reader and threshold boilerplate for a fetch-only product and keeps it when declared", async () => {
+      const fetchOnly = (await compilePacket(sunTimesBlueprint, ID)).documents["TASKS.md"]
+      expect(fetchOnly).not.toContain("SystemReader")
+      expect(fetchOnly).not.toContain("bytes for a size")
+      const disk = (await compilePacket(freeSpaceBlueprint, ID)).documents["TASKS.md"]
+      expect(disk).toContain("the SystemReader named in the contracts")
+      expect(disk).toContain("bytes for a size")
+    })
+
+    it("requires {value} in the page of a service a click feature opens for a saved setting", () => {
+      expect(rules(airQualityBlueprint)).not.toContain("capability.waybar-page-value")
+      const root = structuredClone(airQualityBlueprint)
+      root.externalServices[0]!.webPage = "https://example.org/"
+      expect(rules(root)).toContain("capability.waybar-page-value")
+      const noClick = structuredClone(root)
+      noClick.features[2]!.invokedBy = "user-control"
+      expect(rules(noClick)).not.toContain("capability.waybar-page-value")
+    })
+
+    it("rejects a response field that is a bare time of day", () => {
+      const timeOfDay = structuredClone(sunTimesBlueprint)
+      timeOfDay.externalServices[0]!.responseFields[0]!.valueType = "time"
+      expect(rules(timeOfDay)).toContain("capability.waybar-time-of-day")
+    })
+  })
 })

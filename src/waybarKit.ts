@@ -16,7 +16,7 @@ pub trait SystemReader {
     type Reading;
     fn read(&self) -> Result<Self::Reading, String>;
 }
-${sources.some(source => source !== "disk-space") ? `
+${sources.some(source => source !== "disk-space" && source !== "temperature") ? `
 fn read_text(path: &str) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|error| format!("cannot read {path}: {error}"))
 }
@@ -282,6 +282,76 @@ fn battery_capacity_is_a_percentage() {
     assert_eq!(parse_capacity("87\\n"), Ok(87));
     assert!(parse_capacity("101").is_err());
     assert!(parse_capacity("full").is_err());
+}
+`)
+  }
+  if (has("temperature")) {
+    parts.push(`pub const THERMAL_DIR_ENV: &str = "MODULE_THERMAL_DIR";
+pub const THERMAL_DIR: &str = "/sys/class/thermal";
+
+/// Millidegrees (the thermal_zone*/temp unit) to degrees Celsius.
+pub fn millidegrees_to_celsius(text: &str) -> Result<f64, String> {
+    let milli: i64 = text
+        .trim()
+        .parse()
+        .map_err(|_| String::from("bad thermal zone value"))?;
+    Ok(milli as f64 / 1000.0)
+}
+
+/// The CPU temperature: the highest thermal_zone*/temp under dir, in Celsius.
+pub struct TemperatureReader {
+    pub dir: std::path::PathBuf,
+}
+
+impl TemperatureReader {
+    /// Production reads /sys/class/thermal unless MODULE_THERMAL_DIR names a fixture tree.
+    pub fn from_env() -> Self {
+        let dir = std::env::var(THERMAL_DIR_ENV).unwrap_or_else(|_| String::from(THERMAL_DIR));
+        TemperatureReader { dir: dir.into() }
+    }
+}
+
+impl SystemReader for TemperatureReader {
+    type Reading = f64;
+    fn read(&self) -> Result<f64, String> {
+        let entries = std::fs::read_dir(&self.dir)
+            .map_err(|error| format!("cannot list {}: {error}", self.dir.display()))?;
+        let mut highest: Option<f64> = None;
+        for entry in entries.filter_map(|entry| entry.ok()) {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !name.starts_with("thermal_zone") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(entry.path().join("temp")) else {
+                continue;
+            };
+            let value = millidegrees_to_celsius(&text)?;
+            highest = Some(highest.map_or(value, |best| best.max(value)));
+        }
+        highest.ok_or_else(|| String::from("no thermal zone found"))
+    }
+}
+`)
+    tests.push(`#[test]
+fn temperature_is_the_highest_zone_in_celsius() {
+    let parsed = millidegrees_to_celsius(" 70400 ");
+    assert_eq!(parsed, Ok(70.4));
+    assert!(millidegrees_to_celsius("hot").is_err());
+    let dir = std::env::temp_dir().join(format!("thermal-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let zones = [
+        ("thermal_zone0", "41000"),
+        ("thermal_zone1", "63500"),
+        ("cooling_device0", "99000"),
+    ];
+    for (zone, milli) in zones {
+        std::fs::create_dir_all(dir.join(zone)).expect("zone dir");
+        std::fs::write(dir.join(zone).join("temp"), milli).expect("zone file");
+    }
+    let reader = TemperatureReader { dir: dir.clone() };
+    assert_eq!(reader.read(), Ok(63.5));
+    std::fs::remove_dir_all(&dir).expect("cleanup");
+    assert!(reader.read().is_err());
 }
 `)
   }

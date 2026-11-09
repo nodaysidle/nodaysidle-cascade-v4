@@ -74,7 +74,7 @@ export const allSourcesBlueprint: SemanticBlueprint = (() => {
   const all = structuredClone(netSpeedBlueprint)
   all.productName = "System Glance"
   all.features[1]!.systemSource = "network-sent"
-  for (const [name, source] of [["Load readout", "load-average"], ["Memory readout", "memory"], ["Battery readout", "battery"], ["Disk readout", "disk-space"]] as const) {
+  for (const [name, source] of [["Load readout", "load-average"], ["Memory readout", "memory"], ["Battery readout", "battery"], ["Disk readout", "disk-space"], ["Temperature readout", "temperature"]] as const) {
     all.features.push(base(name, `Shows the ${source} reading.`, `The label shows the ${source} reading.`, { usesData: ["Last sample"], dataOperations: [{ data: "Last sample", operations: ["read"] }], systemSource: source }))
   }
   all.ideaCoverage = [{ sentence: 1, features: all.features.map(feature => feature.name), outsideFeatures: "none" }]
