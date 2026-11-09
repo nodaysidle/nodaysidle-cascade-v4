@@ -279,6 +279,7 @@ Sample content${mark}. Keep it when the idea supplies no entries; the site owner
       private: true,
       type: "module",
       version: "0.1.0",
+      engines: { node: ">=20" },
       scripts: {
         dev: "astro dev",
         check: "astro check",

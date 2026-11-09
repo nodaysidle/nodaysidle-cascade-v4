@@ -194,7 +194,7 @@ export function planAstroWeb(
 
   // The 404 page always exists: a not-found-page feature owns its text, otherwise the foundation kit file does.
   if (!features.some(feature => featurePlacements[feature.id]?.kind === "page" && feature.surface === "not-found-page")) {
-    routeSummary.push(`/404 — src/pages/404.astro (neutral kit text owned by the foundation; no task changes it). A static build makes no page for an address that matches no entry, every unknown address${itemFeature ? ", including an item address that matches no entry," : ""} shows this page; a criterion about an unknown address is met by dist/404.html with its link home.`)
+    routeSummary.push(`/404 — src/pages/404.astro (neutral kit text owned by the foundation; no task changes it). A static build makes no page for an address that matches no entry, every unknown address${itemFeature ? ", including an item address that matches no entry," : ""} shows this page; any criterion about an unknown address is met by dist/404.html with its link home.`)
   }
 
   return {

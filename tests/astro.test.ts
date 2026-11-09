@@ -351,4 +351,18 @@ describe("Astro packets for a site with several record types", () => {
     expect(trd["TRD.md"]).toContain("canonical URLs are absolute and the sitemap integration is enabled only when SITE_URL is set")
     expect(trd["PRD.md"]).toContain("The site collects no visitor data and has no forms")
   })
+
+  it("seeds bounded number fields inside their bounds and drops inapplicable boilerplate", async () => {
+    const base = fixtureCases.find(item => item.presetId === "astro-web")!.blueprint
+    const lights = { name: "Lights", purpose: "The lighthouses.", sensitivity: "public" as const, retentionIntent: "Kept in the repository.", storage: "records" as const, writeMode: "direct" as const, singleRecord: false, entryCount: null, fields: [{ name: "Name", valueType: "text" as const, optional: false }, { name: "Year built", valueType: "whole-number" as const, optional: false, min: 1000, max: 9999 }] }
+    const packet = await compilePacket({ ...base, dataObjects: [lights], features: base.features.map(feature => ({ ...feature, usesData: ["Lights"], dataOperations: [{ data: "Lights", operations: ["read" as const] }] })) }, "astro-web")
+    expect(kitFile(packet, "src/content.config.ts")).toContain("yearBuilt: z.number().int().min(1000).max(9999)")
+    expect(kitFile(packet, "src/content/lights/01-sample-entry.md")).toMatch(/yearBuilt: 1000\b/)
+    expect(JSON.parse(kitFile(packet, "package.json")!).engines.node).toBe(">=20")
+    const tasks = packet.documents["TASKS.md"]
+    expect(tasks).not.toMatch(/src\/lib\/contentcatalog\.ts, README\.md/)
+    expect(tasks).not.toContain("create every other listed file")
+    expect(tasks).not.toContain("paragraphs split on blank lines")
+    expect(packet.documents["TRD.md"]).not.toContain("declared search page")
+  })
 })
