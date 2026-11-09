@@ -10,6 +10,7 @@ function feature(name: string, behavior: string, acceptance: string, uses: Parti
     behavior,
     failureOutcome: "The operation stops without replacing the last valid state and explains what can be retried.",
     failureRecovery: "retry",
+    invokedBy: "user-control",
     surface: "main",
     acceptanceSignals: [acceptance],
     usesPlatformNeeds: [],

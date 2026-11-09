@@ -18,6 +18,7 @@ interface FeatureUses {
   readonly files?: Feature["userFileAccess"]
   readonly choices?: Feature["choiceLists"]
   readonly runsEvery?: number
+  readonly invoked?: Feature["invokedBy"]
   readonly buildsOn?: readonly string[]
   readonly operations?: readonly ("create" | "read" | "update" | "delete")[]
 }
@@ -42,6 +43,7 @@ function feature(name: string, userOutcome: string, behavior: string, acceptance
     choiceLists: [...(uses.choices ?? [])],
     buildsOn: [...(uses.buildsOn ?? [])],
     dataOperations: uses.operations?.length && uses.data?.[0] ? [{ data: uses.data[0], operations: [...uses.operations] }] : [],
+    invokedBy: uses.invoked ?? (uses.runsEvery ? "schedule" : "user-control"),
     runsEverySeconds: uses.runsEvery ?? null,
     runsDailyAt: null,
   }
@@ -55,7 +57,7 @@ interface FixtureSeed {
   readonly nonGoals: readonly string[]
   readonly features: readonly Feature[]
   readonly dataObjects?: ReadonlyArray<Omit<SemanticBlueprint["dataObjects"][number], "fields"> & { readonly fields?: SemanticBlueprint["dataObjects"][number]["fields"] }>
-  readonly externalServices?: ReadonlyArray<Omit<SemanticBlueprint["externalServices"][number], "endpoint" | "responseFields"> & Partial<Pick<SemanticBlueprint["externalServices"][number], "endpoint" | "responseFields">>>
+  readonly externalServices?: ReadonlyArray<Omit<SemanticBlueprint["externalServices"][number], "endpoint" | "responseFields" | "webPage"> & Partial<Pick<SemanticBlueprint["externalServices"][number], "endpoint" | "responseFields" | "webPage">>>
   readonly platformNeeds?: SemanticBlueprint["platformNeeds"]
   readonly qualityRequirements?: readonly string[]
   readonly productConstraints?: readonly string[]
@@ -76,7 +78,7 @@ function blueprint(seed: FixtureSeed): SemanticBlueprint {
       ...item,
       fields: item.fields ?? (item.storage === "records" || item.storage === "document" ? [{ name: "Title", valueType: "text" as const, optional: false }] : []),
     })),
-    externalServices: (seed.externalServices ?? []).map(item => ({ endpoint: "https://api.open-meteo.com/v1/forecast", responseFields: [{ name: "Value", valueType: "text" as const, optional: false }], ...item })),
+    externalServices: (seed.externalServices ?? []).map(item => ({ endpoint: "https://api.open-meteo.com/v1/forecast", webPage: "", responseFields: [{ name: "Value", valueType: "text" as const, optional: false }], ...item })),
     platformNeeds: [...(seed.platformNeeds ?? [])],
     qualityRequirements: [...(seed.qualityRequirements ?? ["Keyboard-operable controls with visible status and accessible labels."])],
     productConstraints: [...(seed.productConstraints ?? ["Preserve the last valid state across every recoverable failure."])],
@@ -307,7 +309,7 @@ export const tideTickBlueprint = blueprint({
   features: [
     feature("Harbor choice", "Keep one saved harbor", "Save the harbor name the user sets and read it back for every refresh.", "The saved harbor is still set after a restart.", { data: ["Saved harbor"], operations: ["create", "read", "update"] }),
     feature("Tide refresh", "See the next high tide", "Fetch tide times for the saved harbor and keep the last good reading, marking it stale when the service is unreachable.", "With the service unreachable, the label shows the last good time marked stale.", { platform: ["network", "background-execution"], data: ["Saved harbor", "Last tide reading"], services: ["Tide service"], operations: ["read", "update"], runsEvery: 1800 }),
-    feature("Tide table link", "Open the harbor's tide table", "Clicking the module opens the saved harbor's tide table page in the browser.", "Clicking the module opens one browser page for the saved harbor.", { data: ["Saved harbor"], operations: ["read"] }),
+    feature("Tide table link", "Open the harbor's tide table", "Clicking the module opens the saved harbor's tide table page in the browser.", "Clicking the module opens one browser page for the saved harbor.", { data: ["Saved harbor"], operations: ["read"], invoked: "click" }),
   ],
   dataObjects: [
     { name: "Saved harbor", purpose: "The one harbor the user chose.", sensitivity: "internal", retentionIntent: "Keep until the user changes it.", storage: "settings", writeMode: "atomic-replace", fields: [{ name: "Harbor name", valueType: "text", optional: false }] },

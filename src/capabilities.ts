@@ -5,6 +5,13 @@ import type { SemanticBlueprint, SemanticIssue } from "./schema"
 // needs. This is the gate that stops a Wayland packet from promising macOS-only automation.
 export function auditCapabilities(blueprint: SemanticBlueprint, preset: PresetContract): SemanticIssue[] {
   const issues: SemanticIssue[] = []
+  if (preset.id === "linux-hyprland-waybar-module") {
+    blueprint.dataObjects.forEach((item, index) => {
+      if (item.storage === "session" || item.storage === "temporary") {
+        issues.push({ path: `dataObjects[${index}].storage`, rule: "capability.waybar-process-memory", message: `Data object '${item.name}' is ${item.storage}, but each Waybar module run is a separate process; use records or settings for anything kept between runs.` })
+      }
+    })
+  }
   const supportedSurfaces = new Set(preset.capabilities.surfaces)
   blueprint.features.forEach((feature, index) => {
     const path = `features[${index}]`

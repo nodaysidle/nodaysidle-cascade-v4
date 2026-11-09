@@ -571,8 +571,7 @@ export function waybarRoles(blueprint: NormalizedBlueprint): WaybarRoles {
   const unscheduled = (feature: (typeof features)[number]) => feature.runsEverySeconds === null && feature.runsDailyAt === null
   const refreshOwner = features.find(feature => !unscheduled(feature))
     ?? features.find(feature => feature.resourceIds.includes("permission:background-execution"))
-  const clickOwner = features.find(feature => feature !== refreshOwner && unscheduled(feature)
-    && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read"))
+  const clickOwner = features.find(feature => feature.invokedBy === "click")
   const settingKeys = [...new Set(blueprint.domainData.filter(item => item.storage === "settings")
     .flatMap(item => item.fields.length ? item.fields.map(field => snakeKey(field.name)) : [snakeKey(item.name)]))]
   return {

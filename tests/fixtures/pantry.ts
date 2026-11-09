@@ -13,6 +13,7 @@ const base = (name: string, behavior: string, extra: Partial<SemanticBlueprint["
   usesPlatformNeeds: [],
   usesData: ["Grocery items"],
   dataOperations: [],
+  invokedBy: "user-control",
   runsEverySeconds: null,
   runsDailyAt: null,
   ...extra,

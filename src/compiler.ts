@@ -13,6 +13,7 @@ export const DOCUMENT_NAMES = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS
 export type DocumentName = (typeof DOCUMENT_NAMES)[number]
 export type ContractKind = "interface" | "data" | "integration" | "lifecycle" | "persistence" | "credential" | "permission" | "recovery" | "security" | "packaging"
 
+export type InvokedBy = "user-control" | "click" | "schedule" | "launch" | "shortcut"
 export type DataOperation = "create" | "read" | "update" | "delete"
 export interface DataField {
   readonly name: string
@@ -45,6 +46,7 @@ export interface NormalizedBlueprint {
     readonly requiredCapabilities: readonly string[]
     readonly dataOperations: readonly DataOperation[]
     readonly operationsByData: Readonly<Record<string, readonly DataOperation[]>>
+    readonly invokedBy: InvokedBy
     readonly runsEverySeconds: number | null
     readonly runsDailyAt: string | null
     readonly resourceIds: readonly string[]
@@ -58,6 +60,7 @@ export interface NormalizedBlueprint {
     readonly dataSent: readonly string[]
     readonly credentialRequirement: "none" | "api-key"
     readonly endpoint: string
+    readonly webPage: string
     readonly responseFields: readonly DataField[]
     readonly failureBehavior: string
     readonly recovery: string
@@ -126,6 +129,7 @@ export interface GraphFeature {
   readonly requiredCapabilities: readonly string[]
   readonly dataOperations: readonly DataOperation[]
   readonly operationsByData: Readonly<Record<string, readonly DataOperation[]>>
+  readonly invokedBy: InvokedBy
   readonly runsEverySeconds: number | null
   readonly runsDailyAt: string | null
   readonly resourceIds: readonly string[]
@@ -509,6 +513,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       requiredCapabilities: unique(feature.buildsOn.map(other => slug(cleanMeaning(other)))),
       dataOperations: unique(feature.dataOperations.flatMap(entry => entry.operations)),
       operationsByData: Object.fromEntries(feature.dataOperations.map(entry => [referenceKey(entry.data), unique(entry.operations)])),
+      invokedBy: feature.invokedBy,
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,
       resourceIds: [],
@@ -543,6 +548,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       dataSent: cleanList(item.dataSent),
       credentialRequirement: item.credentialRequired ? "api-key" as const : "none" as const,
       endpoint: item.endpoint.trim(),
+      webPage: item.webPage.trim(),
       responseFields: item.responseFields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional })).filter(field => field.name),
       failureBehavior: "Return a privacy-safe authentication, rate, transport, timeout, filtered, or provider failure without raw response content.",
       recovery: "Preserve recoverable local input and allow only an explicit retry or explicit service change.",
@@ -901,6 +907,7 @@ const VALUE_TYPE_LABEL: Record<DataValueType, string> = {
   number: "number",
   "whole-number": "whole number",
   flag: "true/false flag",
+  date: "calendar day (local, no time)",
   "date-time": "date and time",
   "text-list": "ordered list of text lines",
   reference: "reference to another stored item",
@@ -955,7 +962,7 @@ function storeInterfaceDetail(presetId: PresetId, item: NormalizedBlueprint["dom
   }
   if (presetId === "astro-web") return `Interface: the content collection schema declares exactly the stored fields above; pages read entries through getCollection and no page defines its own schema.`
   const functions = methods({ create: ["insert"], read: ["list", "get"], update: ["update"], delete: ["delete"] })
-  return `Interface: OWN-DATA-STORE defines struct ${record} with the stored fields above (id: i64) and trait ${record}Store with exactly: ${functions.join(", ")}; every function returns Result with a typed error, and feature tasks call the trait and add no other storage access. OWN-DATA-STORE creates the table in its own transactional migration that raises PRAGMA user_version by one; ordered lists of text lines are stored as a JSON text column; list returns records by descending id unless a feature states another order, with id as the final tie-break.`
+  return `Interface: OWN-DATA-STORE defines struct ${record} with the stored fields above (id: i64) and trait ${record}Store with exactly: ${functions.join(", ")}; every function returns Result with a typed error, and feature tasks call the trait and add no other storage access. OWN-DATA-STORE creates the table in its own transactional migration: the kit opens the database at PRAGMA user_version 1 with no tables, so the migration runs when the version is below 2 and sets it to 2; date-time values are stored as i64 epoch milliseconds (UTC) and date values as YYYY-MM-DD text; ordered lists of text lines are stored as a JSON text column; list returns records by descending id unless a feature states another order, with id as the final tie-break.`
 }
 
 function persistencePlacement(
@@ -1160,7 +1167,7 @@ function buildOwnersAndContracts(
       integrationFeatureIds(service, features),
       ownerId,
       `${service.purpose} ${preset.integrationBoundary}`,
-      [...(service.endpoint ? [`Endpoint: ${service.endpoint}`] : []), ...(service.responseFields.length ? [`Response values read (anything else is ignored): ${service.responseFields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`] : []), `Data sent: ${service.dataSent.join("; ") || "No product data beyond the explicit request."}`, `Credential requirement: ${service.credentialRequirement}`, `Preset boundary: ${preset.platform}`, `Framework boundary: ${preset.integrationBoundary}`],
+      [...(service.endpoint ? [`Endpoint: ${service.endpoint}`] : []), ...(service.webPage ? [`Web page opened for the user: ${service.webPage}`] : []), ...(service.responseFields.length ? [`Response values read (anything else is ignored): ${service.responseFields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`] : []), `Data sent: ${service.dataSent.join("; ") || "No product data beyond the explicit request."}`, `Credential requirement: ${service.credentialRequirement}`, `Preset boundary: ${preset.platform}`, `Framework boundary: ${preset.integrationBoundary}`],
       service.failureBehavior,
       [service.recovery],
     ))
@@ -1576,7 +1583,7 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? " You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? " You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. Expose three named slots in the shared files: a per-row action area on every list row, an add-entry control, and a detail view for the selected record; later feature tasks build their controls in their own files and mount them into these slots, editing only the shared registration files." : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId}: build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.` : ""}${draft.kind === "packaging" ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => androidClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time from an injected clock (a trait or closure passed in), and write the tests with a fixed clock." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
       validationCommands: draft.kind === "packaging"
         ? [files.focusedTestCommand, ...preset.validationCommands.map(command => command(identity))]
         : [files.focusedTestCommand, ...preset.validationCommands.slice(0, 2).map(command => command(identity))],
@@ -1683,6 +1690,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       requiredCapabilities: feature.requiredCapabilities,
       dataOperations: feature.dataOperations,
       operationsByData: feature.operationsByData,
+      invokedBy: feature.invokedBy,
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,
       resourceIds: feature.resourceIds,

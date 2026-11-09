@@ -161,6 +161,8 @@ export interface PresetContract {
   readonly runtimeArchitecture: readonly string[]
   readonly integrationBoundary: string
   readonly recoveryRules: readonly string[]
+  // Sentences added to the provider instructions for this preset.
+  readonly providerNotes?: readonly string[]
   // Used instead of recoveryRules when the blueprint has no service, file access, or other interactive input.
   readonly staticRecoveryRules?: readonly string[]
   readonly persistence: {
@@ -526,6 +528,7 @@ const linuxGtk: PresetContract = {
 
 const linuxWaybar: PresetContract = {
   id: "linux-hyprland-waybar-module",
+  providerNotes: ["Each run of the Waybar module command is a separate process and nothing stays in memory between runs. Anything the module must remember between runs (a last good value, a saved choice) must be a dataObject with storage records or settings, never session or temporary. Set invokedBy to click for the feature that reacts to a click on the module and to schedule for the feature that refreshes by itself."],
   label: "Hyprland Waybar Module",
   platform: "Linux (Wayland; Hyprland; Waybar)",
   implementationMarker: "custom/",
@@ -746,6 +749,7 @@ const tauriDesktop: PresetContract = {
 
 const astroWeb: PresetContract = {
   id: "astro-web",
+  providerNotes: ["The site is static: pages are built once from content files. A failure the finished site can show is a missing page or missing text, never a runtime error message, retry, or loading state; write failureOutcome as the build failing on a bad content file, and write acceptance signals as facts about built pages (a page exists, a text appears, a list is in a stated order). If the idea does not supply the content itself (names, texts, hours), do not invent it in the blueprint."],
   label: "Astro Web",
   platform: "Web",
   implementationMarker: "astro.config.mjs",

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest"
 import { exportPacketTo } from "../src/bridge"
 import { DOCUMENT_NAMES, compilePacket } from "../src/compiler"
 import { auditPacket } from "../src/audit"
+import { auditCapabilities } from "../src/capabilities"
 import { auditSemanticIntake } from "../src/schema"
 import { PRESETS, PRESET_IDS } from "../src/presets"
 import { bareGtkBlueprint, bareWaybarBlueprint, fixtureCases, tideTickBlueprint } from "./fixtures/blueprints"
@@ -344,6 +345,18 @@ describe("v4 deterministic core", () => {
     expect(trd).toContain("Temperature (number, optional)")
     const both = auditSemanticIntake({ ...base, features: base.features.map((feature, index) => index === 0 ? { ...feature, runsEverySeconds: 60, runsDailyAt: "09:00" } : feature) })
     expect(both.map(issue => issue.rule)).toContain("semantic.two-schedules")
+  })
+
+  it("gives later main-surface tasks the first task's slots, and keeps Waybar state out of process memory", async () => {
+    const gtk = fixtureCases.find(item => item.presetId === "linux-wayland-gtk4-desktop")!
+    const packet = await compilePacket(gtk.blueprint, gtk.presetId)
+    const tasks = packet.documents["TASKS.md"]
+    expect(tasks).toContain("Expose three named slots in the shared files")
+    expect(tasks).toContain("Your controls mount into the slots exposed by TASK-")
+    expect(tasks).toContain("Modify the listed shared files only if the wiring check or a validation command fails")
+    const waybar = fixtureCases.find(item => item.presetId === "linux-hyprland-waybar-module")!
+    const issues = auditCapabilities({ ...waybar.blueprint, dataObjects: [{ ...waybar.blueprint.dataObjects[0]!, storage: "session" }] }, PRESETS["linux-hyprland-waybar-module"])
+    expect(issues.map(issue => issue.rule)).toContain("capability.waybar-process-memory")
   })
 })
 

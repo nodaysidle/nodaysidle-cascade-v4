@@ -33,6 +33,7 @@ const RUST_TYPE: Record<DataValueType, string> = {
   number: "f64",
   "whole-number": "i64",
   flag: "bool",
+  date: "String",
   "date-time": "String",
   "text-list": "list of String",
   reference: "i64",
@@ -44,7 +45,7 @@ const saves = (feature: TauriFeatureUse): boolean => feature.userFileAccess === 
 const opens = (feature: TauriFeatureUse): boolean => feature.userFileAccess === "opens" || feature.userFileAccess === "opens-and-saves"
 
 // Stated once, at the top of the TRD data contracts, for every Tauri command.
-export const TAURI_WIRE_FORMAT = "Wire format (every Tauri command of every data object, stated once here): ids are i64 numbers; whole numbers are i64, numbers are f64, flags are booleans; date-time values are RFC3339 UTC strings (for example 2026-01-31T09:30:00Z), created and compared as UTC and converted to local time only for display; a text-list is an array of strings; an optional field is a Rust Option and is sent and received as null when absent, never as an omitted key, an empty string, or a sentinel value; record keys are the snake_case field names, and top-level command arguments are written camelCase from TypeScript (Tauri maps them to snake_case); every failure is the AppError enum serialized as {kind: storage | not-found | invalid, message}, never a raw string. A list command takes no arguments and returns every record by descending id; no declared feature needs a range or limit filter, so a feature that needs a subset (such as one day or one week) filters the returned array in TypeScript."
+export const TAURI_WIRE_FORMAT = "Wire format (every Tauri command of every data object, stated once here): ids are i64 numbers; whole numbers are i64, numbers are f64, flags are booleans; date-time values are RFC3339 UTC strings (for example 2026-01-31T09:30:00Z), created and compared as UTC and converted to local time only for display; date values are calendar days written YYYY-MM-DD in the user's local calendar and compared as days, never converted through UTC; a text-list is an array of strings; an optional field is a Rust Option and is sent and received as null when absent, never as an omitted key, an empty string, or a sentinel value; record keys are the snake_case field names, and top-level command arguments are written camelCase from TypeScript (Tauri maps them to snake_case); every failure is the AppError enum serialized as {kind: storage | not-found | invalid, message}, never a raw string. A list command takes no arguments and returns every record by descending id; no declared feature needs a range or limit filter, so a feature that needs a subset (such as one day or one week) filters the returned array in TypeScript."
 
 // A feature that saves a document writes only that file; the records it exports are read, not created.
 export function tauriFeatureOps(storage: string, feature: TauriFeatureUse, documentResources: ReadonlySet<string>): readonly DataOperation[] {
