@@ -469,12 +469,62 @@ function markdownContractText(markdown: string, contractId: string): string {
   return markdown.split("\n").find(line => line.startsWith(`- ${contractId} —`)) ?? ""
 }
 
+// Defects an agent cannot work around because the documents disagree with each other. Each check
+// below came from a hand audit of a real packet; a packet that has one is not exported.
+function agentReadinessFailures(graph: ProjectGraph, documents: Readonly<Record<string, string>>): AuditFailure[] {
+  const failures: AuditFailure[] = []
+  const all = DOCUMENT_NAMES.map(name => documents[name] ?? "").join("\n")
+  const tasks = graph.phases.flatMap(phase => phase.tasks)
+
+  // The AGENTS shared-file lines must be exactly the files that several tasks modify.
+  const editors = new Map<string, number>()
+  for (const task of tasks) for (const path of task.filesToModify) editors.set(path, (editors.get(path) ?? 0) + 1)
+  const shared = [...editors].filter(([, count]) => count > 1).map(([path]) => path).sort()
+  const rendered = [...(documents["AGENTS.md"] ?? "").matchAll(/^- Shared file (\S+) —/gm)].map(match => match[1]!).sort()
+  if (shared.join("|") !== rendered.join("|")) {
+    failures.push(failure("agent-ready.shared-files", "AGENTS.md", `AGENTS.md lists shared files [${rendered.join(", ")}] but TASKS.md has several tasks modify [${shared.join(", ")}].`))
+  }
+
+  // One settings file name everywhere.
+  const settingsNames = new Set([...all.matchAll(/\$XDG_CONFIG_HOME\/[\w.-]+\/([\w.-]+\.json)/g)].map(match => match[1]!))
+  if (settingsNames.size > 1) failures.push(failure("agent-ready.settings-name", "packet", `Documents name more than one settings file: ${[...settingsNames].join(", ")}.`))
+
+  // Desktop and metainfo files are named after the application id on the Wayland GTK preset.
+  if (graph.presetId === "linux-wayland-gtk4-desktop") {
+    for (const match of all.matchAll(/resources\/([\w.-]+)\.(desktop|metainfo\.xml)\b/g)) {
+      if (match[1] !== graph.identity.bundleId && !match[1]!.includes("/")) {
+        failures.push(failure("agent-ready.desktop-id", "packet", `resources/${match[1]}.${match[2]} must be named after the application id ${graph.identity.bundleId}.`))
+        break
+      }
+    }
+  }
+
+  // The Wayland variable belongs on the launched binary, never on the installer script.
+  if (/GDK_BACKEND=wayland\s+\.?\/?scripts\//.test(all)) {
+    failures.push(failure("agent-ready.launch-env", "TRD.md", "GDK_BACKEND=wayland is set on the install script, not on the launched binary."))
+  }
+
+  // Deletion is promised only when a feature declares it.
+  const anyDelete = graph.features.some(feature => feature.dataOperations.includes("delete"))
+  if (!anyDelete && /Delete [^.\n]* only through an explicit user action/.test(all)) {
+    failures.push(failure("agent-ready.unrequested-delete", "TRD.md", "A delete action is promised, but no feature declares delete."))
+  }
+
+  // Tasks may only depend on tasks that come earlier in the document order.
+  const position = new Map(tasks.map((task, index) => [task.id, index]))
+  for (const task of tasks) {
+    const late = task.dependencies.find(id => (position.get(id) ?? -1) > (position.get(task.id) ?? 0))
+    if (late) failures.push(failure("agent-ready.task-order", task.id, `${task.id} depends on ${late}, which comes later.`))
+  }
+  return failures
+}
+
 export function auditPacket(
   graph: ProjectGraph,
   documents: Readonly<Record<string, string>>,
   preset: PresetContract,
 ): AuditFailure[] {
-  const failures: AuditFailure[] = []
+  const failures: AuditFailure[] = [...agentReadinessFailures(graph, documents)]
   const names = Object.keys(documents)
   if (names.join("|") !== DOCUMENT_NAMES.join("|")) failures.push(failure("packet.exact-five", "packet", `Expected exactly ${DOCUMENT_NAMES.join(", ")}.`))
 

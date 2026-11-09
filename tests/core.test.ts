@@ -5,6 +5,7 @@ import { dirname, join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { exportPacketTo } from "../src/bridge"
 import { DOCUMENT_NAMES, compilePacket } from "../src/compiler"
+import { auditPacket } from "../src/audit"
 import { auditSemanticIntake } from "../src/schema"
 import { PRESETS, PRESET_IDS } from "../src/presets"
 import { bareGtkBlueprint, bareWaybarBlueprint, fixtureCases } from "./fixtures/blueprints"
@@ -196,6 +197,25 @@ describe("v4 deterministic core", () => {
     const withDelete = await compilePacket(withOps(["create", "read", "delete"]), "linux-wayland-gtk4-desktop")
     expect(withDelete.documents["TRD.md"]).not.toContain(`No feature deletes ${records.name}`)
     expect(withDelete.documents["TRD.md"]).toContain("only through the feature that declares delete")
+  })
+
+  it("blocks export when the documents disagree in ways an agent cannot work around", async () => {
+    const fixture = fixtureCases.find(item => item.presetId === "linux-wayland-gtk4-desktop")!
+    const packet = await compilePacket(fixture.blueprint, fixture.presetId)
+    const preset = PRESETS[fixture.presetId]
+    const rules = (documents: Record<string, string>) => auditPacket(packet.graph, documents, preset).map(item => item.rule)
+    const clean = { ...packet.documents } as Record<string, string>
+    expect(rules(clean)).not.toEqual(expect.arrayContaining(["agent-ready.shared-files"]))
+    const noSharedLines = { ...clean, "AGENTS.md": clean["AGENTS.md"]!.replace(/^- Shared file .*\n/gm, "") }
+    expect(rules(noSharedLines)).toContain("agent-ready.shared-files")
+    const twoSettings = { ...clean, "TRD.md": `${clean["TRD.md"]}\n- Settings: $XDG_CONFIG_HOME/${packet.graph.identity.bundleId}/other.json.` }
+    expect(rules(twoSettings)).toContain("agent-ready.settings-name")
+    const wrongDesktop = { ...clean, "TRD.md": `${clean["TRD.md"]}\n- File: resources/${packet.projectSlug}.desktop` }
+    expect(rules(wrongDesktop)).toContain("agent-ready.desktop-id")
+    const badLaunch = { ...clean, "TRD.md": `${clean["TRD.md"]}\n- Launch: GDK_BACKEND=wayland ./scripts/package.sh --install` }
+    expect(rules(badLaunch)).toContain("agent-ready.launch-env")
+    const promisedDelete = { ...clean, "TRD.md": `${clean["TRD.md"]}\n- Deletion: Delete Recipe only through an explicit user action.` }
+    expect(rules(promisedDelete)).toContain("agent-ready.unrequested-delete")
   })
 })
 
