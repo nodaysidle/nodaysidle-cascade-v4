@@ -8,7 +8,7 @@ import { DOCUMENT_NAMES, compilePacket } from "../src/compiler"
 import { auditPacket } from "../src/audit"
 import { auditSemanticIntake } from "../src/schema"
 import { PRESETS, PRESET_IDS } from "../src/presets"
-import { bareGtkBlueprint, bareWaybarBlueprint, fixtureCases } from "./fixtures/blueprints"
+import { bareGtkBlueprint, bareWaybarBlueprint, fixtureCases, tideTickBlueprint } from "./fixtures/blueprints"
 
 describe("v4 deterministic core", () => {
   it("exposes only the approved presets", () => {
@@ -77,6 +77,101 @@ describe("v4 deterministic core", () => {
       const bare = await compilePacket(blueprint, presetId)
       expect(bare.kit.map(file => file.name).some(name => /platform\/(sqlite|credentials|http)\.rs$/.test(name))).toBe(false)
     }
+  })
+
+  describe("Waybar module agent-readiness", () => {
+    const text = (packet: Awaited<ReturnType<typeof compilePacket>>, name: string) => packet.kit.find(file => file.name === `kit/${name}`)?.content ?? ""
+    const waybarStack = (trd: string) => trd.split("## Locked Stack")[1]!.split("\n## ")[0]!.split("\n").filter(line => line.startsWith("- ")).map(line => line.slice(2).toLowerCase())
+
+    it("takes the kit refresh default from the declared schedule and keeps the two intervals apart", async () => {
+      const tide = await compilePacket(tideTickBlueprint, "linux-hyprland-waybar-module")
+      expect(text(tide, "src/config.rs")).toContain("refresh_seconds: 1800")
+      expect(text(tide, "tests/contract_tests.rs")).toContain("refresh_seconds, 1800")
+      expect(text(tide, "src/config.rs")).not.toContain("900")
+      const glance = fixtureCases.find(item => item.blueprint.productName === "Forecast Glance")!
+      const unscheduled = await compilePacket(glance.blueprint, glance.presetId)
+      expect(text(unscheduled, "src/config.rs")).toContain("refresh_seconds: 900")
+      for (const packet of [tide, unscheduled]) {
+        const all = Object.values(packet.documents).join("\n")
+        expect(all).not.toContain("service default is 900")
+        expect(packet.documents["TRD.md"]).toContain("how often Waybar re-runs the exec path to re-read the cache")
+      }
+      const withOptions = await compilePacket(tideTickBlueprint, "linux-hyprland-waybar-module", { refreshSeconds: "60" })
+      const options = withOptions.documents["TRD.md"].split("### CON-PRESET-OPTIONS")[1]!.split("\n### ")[0]!
+      expect(options).toContain("not the service refresh cadence")
+      expect(text(withOptions, "resources/waybar/config.jsonc")).toContain('"interval": 60')
+      expect(text(withOptions, "src/config.rs")).toContain("refresh_seconds: 1800")
+      expect(tide.documents["TASKS.md"]).toContain("Tide refresh runs every 1800 seconds: take that interval and the current time as parameters")
+      expect(unscheduled.documents["TASKS.md"]).not.toContain("take that interval and the current time as parameters")
+    })
+
+    it("ships a coherent module base with a defined action vocabulary and named hook owners", async () => {
+      const tide = await compilePacket(tideTickBlueprint, "linux-hyprland-waybar-module")
+      const module = text(tide, "src/module.rs")
+      for (const name of ["pub fn render_with", "pub fn fetch_output", "pub fn click", "pub fn run_service", "pub const STALE_SUFFIX", "ACTIONS"]) expect(module).toContain(name)
+      expect(module).not.toContain("{}: {}")
+      expect(text(tide, "README.md")).toContain("--action click")
+      expect(tide.documents["TRD.md"]).toContain("--action click or --action refresh")
+      const tasks = tide.documents["TASKS.md"]
+      expect(tasks).toContain("fetch_output (the refresh loop body) is replaced by TASK-06-TIDE-REFRESH")
+      expect(tasks).toContain("click (the --action click body) is replaced by TASK-07-TIDE-TABLE-LINK")
+      const fragment = text(tide, "resources/waybar/config.jsonc")
+      expect(fragment).toContain("--action click")
+      expect(fragment).not.toMatch(/on-click-(right|middle)|on-scroll/)
+      const glance = fixtureCases.find(item => item.blueprint.productName === "Forecast Glance")!
+      const bare = await compilePacket(glance.blueprint, glance.presetId)
+      expect(text(bare, "resources/waybar/config.jsonc")).not.toContain("on-click")
+      expect(bare.documents["TASKS.md"]).toContain("click (the --action click body) is replaced by no task")
+    })
+
+    it("states one source-of-truth rule and implements --set for declared settings", async () => {
+      const tide = await compilePacket(tideTickBlueprint, "linux-hyprland-waybar-module")
+      for (const name of ["TRD.md", "ARD.md"] as const) {
+        const rule = tide.documents[name].match(/persisted records \(/g) ?? []
+        expect(rule, name).toHaveLength(1)
+        expect(tide.documents[name]).toContain("derived render of the final label text")
+      }
+      expect(text(tide, "src/config.rs")).toContain('SETTING_KEYS: &[&str] = &["harbor_name"]')
+      expect(text(tide, "src/config.rs")).toContain("pub fn set_pair")
+      expect(text(tide, "src/main.rs")).toContain("config::set_pair")
+      expect(tide.documents["TRD.md"]).toContain("--set KEY=VALUE")
+    })
+
+    it("lists only locked-stack dependencies in Cargo.toml and a reasoned PKGBUILD depends", async () => {
+      for (const item of fixtureCases.filter(entry => entry.presetId === "linux-hyprland-waybar-module")) {
+        const packet = await compilePacket(item.blueprint, item.presetId)
+        const stack = waybarStack(packet.documents["TRD.md"])
+        const cargo = text(packet, "Cargo.toml")
+        const dependencies = [...cargo.matchAll(/^([a-z0-9_-]+) = /gm)].map(match => match[1]!).filter(name => !["name", "version", "edition", "rust-version"].includes(name))
+        expect(dependencies.length).toBeGreaterThan(4)
+        for (const name of dependencies) expect(stack.some(entry => entry.includes(name.replace("_", "_"))), `${item.blueprint.productName}: ${name} not in locked stack`).toBe(true)
+        expect(cargo).not.toContain("tracing")
+        const secrets = text(packet, "src/platform/mod.rs").includes("credentials")
+        expect(text(packet, "PKGBUILD").includes("depends=('dbus')"), item.blueprint.productName).toBe(secrets)
+      }
+    })
+
+    it("names real task ids in the kit README and packages dist, the installed unit, and the Arch fragment path", async () => {
+      const tide = await compilePacket(tideTickBlueprint, "linux-hyprland-waybar-module")
+      for (const id of text(tide, "README.md").match(/TASK-\d+(?:-[A-Z-]+)?/g) ?? []) expect(tide.documents["TASKS.md"]).toContain(`### ${id}`)
+      const script = text(tide, "scripts/package.sh")
+      expect(script).toContain('cp "target/release/tide-tick" "dist/tide-tick"')
+      expect(script).toContain('systemctl --user enable --now "tide-tick.service"')
+      expect(text(tide, "PKGBUILD")).toContain("sed 's|~/.local/bin|/usr/bin|g'")
+      expect(tide.documents["TRD.md"]).toContain("Artifact path: dist/tide-tick")
+    })
+
+    it("drops window-oriented boilerplate for Waybar only", async () => {
+      const tide = await compilePacket(tideTickBlueprint, "linux-hyprland-waybar-module")
+      const docs = Object.values(tide.documents).join("\n")
+      for (const phrase of ["screenshot of every window", "empty list shows one centered message", "settings are grouped rows", "after the main window closes", "PermissionCoordinator"]) expect(docs, phrase).not.toContain(phrase)
+      expect(tide.documents["TASKS.md"]).not.toContain("TASK-04-PERMISSION-COORDINATOR")
+      expect(docs).toContain("jq -e")
+      expect(docs).toContain("STALE_SUFFIX")
+      const gtk = fixtureCases.find(item => item.presetId === "linux-wayland-gtk4-desktop")!
+      const gtkPacket = await compilePacket(gtk.blueprint, gtk.presetId)
+      expect(gtkPacket.documents["TRD.md"]).toContain("screenshot of every window")
+    })
   })
 
   it("renders create and modify file lists as separate sentences", async () => {

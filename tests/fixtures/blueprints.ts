@@ -17,6 +17,7 @@ interface FeatureUses {
   readonly surface?: FeatureSurface
   readonly files?: Feature["userFileAccess"]
   readonly choices?: Feature["choiceLists"]
+  readonly runsEvery?: number
   readonly buildsOn?: readonly string[]
   readonly operations?: Feature["dataOperations"]
 }
@@ -41,7 +42,7 @@ function feature(name: string, userOutcome: string, behavior: string, acceptance
     choiceLists: [...(uses.choices ?? [])],
     buildsOn: [...(uses.buildsOn ?? [])],
     dataOperations: [...(uses.operations ?? [])],
-    runsEverySeconds: null,
+    runsEverySeconds: uses.runsEvery ?? null,
     runsDailyAt: null,
   }
 }
@@ -275,6 +276,29 @@ export const forecastGlanceBlueprint = blueprint({
   productConstraints: ["Send only coordinates to the weather service.", "Never display or log the API key after it is saved."],
 })
 
+// A scheduled Waybar module: one saved setting, one declared 30-minute refresh, one click action.
+export const tideTickBlueprint = blueprint({
+  productName: "Tide Tick",
+  summary: "Shows the next high tide for one saved harbor in a Waybar module, refreshing from a public tide service every 30 minutes and marking the reading stale when the service is unreachable.",
+  targetUsers: ["Sailors and beachgoers who keep Waybar open"],
+  goals: ["Show the next high tide at a glance", "Keep the last good reading when offline"],
+  nonGoals: ["Tide charts", "Multiple harbors"],
+  features: [
+    feature("Harbor choice", "Keep one saved harbor", "Save the harbor name the user sets and read it back for every refresh.", "The saved harbor is still set after a restart.", { data: ["Saved harbor"], operations: ["create", "read", "update"] }),
+    feature("Tide refresh", "See the next high tide", "Fetch tide times for the saved harbor and keep the last good reading, marking it stale when the service is unreachable.", "With the service unreachable, the label shows the last good time marked stale.", { platform: ["network", "background-execution"], data: ["Saved harbor", "Last tide reading"], services: ["Tide service"], operations: ["read", "update"], runsEvery: 1800 }),
+    feature("Tide table link", "Open the harbor's tide table", "Clicking the module opens the saved harbor's tide table page in the browser.", "Clicking the module opens one browser page for the saved harbor.", { data: ["Saved harbor"], operations: ["read"] }),
+  ],
+  dataObjects: [
+    { name: "Saved harbor", purpose: "The one harbor the user chose.", sensitivity: "internal", retentionIntent: "Keep until the user changes it.", storage: "settings", writeMode: "atomic-replace", fields: [{ name: "Harbor name", valueType: "text", optional: false }] },
+    { name: "Last tide reading", purpose: "The last good next-high-tide time fetched from the service.", sensitivity: "internal", retentionIntent: "Keep until replaced by a newer good reading.", storage: "records", writeMode: "direct", fields: [{ name: "High tide time", valueType: "text", optional: false }] },
+  ],
+  externalServices: [
+    { name: "Tide service", purpose: "Provide tide times for a harbor.", dataSent: ["Harbor name"], credentialRequired: false },
+  ],
+  platformNeeds: ["network", "local-storage", "background-execution"],
+  productConstraints: ["Send only the harbor name to the tide service."],
+})
+
 export const scanDrawerBlueprint = blueprint({
   productName: "Scan Drawer",
   summary: "A local drawer for scanned paper documents that copies each imported PDF or image into its own library folder, tags it, and keeps everything on the device.",
@@ -325,6 +349,7 @@ export const fixtureCases: ReadonlyArray<{ presetId: FixturePresetId; blueprint:
   { presetId: "linux-wayland-gtk4-desktop", blueprint: photoCleanerBlueprint },
   { presetId: "linux-hyprland-waybar-module", blueprint: forecastGlanceBlueprint },
   { presetId: "linux-hyprland-waybar-module", blueprint: networkMonitorBlueprint },
+  { presetId: "linux-hyprland-waybar-module", blueprint: tideTickBlueprint },
   { presetId: "tauri2-rust-typescript-desktop", blueprint: knowledgeManagerBlueprint },
   { presetId: "tauri2-rust-typescript-desktop", blueprint: invoiceArchiveBlueprint },
   { presetId: "astro-web", blueprint: landingPageBlueprint },

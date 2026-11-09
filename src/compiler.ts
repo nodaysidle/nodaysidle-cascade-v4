@@ -3,7 +3,7 @@ import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREME
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetOptionValue, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
-import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers } from "./kits"
+import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers, waybarHookSummary, waybarTaskNotes } from "./kits"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
 
@@ -1010,7 +1010,7 @@ function buildOwnersAndContracts(
       dependencyIds: [],
     })
   }
-  if (blueprint.permissionNeeds.length) {
+  if (blueprint.permissionNeeds.length && !preset.permissionOwnerId) {
     coreDrafts.push({
       id: "OWN-PERMISSION-COORDINATOR",
       name: "PermissionCoordinator",
@@ -1206,16 +1206,18 @@ function buildOwnersAndContracts(
   }
 
   for (const item of blueprint.permissionNeeds) {
+    const wording = preset.permissionTexts?.[item.capability]
+    const deniedBehavior = wording?.deniedBehavior ?? item.deniedBehavior
     contracts.push(contract(
       `CON-PERMISSION-${slug(item.capability).toUpperCase()}`,
       "permission",
       `${item.capability} permission`,
       permissionFeatureIds(item, features),
-      "OWN-PERMISSION-COORDINATOR",
+      preset.permissionOwnerId ?? "OWN-PERMISSION-COORDINATOR",
       preset.permissionPatterns[item.capability],
-      [`Purpose: ${item.purpose}`, `Denied behavior: ${item.deniedBehavior}`],
-      item.deniedBehavior,
-      ["Recheck authorization only after an explicit user action and preserve the documented denied path."],
+      [`Purpose: ${wording?.purpose ?? item.purpose}`, `Denied behavior: ${deniedBehavior}`],
+      deniedBehavior,
+      [wording?.recovery ?? "Recheck authorization only after an explicit user action and preserve the documented denied path."],
     ))
   }
 
@@ -1251,8 +1253,8 @@ function buildOwnersAndContracts(
       "Preset options",
       features.map(feature => feature.id),
       "OWN-PACKAGING",
-      `Preset options: ${optionEntries.map(([key, value]) => `${key}=${Array.isArray(value) ? value.join(",") : String(value)}`).join("; ")}.`,
-      optionEntries.map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}`),
+      `Preset options: ${optionEntries.map(([key, value]) => `${key}=${Array.isArray(value) ? value.join(",") : String(value)}`).join("; ")}.${preset.explainOptions ? ` ${optionEntries.map(([key]) => preset.options.find(option => option.id === key)).filter(option => option !== undefined).map(option => `${option.id} is the ${option.label}: ${option.description}`).join(" ")}` : ""}`,
+      optionEntries.map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(", ") : String(value)}${preset.explainOptions ? ` (${preset.options.find(option => option.id === key)?.description ?? ""})` : ""}`),
       "An option outside the preset schema blocks generation; the compiler never guesses an option.",
       ["Correct the option and regenerate."],
     ))
@@ -1370,6 +1372,7 @@ function buildPhases(
   astroPlan?: AstroRoutePlan,
   integrationServices: NormalizedBlueprint["externalServices"] = [],
   kitFoundationFiles: readonly string[] = [],
+  blueprint?: NormalizedBlueprint,
 ): { owners: GraphOwner[]; phases: GraphPhase[] } {
   const foundationFiles = unique([
     ...preset.sourceLayout(identity),
@@ -1474,7 +1477,7 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? " You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them." : ""}`,
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? " You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}`,
       validationCommands: draft.kind === "packaging"
         ? [files.focusedTestCommand, ...preset.validationCommands.map(command => command(identity))]
         : [files.focusedTestCommand, ...preset.validationCommands.slice(0, 2).map(command => command(identity))],
@@ -1491,6 +1494,14 @@ function buildPhases(
       modifyPhaseIds: [],
     })
   })
+
+  if (preset.id === "linux-hyprland-waybar-module" && blueprint) {
+    const hooks = waybarHookSummary(blueprint, name => {
+      const ownerId = features.find(feature => feature.name === name)?.ownerId
+      return ownerId === undefined ? undefined : coordinates.get(ownerId)?.taskId
+    })
+    phases[0] = { ...phases[0]!, tasks: [{ ...foundationTask, prompt: foundationTask.prompt + hooks }] }
+  }
 
   return { owners, phases }
 }
@@ -1570,7 +1581,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     return [files.implementationFile, files.focusedTestFile]
   }))
   const kitFoundationFiles = kitPaths.filter(path => !preset.sourceLayout(identity).includes(path) && !packagingOwned.has(path) && !featureOwnedFiles.has(path))
-  const { owners, phases } = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices, kitFoundationFiles)
+  const { owners, phases } = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices, kitFoundationFiles, blueprint)
   const persistenceEnabled = blueprint.persistenceNeeds.length > 0
   const declaredStorage = new Set(blueprint.persistenceNeeds.map(p => p.storage))
   const persistenceDecision = persistenceEnabled

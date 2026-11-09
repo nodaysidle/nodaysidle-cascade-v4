@@ -546,6 +546,69 @@ export function rustKitHelpers(blueprint: NormalizedBlueprint): { records: boole
   return { records, secrets, http, optionalDeps }
 }
 
+const WAYBAR_DEFAULT_SERVICE_SECONDS = 900
+const WAYBAR_STALE_SUFFIX = " (stale)"
+
+function snakeKey(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value"
+}
+
+export interface WaybarRoles {
+  // The first feature that declares a schedule, else the first that needs background execution.
+  readonly refreshOwner?: string
+  // The first unscheduled feature that only reads declared data: the module's click action.
+  readonly clickOwner?: string
+  // Service refresh seconds: the smallest declared runsEverySeconds, or the kit default when none is declared.
+  readonly intervalSeconds: number
+  readonly scheduled: boolean
+  readonly settingKeys: readonly string[]
+}
+
+// Every role is read from declared fields (schedules, resources, data operations), never from prose.
+export function waybarRoles(blueprint: NormalizedBlueprint): WaybarRoles {
+  const features = blueprint.features
+  const intervals = features.flatMap(feature => feature.runsEverySeconds === null ? [] : [feature.runsEverySeconds])
+  const unscheduled = (feature: (typeof features)[number]) => feature.runsEverySeconds === null && feature.runsDailyAt === null
+  const refreshOwner = features.find(feature => !unscheduled(feature))
+    ?? features.find(feature => feature.resourceIds.includes("permission:background-execution"))
+  const clickOwner = features.find(feature => feature !== refreshOwner && unscheduled(feature)
+    && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read"))
+  const settingKeys = [...new Set(blueprint.domainData.filter(item => item.storage === "settings")
+    .flatMap(item => item.fields.length ? item.fields.map(field => snakeKey(field.name)) : [snakeKey(item.name)]))]
+  return {
+    refreshOwner: refreshOwner?.name,
+    clickOwner: clickOwner?.name,
+    intervalSeconds: intervals.length ? Math.min(...intervals) : WAYBAR_DEFAULT_SERVICE_SECONDS,
+    scheduled: intervals.length > 0,
+    settingKeys,
+  }
+}
+
+// Sentences appended to the focused-task prompt of the feature owner named by a role, so each kit hook
+// has exactly one task that replaces it.
+export function waybarTaskNotes(blueprint: NormalizedBlueprint, featureNames: readonly string[]): string {
+  const roles = waybarRoles(blueprint)
+  const notes: string[] = []
+  if (roles.refreshOwner !== undefined && featureNames.includes(roles.refreshOwner)) {
+    notes.push(`You are the refresh-loop owner: replace the body of fetch_output in src/module.rs so the --service loop calls this feature's code and returns the final label as a ModuleOutput; keep run_service, render_with, refresh, STALE_SUFFIX, and the loop interval (settings.refresh_seconds) unchanged, and keep cache.json a derived render of that label.`)
+  }
+  if (roles.clickOwner !== undefined && featureNames.includes(roles.clickOwner)) {
+    notes.push("You are the click-action owner: replace the body of click in src/module.rs; the Waybar fragment binds on-click to --action click only, and no other --action name is added unless a feature declares one.")
+  }
+  for (const feature of blueprint.features.filter(item => featureNames.includes(item.name) && item.runsEverySeconds !== null)) {
+    notes.push(`${feature.name} runs every ${feature.runsEverySeconds} seconds: take that interval and the current time as parameters (default ${feature.runsEverySeconds} seconds, the clock injected), so the focused test sets a short interval and a fixed clock instead of sleeping or reading the system clock.`)
+  }
+  return notes.length ? ` ${notes.join(" ")}` : ""
+}
+
+// Names the task that replaces each kit hook; appended to the foundation task prompt.
+export function waybarHookSummary(blueprint: NormalizedBlueprint, taskIdForFeature: (featureName: string) => string | undefined): string {
+  const roles = waybarRoles(blueprint)
+  const refreshTask = roles.refreshOwner === undefined ? undefined : taskIdForFeature(roles.refreshOwner)
+  const clickTask = roles.clickOwner === undefined ? undefined : taskIdForFeature(roles.clickOwner)
+  return ` src/module.rs ships two hooks: fetch_output (the refresh loop body) is replaced by ${refreshTask ?? "no task, because no feature declares a schedule or background work; it stays the empty-state base"}, and click (the --action click body) is replaced by ${clickTask ?? "no task, because no feature declares a read-only action; it stays a no-op and the fragment binds no on-click"}.`
+}
+
 function waybarKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, options: Readonly<Record<string, string | boolean | readonly string[]>> = {}): KitFile[] {
   const slug = identity.slug
   const crate = crateName(slug)
@@ -553,23 +616,45 @@ function waybarKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, op
   const refresh = options.refreshSeconds === "60" || options.refreshSeconds === "5" ? options.refreshSeconds : "15"
   const tooltip = options.tooltip === false ? false : true
   const { records, secrets, http, optionalDeps } = rustKitHelpers(blueprint)
+  const roles = waybarRoles(blueprint)
+  const settingKeys = roles.settingKeys.map(key => JSON.stringify(key)).join(", ")
   const helperNames = [...(records ? ["sqlite.rs"] : []), ...(secrets ? ["credentials.rs"] : []), ...(http ? ["http.rs"] : [])]
   return [
     file("README.md", String.raw`
 # Starter kit
 
-Copy the foundation files listed in TASKS.md before TASK-01. Copy a packaging-owned file (PKGBUILD,
-scripts/package.sh, resources/, LICENSE) when the packaging task starts, using the kit content as the starting
-point. Keep every helper listed here and extend it; do not replace the composition root or the module
-output path with a test double.
+Copy the foundation files listed in TASKS.md before TASK-01-FOUNDATION. Copy a packaging-owned file (PKGBUILD,
+scripts/package.sh, resources/, LICENSE) when the packaging task (the last task in TASKS.md) starts, using the
+kit content as the starting point. Keep every helper listed here and extend it; do not replace the composition
+root or the module output path with a test double.
 
 Shipped helpers:
-- src/lib.rs, src/main.rs: CLI entry with --once, --action, and --service.
-- src/module.rs: one JSON object on stdout and the systemd refresh loop.
-- src/config.rs, src/paths.rs: atomic JSON settings under XDG config.
+- src/lib.rs, src/main.rs: CLI entry. The whole command line is: no argument or --once (print one JSON object),
+  --service (run the refresh loop), --action click or --action refresh, and --set KEY=VALUE. An unknown action
+  or key exits 2 with a message on stderr; --once always exits 0.
+- src/module.rs: render_with prints exactly one Waybar JSON object read from the cache (or the empty state when
+  there is no cache, or the stale state when the cached reading is older than twice the service interval).
+  run_service loops on settings.refresh_seconds and calls refresh, which calls fetch_output. fetch_output (the
+  refresh loop body) and click (the --action click body) are the two hooks that feature tasks replace;
+  everything else stays.
+- src/config.rs, src/paths.rs: atomic JSON settings under XDG config. refresh_seconds is the service refresh
+  interval (default ${roles.intervalSeconds} seconds${roles.scheduled ? ", the declared runsEverySeconds" : ", because no feature declares a schedule"}); the Waybar fragment interval is a different value (how often Waybar re-reads the cache).
 - src/platform/atomic_file.rs${helperNames.map(name => ", " + name).join("")}: only the platform boundaries this blueprint declares.
 - resources/waybar/config.jsonc and style.css: the module fragment.
 - tests/contract_tests.rs, tests/module_output_tests.rs: storage and output-shape tests.
+
+Rules the kit encodes:
+- Source of truth: persisted records (SQLite records and the settings file, per each data object's declared
+  storage) are authoritative. cache.json under $XDG_RUNTIME_DIR is only a derived render of the final label
+  text, written by the service and read by --once; deleting it loses nothing.
+- Saved settings live in the "values" map of config.json and are set with --set KEY=VALUE (declared keys:
+  ${roles.settingKeys.length ? roles.settingKeys.join(", ") : "none"}, plus refresh_seconds). Editing the file by hand is equivalent.
+- Actions: "click" is the module's click action and the only one the fragment binds (on-click); "refresh" runs
+  one refresh now. Right and middle click stay unbound unless a feature declares them.
+- STALE_SUFFIX in src/module.rs (default "${WAYBAR_STALE_SUFFIX}") is the one stale marker; use the wording the
+  acceptance criteria state if they state one, and change only that constant.
+- Time is injected: render_with, refresh, and interval_seconds take the clock and the settings as parameters,
+  so tests never sleep or read the system clock.
 `),
     file("LICENSE", String.raw`
 MIT License
@@ -609,8 +694,6 @@ ${optionalDeps}
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 dirs = "7"
 thiserror = "2"
-tracing = "0.1"
-tracing-subscriber = "0.3"
 tempfile = "3"
 
 [dev-dependencies]
@@ -624,90 +707,223 @@ pub mod paths;
 pub mod platform;
 `),
     file("src/main.rs", String.raw`
+use std::process::ExitCode;
+
 use clap::Parser;
 
-use ${crate}::module;
+use ${crate}::{config, module};
 
 #[derive(Parser)]
 struct Arguments {
+    /// Print one Waybar JSON object and exit 0 (the default).
     #[arg(long)]
     once: bool,
+    /// Run one action: click or refresh.
     #[arg(long)]
     action: Option<String>,
+    /// Run the refresh loop (systemd user service).
     #[arg(long)]
     service: bool,
+    /// Save one declared setting, written KEY=VALUE.
+    #[arg(long, value_name = "KEY=VALUE")]
+    set: Option<String>,
 }
 
-fn main() {
+fn report(result: Result<(), String>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(message) => {
+            eprintln!("{message}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn main() -> ExitCode {
     let arguments = Arguments::parse();
     if arguments.service {
         module::run_service();
-        return;
+    }
+    if let Some(pair) = arguments.set.as_deref() {
+        return report(config::set_pair(pair));
+    }
+    if let Some(action) = arguments.action.as_deref() {
+        return report(module::run_action(action));
     }
     let _ = arguments.once;
-    let output = module::render(arguments.action.as_deref());
-    println!("{output}");
+    println!("{}", module::render());
+    ExitCode::SUCCESS
 }
 `),
     file("src/module.rs", String.raw`
-use serde::Serialize;
+use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::config;
+use serde::{Deserialize, Serialize};
+
+use crate::config::{self, Settings};
 use crate::paths;
 use crate::platform::atomic_file;
 
-#[derive(Debug, Serialize)]
-struct ModuleOutput {
-    text: String,
-    alt: String,
-    tooltip: String,
-    class: String,
-    percentage: Option<u8>,
+/// Appended to the label of an out-of-date reading; the one stale marker (docs and tests name it).
+pub const STALE_SUFFIX: &str = "${WAYBAR_STALE_SUFFIX}";
+pub const ACTION_CLICK: &str = "click";
+pub const ACTION_REFRESH: &str = "refresh";
+/// The whole --action vocabulary; the Waybar fragment binds only ACTION_CLICK.
+pub const ACTIONS: &[&str] = &[ACTION_CLICK, ACTION_REFRESH];
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModuleOutput {
+    pub text: String,
+    pub alt: String,
+    pub tooltip: String,
+    pub class: String,
+    pub percentage: Option<u8>,
 }
 
-pub fn render(action: Option<&str>) -> String {
-    let settings = config::load();
-    let text = match action {
-        Some(action) => format!("{}: {}", settings.text, action),
-        None => settings.text.clone(),
-    };
-    let output = ModuleOutput {
-        text,
-        alt: String::from("module"),
+/// cache.json: a derived render of the final label, never a source of truth.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Cache {
+    #[serde(flatten)]
+    pub output: ModuleOutput,
+    pub updated_unix: u64,
+}
+
+pub fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+/// Service refresh interval in seconds, never below 5.
+pub fn interval_seconds(settings: &Settings) -> u64 {
+    u64::from(settings.refresh_seconds.max(5))
+}
+
+pub fn empty_state(settings: &Settings) -> ModuleOutput {
+    ModuleOutput {
+        text: settings.text.clone(),
+        alt: String::from("empty"),
         tooltip: settings.tooltip.clone(),
-        class: String::from("ready"),
+        class: String::from("empty"),
         percentage: None,
+    }
+}
+
+pub fn read_cache(path: &Path) -> Option<Cache> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+}
+
+pub fn write_cache(path: &Path, output: &ModuleOutput, updated_unix: u64) -> Result<(), String> {
+    let cache = Cache {
+        output: output.clone(),
+        updated_unix,
+    };
+    let bytes = serde_json::to_vec(&cache).map_err(|error| error.to_string())?;
+    atomic_file::write_atomic(path, &bytes).map_err(|error| error.to_string())
+}
+
+/// The one place that decides what Waybar shows: exactly one JSON object.
+pub fn render_with(settings: &Settings, cache: Option<&Cache>, now: u64) -> String {
+    let output = match cache {
+        None => empty_state(settings),
+        Some(cache) => {
+            let mut output = cache.output.clone();
+            let age = now.saturating_sub(cache.updated_unix);
+            if output.class == "stale" || age > interval_seconds(settings) * 2 {
+                output.class = String::from("stale");
+                if !output.text.ends_with(STALE_SUFFIX) {
+                    output.text.push_str(STALE_SUFFIX);
+                }
+            }
+            output
+        }
     };
     serde_json::to_string(&output)
         .unwrap_or_else(|_| String::from(r#"{"text":"!","class":"error"}"#))
 }
 
-pub fn run_service() {
+pub fn render() -> String {
+    render_with(
+        &config::load(),
+        read_cache(&paths::cache_path()).as_ref(),
+        now_unix(),
+    )
+}
+
+/// HOOK: the refresh-loop owner task replaces this body with the feature's real fetch and returns
+/// the final label. The base returns the empty state so the module runs before any feature exists.
+pub fn fetch_output(settings: &Settings, _now_unix: u64) -> Result<ModuleOutput, String> {
+    Ok(empty_state(settings))
+}
+
+/// One refresh: write the label from fetch_output, or on failure keep the last cache marked stale.
+pub fn refresh(cache_path: &Path, settings: &Settings, now: u64) -> Result<(), String> {
+    match fetch_output(settings, now) {
+        Ok(output) => write_cache(cache_path, &output, now),
+        Err(error) => {
+            if let Some(mut cache) = read_cache(cache_path) {
+                cache.output.class = String::from("stale");
+                write_cache(cache_path, &cache.output, cache.updated_unix)?;
+            }
+            Err(error)
+        }
+    }
+}
+
+/// HOOK: the click-action owner task replaces this body; the base does nothing.
+pub fn click(_settings: &Settings) -> Result<(), String> {
+    Ok(())
+}
+
+pub fn run_action(action: &str) -> Result<(), String> {
+    let settings = config::load();
+    match action {
+        ACTION_CLICK => click(&settings),
+        ACTION_REFRESH => refresh(&paths::cache_path(), &settings, now_unix()),
+        other => Err(format!(
+            "unknown action {other}; defined actions: {}",
+            ACTIONS.join(", ")
+        )),
+    }
+}
+
+/// The systemd --service loop: refresh, then sleep the configured interval.
+pub fn run_service() -> ! {
     loop {
-        let interval = config::load().refresh_seconds.max(5);
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let _ = atomic_file::write_atomic(&paths::cache_path(), now.to_string().as_bytes());
-        std::thread::sleep(Duration::from_secs(interval as u64));
+        let settings = config::load();
+        if let Err(error) = refresh(&paths::cache_path(), &settings, now_unix()) {
+            eprintln!("refresh failed: {error}");
+        }
+        std::thread::sleep(Duration::from_secs(interval_seconds(&settings)));
     }
 }
 `),
     file("src/config.rs", String.raw`
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::paths;
 use crate::platform::atomic_file;
 
+/// Declared setting keys that --set accepts (from the blueprint's settings data objects).
+pub const SETTING_KEYS: &[&str] = &[${settingKeys}];
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
 pub struct Settings {
     pub schema_version: u32,
     pub text: String,
     pub tooltip: String,
+    /// Service refresh interval in seconds; not the Waybar fragment interval.
     pub refresh_seconds: u32,
     pub enabled: bool,
+    /// Saved settings by key; the config store behind --set.
+    pub values: BTreeMap<String, String>,
 }
 
 impl Default for Settings {
@@ -716,9 +932,39 @@ impl Default for Settings {
             schema_version: 1,
             text: String::from("${identity.projectName}"),
             tooltip: String::from("${identity.projectName}"),
-            refresh_seconds: 900,
+            refresh_seconds: ${roles.intervalSeconds},
             enabled: true,
+            values: BTreeMap::new(),
         }
+    }
+}
+
+impl Settings {
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.values.get(key).map(String::as_str)
+    }
+
+    pub fn set(&mut self, key: &str, value: &str) -> Result<(), String> {
+        if value.is_empty() {
+            return Err(format!("{key} needs a value"));
+        }
+        if key == "refresh_seconds" {
+            let seconds: u32 = value
+                .parse()
+                .map_err(|_| format!("refresh_seconds must be whole seconds, got {value}"))?;
+            if seconds < 5 {
+                return Err(String::from("refresh_seconds must be at least 5"));
+            }
+            self.refresh_seconds = seconds;
+        } else if SETTING_KEYS.contains(&key) {
+            self.values.insert(key.to_string(), value.to_string());
+        } else {
+            return Err(format!(
+                "unknown setting {key}; known: refresh_seconds {}",
+                SETTING_KEYS.join(" ")
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -732,6 +978,16 @@ pub fn load() -> Settings {
 pub fn save(settings: &Settings) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(settings).map_err(|error| error.to_string())?;
     atomic_file::write_atomic(&paths::settings_path(), &bytes).map_err(|error| error.to_string())
+}
+
+/// The --set KEY=VALUE action: validate against the declared keys, then save atomically.
+pub fn set_pair(pair: &str) -> Result<(), String> {
+    let (key, value) = pair
+        .split_once('=')
+        .ok_or_else(|| String::from("--set expects KEY=VALUE"))?;
+    let mut settings = load();
+    settings.set(key.trim(), value.trim())?;
+    save(&settings)
 }
 `),
     file("src/paths.rs", String.raw`
@@ -900,7 +1156,7 @@ pub fn runtime() -> &'static Runtime {
 // depends only on the platform traits in this crate.
 `),
     file("tests/contract_tests.rs", String.raw`
-use ${crate}::config::Settings;
+use ${crate}::config::{SETTING_KEYS, Settings};
 use ${crate}::paths;
 use ${crate}::platform::atomic_file;
 ${records ? `use ${crate}::platform::sqlite::Database;
@@ -930,37 +1186,109 @@ fn sqlite_sets_user_version() {
 
 ` : ""}#[test]
 fn settings_default_is_stable() {
-    assert_eq!(Settings::default().refresh_seconds, 900);
+    assert_eq!(Settings::default().refresh_seconds, ${roles.intervalSeconds});
     assert!(paths::settings_path().ends_with("config.json"));
+}
+
+#[test]
+fn set_accepts_declared_keys_only() {
+    let mut settings = Settings::default();
+    for key in SETTING_KEYS {
+        settings.set(key, "saved").expect("declared key");
+        assert_eq!(settings.get(key), Some("saved"));
+    }
+    assert!(settings.set("not_a_declared_key", "x").is_err());
+    assert!(settings.set("refresh_seconds", "4").is_err());
+    settings
+        .set("refresh_seconds", "30")
+        .expect("refresh seconds");
+    assert_eq!(settings.refresh_seconds, 30);
 }
 `),
     file("tests/module_output_tests.rs", String.raw`
-use ${crate}::module;
+use ${crate}::config::Settings;
+use ${crate}::module::{self, Cache, ModuleOutput, STALE_SUFFIX};
+
+fn cached(text: &str, updated_unix: u64) -> Cache {
+    Cache {
+        output: ModuleOutput {
+            text: text.to_string(),
+            alt: String::from("ok"),
+            tooltip: String::from("tip"),
+            class: String::from("ready"),
+            percentage: None,
+        },
+        updated_unix,
+    }
+}
 
 #[test]
 fn output_is_one_json_object() {
-    let output = module::render(None);
+    let output = module::render_with(&Settings::default(), None, 0);
     let value: serde_json::Value = serde_json::from_str(&output).expect("valid JSON");
+    assert!(value.is_object());
     assert!(value.get("text").and_then(|item| item.as_str()).is_some());
-    assert!(value.get("class").and_then(|item| item.as_str()).is_some());
+    assert_eq!(value["class"], "empty");
+    assert!(!output.contains('\n'));
     assert!(!output.contains("password"));
     assert!(!output.contains("token"));
+}
+
+#[test]
+fn fresh_cache_is_shown_and_old_cache_is_marked_stale() {
+    let settings = Settings::default();
+    let interval = u64::from(settings.refresh_seconds);
+    let fresh = module::render_with(&settings, Some(&cached("14:05", 1000)), 1000 + interval);
+    let fresh: serde_json::Value = serde_json::from_str(&fresh).expect("valid JSON");
+    assert_eq!(fresh["text"], "14:05");
+    assert_eq!(fresh["class"], "ready");
+    let old = module::render_with(
+        &settings,
+        Some(&cached("14:05", 1000)),
+        1000 + interval * 2 + 1,
+    );
+    let old: serde_json::Value = serde_json::from_str(&old).expect("valid JSON");
+    assert_eq!(old["text"], format!("14:05{STALE_SUFFIX}"));
+    assert_eq!(old["class"], "stale");
+}
+
+#[test]
+fn refresh_writes_the_cache_with_the_injected_clock() {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let path = directory.path().join("cache.json");
+    let settings = Settings::default();
+    module::refresh(&path, &settings, 42).expect("refresh");
+    let cache = module::read_cache(&path).expect("cache written");
+    assert_eq!(cache.updated_unix, 42);
+}
+
+#[test]
+fn unknown_action_is_rejected_and_the_vocabulary_is_fixed() {
+    assert_eq!(module::ACTIONS, &["click", "refresh"]);
+    assert!(module::run_action("toggle").is_err());
 }
 `),
     file("resources/waybar/config.jsonc", String.raw`
 {
+  // interval: seconds between Waybar re-runs of exec, which only re-reads the cache. The service refresh
+  // interval is settings.refresh_seconds, a different value.
   "custom/${slug}": {
     "exec": "~/.local/bin/${slug} --once",
     "interval": ${refresh},
     "return-type": "json",
-    "tooltip": ${tooltip},
-    "on-click": "~/.local/bin/${slug} --action toggle"
+    "tooltip": ${tooltip}${roles.clickOwner === undefined ? "" : `,
+    "on-click": "~/.local/bin/${slug} --action click"`}
   }
 }
 `),
     file("resources/waybar/style.css", String.raw`
 #custom-${slug} {
   padding: 0 8px;
+}
+
+#custom-${slug}.stale,
+#custom-${slug}.empty {
+  opacity: 0.7;
 }
 `),
     ...(service ? [file(`resources/systemd/${slug}.service`, String.raw`
@@ -984,7 +1312,7 @@ pkgdesc="${identity.projectName}"
 arch=('x86_64' 'aarch64')
 url="https://github.com/nodaysidle"
 license=('MIT')
-depends=('dbus')
+depends=(${secrets ? "'dbus'" : ""})
 optdepends=('waybar: status bar')
 makedepends=('cargo')
 source=()
@@ -996,7 +1324,9 @@ build() {
 
 package() {
   install -Dm755 "$startdir/target/release/${slug}" "$pkgdir/usr/bin/${slug}"
-  install -Dm644 "$startdir/resources/waybar/config.jsonc" "$pkgdir/etc/xdg/waybar/${slug}.jsonc"
+  install -d "$pkgdir/etc/xdg/waybar"
+  sed 's|~/.local/bin|/usr/bin|g' "$startdir/resources/waybar/config.jsonc" > "$pkgdir/etc/xdg/waybar/${slug}.jsonc"
+  chmod 644 "$pkgdir/etc/xdg/waybar/${slug}.jsonc"
   install -Dm644 "$startdir/resources/waybar/style.css" "$pkgdir/etc/xdg/waybar/${slug}.css"
   install -d "$pkgdir/usr/lib/systemd/user"
   sed 's|%h/.local/bin|/usr/bin|' "$startdir/resources/systemd/${slug}.service" > "$pkgdir/usr/lib/systemd/user/${slug}.service"
@@ -1021,17 +1351,27 @@ done
 
 cargo build --release
 
-mkdir -p "$HOME/.local/bin" "$HOME/.config/waybar" "$HOME/.config/systemd/user"
-install -m755 "target/release/${slug}" "$HOME/.local/bin/${slug}"
-install -m644 "resources/waybar/config.jsonc" "$HOME/.config/waybar/${slug}.jsonc"
-install -m644 "resources/waybar/style.css" "$HOME/.config/waybar/${slug}.css"
+mkdir -p dist
+cp "target/release/${slug}" "dist/${slug}"
+echo "Built dist/${slug}"
 
-if [ -f "resources/systemd/${slug}.service" ]; then
-  install -m644 "resources/systemd/${slug}.service" "$HOME/.config/systemd/user/${slug}.service"
-  systemctl --user daemon-reload
+if [ "$install" -eq 0 ]; then
+  echo "Run ./scripts/package.sh --install to install it and start the systemd user service."
+  exit 0
 fi
 
-echo "Installed ${slug} Waybar module under $HOME/.local"
+mkdir -p "$HOME/.local/bin" "$HOME/.config/waybar" "$HOME/.config/systemd/user"
+install -m755 "dist/${slug}" "$HOME/.local/bin/${slug}"
+install -m644 "resources/waybar/config.jsonc" "$HOME/.config/waybar/${slug}.jsonc"
+install -m644 "resources/waybar/style.css" "$HOME/.config/waybar/${slug}.css"
+install -m644 "resources/systemd/${slug}.service" "$HOME/.config/systemd/user/${slug}.service"
+
+# The service writes the cache the Waybar exec path reads, so install means it runs now and at login.
+systemctl --user daemon-reload
+systemctl --user enable --now "${slug}.service"
+systemctl --user try-restart "${slug}.service"
+
+echo "Installed ${slug} Waybar module under $HOME/.local and started ${slug}.service"
 echo "Add include = [\"$HOME/.config/waybar/${slug}.jsonc\"] to ~/.config/waybar/config.jsonc"
 echo "Add @import \"$HOME/.config/waybar/${slug}.css\"; to ~/.config/waybar/style.css"
 `),
