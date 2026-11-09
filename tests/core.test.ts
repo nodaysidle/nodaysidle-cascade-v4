@@ -186,7 +186,7 @@ describe("v4 deterministic core", () => {
     const usesRecords = (feature: (typeof base.features)[number]) => feature.usesData.some(name => name.toLowerCase() === records.name.toLowerCase())
     const withOps = (operations: ("create" | "read" | "update" | "delete")[]) => ({
       ...base,
-      dataObjects: base.dataObjects.map(item => item === records ? { ...item, fields: [{ name: "Recipe name", valueType: "text" as const }, { name: "Steps", valueType: "text-list" as const }] } : item),
+      dataObjects: base.dataObjects.map(item => item === records ? { ...item, fields: [{ name: "Recipe name", valueType: "text" as const, optional: false }, { name: "Steps", valueType: "text-list" as const, optional: false }] } : item),
       features: base.features.map(feature => usesRecords(feature) ? { ...feature, dataOperations: operations } : feature),
     })
     const without = await compilePacket(withOps(["create", "read"]), "linux-wayland-gtk4-desktop")
@@ -230,6 +230,25 @@ describe("v4 deterministic core", () => {
       const packet = await compilePacket(fixture.blueprint, presetId)
       expect(packet.documents["TASKS.md"]).not.toContain("first main-surface task")
     }
+  })
+
+  it("requires service endpoints and renders declared schedules, endpoints, and optional fields", async () => {
+    const base = fixtureCases.find(item => item.presetId === "linux-hyprland-waybar-module")!.blueprint
+    const service = base.externalServices[0]!
+    const noEndpoint = auditSemanticIntake({ ...base, externalServices: [{ ...service, endpoint: "", responseFields: [] }] })
+    expect(noEndpoint.map(issue => issue.rule)).toEqual(expect.arrayContaining(["semantic.missing-service-endpoint", "semantic.missing-service-response"]))
+    const withSchedule = {
+      ...base,
+      externalServices: [{ ...service, endpoint: "https://api.open-meteo.com/v1/forecast", responseFields: [{ name: "Temperature", valueType: "number" as const, optional: true }] }],
+      features: base.features.map((feature, index) => index === 0 ? { ...feature, runsEverySeconds: 1800 } : feature),
+    }
+    const packet = await compilePacket(withSchedule, "linux-hyprland-waybar-module")
+    const trd = packet.documents["TRD.md"]
+    expect(trd).toContain("runs by itself every 1800 seconds")
+    expect(trd).toContain("Endpoint: https://api.open-meteo.com/v1/forecast")
+    expect(trd).toContain("Temperature (number, optional)")
+    const both = auditSemanticIntake({ ...base, features: base.features.map((feature, index) => index === 0 ? { ...feature, runsEverySeconds: 60, runsDailyAt: "09:00" } : feature) })
+    expect(both.map(issue => issue.rule)).toContain("semantic.two-schedules")
   })
 })
 

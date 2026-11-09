@@ -72,6 +72,10 @@ const FeatureSchema = z.strictObject({
   buildsOn: z.array(shortMeaning).max(3).default([]),
   // What this feature does to the data it uses; "delete" is promised only when a feature declares it.
   dataOperations: z.array(z.enum(["create", "read", "update", "delete"])).max(4).default([]),
+  // How often the feature runs by itself; null when the user triggers it. Give the exact interval the idea states.
+  runsEverySeconds: z.number().int().min(1).max(604800).nullable().default(null),
+  // A fixed local time of day the feature runs, as HH:MM; null otherwise.
+  runsDailyAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().default(null),
 })
 
 export const DataStorageSchema = z.enum(["settings", "records", "document", "app-files", "secret", "temporary", "session"])
@@ -82,6 +86,8 @@ export const DataValueTypeSchema = z.enum(["text", "long-text", "number", "whole
 const DataFieldSchema = z.strictObject({
   name: shortMeaning,
   valueType: DataValueTypeSchema,
+  // True when the value may be absent (for example the end time of a running timer).
+  optional: z.boolean().default(false),
 })
 
 const DataObjectSchema = z.strictObject({
@@ -100,6 +106,9 @@ const ExternalServiceSchema = z.strictObject({
   purpose: compactMeaning,
   dataSent: meaningList,
   credentialRequired: z.boolean(),
+  // The documented HTTPS endpoint the app calls, and the response values it reads. Name a real, documented public API.
+  endpoint: z.string().max(300).default(""),
+  responseFields: z.array(DataFieldSchema).max(12).default([]),
 })
 
 export const MAX_IDEA_SENTENCES = 60
@@ -508,6 +517,19 @@ function buildOrderIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
 // A stored record or document needs a declared shape, or every task invents its own.
 function dataShapeIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
   const issues: SemanticIssue[] = []
+  blueprint.externalServices.forEach((item, index) => {
+    if (!/^https:\/\/\S+$/.test(item.endpoint)) {
+      issues.push({ path: `externalServices[${index}].endpoint`, rule: "semantic.missing-service-endpoint", message: `Service '${item.name}' must declare the documented HTTPS endpoint the app calls.` })
+    }
+    if (item.responseFields.length === 0) {
+      issues.push({ path: `externalServices[${index}].responseFields`, rule: "semantic.missing-service-response", message: `Service '${item.name}' must declare the response values the app reads.` })
+    }
+  })
+  blueprint.features.forEach((feature, index) => {
+    if (feature.runsEverySeconds !== null && feature.runsDailyAt !== null) {
+      issues.push({ path: `features[${index}]`, rule: "semantic.two-schedules", message: `Feature '${feature.name}' declares both an interval and a daily time.` })
+    }
+  })
   blueprint.dataObjects.forEach((item, index) => {
     if ((item.storage === "records" || item.storage === "document") && item.fields.length === 0) {
       issues.push({ path: `dataObjects[${index}].fields`, rule: "semantic.missing-data-fields", message: `Data object '${item.name}' is stored as ${item.storage} and must declare the fields it keeps.` })
@@ -603,6 +625,8 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "For every feature, set dataOperations to what it does to the data it uses: create, read, update, delete. Declare delete only when the idea explicitly asks the user to remove something; then no other text may promise removal. A dataObject's retentionIntent must not mention deleting or removing unless a feature declares delete.",
     "For every dataObject stored as records or document, list its fields: one entry per value the app keeps (name and valueType: text, long-text, number, whole-number, flag, date-time, text-list, reference). Do not list an id; the compiler adds one. Other storage kinds may leave fields empty.",
     "Never invent a keyboard shortcut, key combination, command name, or menu path. Say 'a global shortcut' or 'a keyboard shortcut' unless the idea itself names the keys.",
+    "For a feature that runs by itself, set runsEverySeconds to the exact interval the idea states in seconds (30 minutes is 1800), or runsDailyAt to the stated local time as HH:MM; otherwise leave both null. Mark a record field optional only when a value can legitimately be missing, for example the end time of something still running.",
+    "For every external service, set endpoint to the real, documented HTTPS URL of a public API that fits the purpose, and list the response values the app reads in responseFields. Use only an API you are confident exists; the app never needs an API key unless credentialRequired is true.",
     "Coverage is checked structurally. Before finalizing, map every numbered idea sentence in ideaCoverage, then define only the features those mappings name. If a feature is listed by no sentence, remove it. If a sentence asks for behavior, map at least one feature to it. Never add a feature to make the design feel complete.",
     "For web surfaces: main is the home page, so anything the idea says the home page shows (including a list of featured entries) is main; use collection-index only for a separate page that lists all entries, tag-page for a tag or category page, search-page for a search results page, and page for any other page of its own that the idea names (an events page, a services page, an opening hours page). Use each value only when the idea asks for that page.",
     "Every feature acceptance signal must describe a concrete, mechanically verifiable condition (such as state transitions, UI element visibility, disk persistence, error code handling, or measured response under an explicit numerical threshold) that automated unit or integration tests can assert without human subjective impression. Never use subjective or hyperbolic phrases such as 'feels smooth', 'zero latency', 'instantaneous', or 'aesthetic appeal'.",

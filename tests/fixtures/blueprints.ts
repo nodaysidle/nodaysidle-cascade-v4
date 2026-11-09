@@ -41,6 +41,8 @@ function feature(name: string, userOutcome: string, behavior: string, acceptance
     choiceLists: [...(uses.choices ?? [])],
     buildsOn: [...(uses.buildsOn ?? [])],
     dataOperations: [...(uses.operations ?? [])],
+    runsEverySeconds: null,
+    runsDailyAt: null,
   }
 }
 
@@ -52,7 +54,7 @@ interface FixtureSeed {
   readonly nonGoals: readonly string[]
   readonly features: readonly Feature[]
   readonly dataObjects?: ReadonlyArray<Omit<SemanticBlueprint["dataObjects"][number], "fields"> & { readonly fields?: SemanticBlueprint["dataObjects"][number]["fields"] }>
-  readonly externalServices?: SemanticBlueprint["externalServices"]
+  readonly externalServices?: ReadonlyArray<Omit<SemanticBlueprint["externalServices"][number], "endpoint" | "responseFields"> & Partial<Pick<SemanticBlueprint["externalServices"][number], "endpoint" | "responseFields">>>
   readonly platformNeeds?: SemanticBlueprint["platformNeeds"]
   readonly qualityRequirements?: readonly string[]
   readonly productConstraints?: readonly string[]
@@ -71,9 +73,9 @@ function blueprint(seed: FixtureSeed): SemanticBlueprint {
     // Stored records and documents declare a minimal shape unless the fixture names one.
     dataObjects: (seed.dataObjects ?? []).map(item => ({
       ...item,
-      fields: item.fields ?? (item.storage === "records" || item.storage === "document" ? [{ name: "Title", valueType: "text" as const }] : []),
+      fields: item.fields ?? (item.storage === "records" || item.storage === "document" ? [{ name: "Title", valueType: "text" as const, optional: false }] : []),
     })),
-    externalServices: [...(seed.externalServices ?? [])],
+    externalServices: (seed.externalServices ?? []).map(item => ({ endpoint: "https://api.open-meteo.com/v1/forecast", responseFields: [{ name: "Value", valueType: "text" as const, optional: false }], ...item })),
     platformNeeds: [...(seed.platformNeeds ?? [])],
     qualityRequirements: [...(seed.qualityRequirements ?? ["Keyboard-operable controls with visible status and accessible labels."])],
     productConstraints: [...(seed.productConstraints ?? ["Preserve the last valid state across every recoverable failure."])],

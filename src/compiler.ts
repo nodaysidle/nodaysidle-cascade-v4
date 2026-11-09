@@ -15,6 +15,7 @@ export type DataOperation = "create" | "read" | "update" | "delete"
 export interface DataField {
   readonly name: string
   readonly valueType: DataValueType
+  readonly optional: boolean
 }
 
 export interface NormalizedBlueprint {
@@ -41,6 +42,8 @@ export interface NormalizedBlueprint {
     readonly providedCapabilities: readonly string[]
     readonly requiredCapabilities: readonly string[]
     readonly dataOperations: readonly DataOperation[]
+    readonly runsEverySeconds: number | null
+    readonly runsDailyAt: string | null
     readonly resourceIds: readonly string[]
     readonly choices: readonly string[]
     readonly surface: FeatureSurface
@@ -50,6 +53,8 @@ export interface NormalizedBlueprint {
     readonly purpose: string
     readonly dataSent: readonly string[]
     readonly credentialRequirement: "none" | "api-key"
+    readonly endpoint: string
+    readonly responseFields: readonly DataField[]
     readonly failureBehavior: string
     readonly recovery: string
   }[]
@@ -116,6 +121,8 @@ export interface GraphFeature {
   readonly providedCapabilities: readonly string[]
   readonly requiredCapabilities: readonly string[]
   readonly dataOperations: readonly DataOperation[]
+  readonly runsEverySeconds: number | null
+  readonly runsDailyAt: string | null
   readonly resourceIds: readonly string[]
   readonly requiredOwnerIds: readonly string[]
   readonly choices: readonly string[]
@@ -493,6 +500,8 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       providedCapabilities: [slug(name)],
       requiredCapabilities: unique(feature.buildsOn.map(other => slug(cleanMeaning(other)))),
       dataOperations: unique(feature.dataOperations),
+      runsEverySeconds: feature.runsEverySeconds,
+      runsDailyAt: feature.runsDailyAt,
       resourceIds: [],
       usesPlatformNeeds: unique(feature.usesPlatformNeeds),
       usesData: unique(featureDataUses(source, feature).map(name => dataNameByKey.get(referenceKey(name))!)),
@@ -514,7 +523,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       retentionIntent: cleanMeaning(item.retentionIntent),
       storage: item.storage,
       writeMode: item.writeMode,
-      fields: item.fields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType })).filter(field => field.name),
+      fields: item.fields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional })).filter(field => field.name),
     }
   }).filter(item => item.name && item.purpose && item.retentionIntent))
   const externalServices = uniqueByName(source.externalServices.map(item => {
@@ -524,6 +533,8 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       purpose,
       dataSent: cleanList(item.dataSent),
       credentialRequirement: item.credentialRequired ? "api-key" as const : "none" as const,
+      endpoint: item.endpoint.trim(),
+      responseFields: item.responseFields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional })).filter(field => field.name),
       failureBehavior: "Return a privacy-safe authentication, rate, transport, timeout, filtered, or provider failure without raw response content.",
       recovery: "Preserve recoverable local input and allow only an explicit retry or explicit service change.",
     }
@@ -895,7 +906,7 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
   }
   if (!item.fields.length) return []
   const lines = [
-    `Stored fields (one record each, plus a stable generated id): ${item.fields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]})`).join("; ")}.`,
+    `Stored fields (one record each, plus a stable generated id): ${item.fields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`,
   ]
   if (operations.length) {
     lines.push(`Store operations, exactly these and no others: ${operations.map(operation => `${operation} (${users.filter(feature => feature.dataOperations.includes(operation)).map(feature => feature.id).join(", ")})`).join("; ")}.`)
@@ -1019,7 +1030,7 @@ function buildOwnersAndContracts(
   const contracts: GraphContract[] = []
   for (const feature of features) {
     const key = feature.id.replace(/^FEAT-/, "")
-    const interfaceDetails = [`Inputs: ${feature.inputs.join("; ")}`, `Outputs: ${feature.outputs.join("; ")}`, ...feature.choices.map(choice => `Choices: ${choice}`)]
+    const interfaceDetails = [`Inputs: ${feature.inputs.join("; ")}`, `Outputs: ${feature.outputs.join("; ")}`, ...feature.choices.map(choice => `Choices: ${choice}`), ...(feature.runsEverySeconds !== null ? [`Schedule: runs by itself every ${feature.runsEverySeconds} seconds; this exact value is the default that code and tests use.`] : []), ...(feature.runsDailyAt !== null ? [`Schedule: runs by itself every day at ${feature.runsDailyAt} local time.`] : [])]
     contracts.push(contract(
       `CON-${key}-INTERFACE`,
       "interface",
@@ -1078,7 +1089,7 @@ function buildOwnersAndContracts(
       integrationFeatureIds(service, features),
       ownerId,
       `${service.purpose} ${preset.integrationBoundary}`,
-      [`Data sent: ${service.dataSent.join("; ") || "No product data beyond the explicit request."}`, `Credential requirement: ${service.credentialRequirement}`, `Preset boundary: ${preset.platform}`, `Framework boundary: ${preset.integrationBoundary}`],
+      [...(service.endpoint ? [`Endpoint: ${service.endpoint}`] : []), ...(service.responseFields.length ? [`Response values read (anything else is ignored): ${service.responseFields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`] : []), `Data sent: ${service.dataSent.join("; ") || "No product data beyond the explicit request."}`, `Credential requirement: ${service.credentialRequirement}`, `Preset boundary: ${preset.platform}`, `Framework boundary: ${preset.integrationBoundary}`],
       service.failureBehavior,
       [service.recovery],
     ))
@@ -1530,6 +1541,8 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       providedCapabilities: feature.providedCapabilities,
       requiredCapabilities: feature.requiredCapabilities,
       dataOperations: feature.dataOperations,
+      runsEverySeconds: feature.runsEverySeconds,
+      runsDailyAt: feature.runsDailyAt,
       resourceIds: feature.resourceIds,
       requiredOwnerIds: [],
       choices: feature.choices,
