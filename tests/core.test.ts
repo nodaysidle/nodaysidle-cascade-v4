@@ -352,7 +352,7 @@ describe("v4 deterministic core", () => {
     const base = fixtureCases.find(item => item.presetId === "linux-wayland-gtk4-desktop")!.blueprint
     const records = base.dataObjects.find(item => item.storage === "records")!
     const usesRecords = (feature: (typeof base.features)[number]) => feature.usesData.some(name => name.toLowerCase() === records.name.toLowerCase())
-    const withOps = (operations: ("create" | "read" | "update" | "delete")[]) => ({
+    const withOps = (operations: ("create" | "read" | "update" | "edit" | "delete")[]) => ({
       ...base,
       dataObjects: base.dataObjects.map(item => item === records ? { ...item, fields: [{ name: "Recipe name", valueType: "text" as const, optional: false }, { name: "Steps", valueType: "text-list" as const, optional: false }] } : item),
       features: base.features.map(feature => usesRecords(feature) ? { ...feature, dataOperations: [{ data: records.name, operations }] } : feature),

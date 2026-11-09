@@ -21,7 +21,7 @@ const base = (name: string, behavior: string, extra: Partial<SemanticBlueprint["
   ...extra,
 })
 
-const ops = (data: string, ...operations: ("create" | "read" | "update" | "delete")[]) => [{ data, operations }]
+const ops = (data: string, ...operations: ("create" | "read" | "update" | "edit" | "delete")[]) => [{ data, operations }]
 
 export const medicineBlueprint: SemanticBlueprint = {
   ...habitTrackerBlueprint,

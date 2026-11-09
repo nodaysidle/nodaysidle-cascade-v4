@@ -19,7 +19,7 @@ export const wineCellarBlueprint: SemanticBlueprint = {
   features: [
     feature("Bottle list", "Show every bottle; selecting a row opens its detail.", "The list shows the stored bottles.", { usesData: ["Bottles"], dataOperations: ops("Bottles", "read"), usesPlatformNeeds: ["local-storage"] }),
     feature("Add bottle", "Add a bottle with a required name and a vintage year that is a whole number between 1800 and the current calendar year.", "A valid bottle appears in the list.", { usesData: ["Bottles"], dataOperations: ops("Bottles", "create"), buildsOn: ["Bottle list"] }),
-    feature("Edit bottle", "Edit a bottle from its detail view with the same rules as adding.", "An edited bottle shows the new values.", { usesData: ["Bottles"], dataOperations: ops("Bottles", "read", "update"), buildsOn: ["Bottle list"] }),
+    feature("Edit bottle", "Edit a bottle from its detail view with the same rules as adding.", "An edited bottle shows the new values.", { usesData: ["Bottles"], dataOperations: ops("Bottles", "read", "edit"), buildsOn: ["Bottle list"] }),
     feature("Remove bottle", "Remove a bottle from its detail view.", "A removed bottle leaves the list.", { usesData: ["Bottles"], dataOperations: ops("Bottles", "delete"), buildsOn: ["Bottle list"] }),
     feature("Search bottles", "A search field narrows the list to bottles whose name contains the text; a no-match message shows when nothing matches.", "Searching shows the matching rows.", { usesData: ["Bottles"], dataOperations: ops("Bottles", "read"), buildsOn: ["Bottle list"] }),
   ],

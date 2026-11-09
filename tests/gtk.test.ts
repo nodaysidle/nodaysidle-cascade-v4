@@ -159,6 +159,6 @@ describe("GTK packet precision for search, forms, store interface and lifecycle"
     expect(mark).toContain("a single mark or toggle action needs no form")
     expect(mark).toContain("a failed mark leaves the row unchanged")
     expect(documents["TASKS.md"]).not.toContain("current_year")
-    expect(task(documents["TASKS.md"], "TASK-04-UNBOUGHT-IDEA-LIST")).toContain("never for a single mark or toggle action")
+    expect(task(documents["TASKS.md"], "TASK-04-UNBOUGHT-IDEA-LIST")).not.toContain("a detail view for the selected record")
   })
 })

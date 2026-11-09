@@ -21,7 +21,7 @@ interface FeatureUses {
   readonly invoked?: Feature["invokedBy"]
   readonly system?: Feature["systemSource"]
   readonly buildsOn?: readonly string[]
-  readonly operations?: readonly ("create" | "read" | "update" | "delete")[]
+  readonly operations?: readonly ("create" | "read" | "update" | "edit" | "delete")[]
 }
 
 function feature(name: string, userOutcome: string, behavior: string, acceptance: string, uses: FeatureUses = {}): Feature {

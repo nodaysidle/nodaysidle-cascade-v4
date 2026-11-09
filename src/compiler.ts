@@ -52,6 +52,7 @@ export interface NormalizedBlueprint {
     readonly requiredCapabilities: readonly string[]
     readonly dataOperations: readonly DataOperation[]
     readonly operationsByData: Readonly<Record<string, readonly DataOperation[]>>
+    readonly editsRecords: boolean
     readonly invokedBy: InvokedBy
     readonly runsEverySeconds: number | null
     readonly runsDailyAt: string | null
@@ -140,6 +141,7 @@ export interface GraphFeature {
   readonly requiredCapabilities: readonly string[]
   readonly dataOperations: readonly DataOperation[]
   readonly operationsByData: Readonly<Record<string, readonly DataOperation[]>>
+  readonly editsRecords: boolean
   readonly invokedBy: InvokedBy
   readonly runsEverySeconds: number | null
   readonly runsDailyAt: string | null
@@ -439,7 +441,7 @@ const STATIC_SITE_RECOVERY = "A bad content file fails npm run build and names t
 
 // An edit that creates nothing starts from the stored record, so its picker preselects the stored option, not the list's initial one.
 const tauriEditsOnly = (feature: SemanticBlueprint["features"][number], presetId: PresetId): boolean =>
-  presetId === "tauri2-rust-typescript-desktop" && feature.dataOperations.some(entry => entry.operations.includes("update")) && !feature.dataOperations.some(entry => entry.operations.includes("create"))
+  presetId === "tauri2-rust-typescript-desktop" && feature.dataOperations.some(entry => entry.operations.includes("update") || entry.operations.includes("edit")) && !feature.dataOperations.some(entry => entry.operations.includes("create"))
 
 function featureRecovery(name: string, recovery: FeatureRecovery, staticSite = false): string {
   if (staticSite) return STATIC_SITE_RECOVERY
@@ -552,8 +554,10 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       // A feature provides itself, so another feature's buildsOn becomes an owner dependency.
       providedCapabilities: [slug(name)],
       requiredCapabilities: unique(feature.buildsOn.map(other => slug(cleanMeaning(other)))),
-      dataOperations: unique(feature.dataOperations.flatMap(entry => entry.operations)),
-      operationsByData: Object.fromEntries(feature.dataOperations.map(entry => [referenceKey(entry.data), unique(entry.operations)])),
+      // "edit" (change fields in a form) is an update of the stored record; the flag below keeps the difference for the screen.
+      dataOperations: unique(feature.dataOperations.flatMap(entry => entry.operations.map(operation => operation === "edit" ? "update" as const : operation))),
+      operationsByData: Object.fromEntries(feature.dataOperations.map(entry => [referenceKey(entry.data), unique(entry.operations.map(operation => operation === "edit" ? "update" as const : operation))])),
+      editsRecords: feature.dataOperations.some(entry => entry.operations.includes("edit")),
       invokedBy: feature.invokedBy,
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,
@@ -1121,7 +1125,7 @@ function gtkClockFeatureIds(blueprint: NormalizedBlueprint, features: readonly G
 // The detail view holds the Edit and Delete controls when a feature declares them.
 function mainDetailControls(features: readonly GraphFeature[]): string {
   const controls = [
-    ...(features.some(feature => feature.dataOperations.includes("update")) ? ["an Edit button"] : []),
+    ...(features.some(feature => feature.editsRecords) ? ["an Edit button"] : []),
     ...(features.some(feature => feature.dataOperations.includes("delete")) ? ["a Delete button"] : []),
   ]
   return controls.length ? ` and holds ${controls.join(" and ")}, built here as inert controls that the feature task declaring the operation connects` : ""
@@ -1157,7 +1161,8 @@ function slotFor(owned: readonly GraphFeature[], presetId: PresetId, detailView 
   const ops = new Set(owned.flatMap(feature => feature.dataOperations))
   if (!ops.size && presetId === "tauri2-rust-typescript-desktop") return "no named slot: your own controls, if any (start and stop, an export button), sit in the main content area"
   if (ops.has("create")) return "the add-entry control"
-  if (ops.has("update") || ops.has("delete")) return detailView ? "the per-row action area or the detail view, whichever your acceptance criteria describe" : "the per-row action area"
+  if (owned.some(feature => feature.editsRecords)) return detailView ? "the detail view (its Edit control)" : "the per-row action area"
+  if (ops.has("update") || ops.has("delete")) return detailView && ops.has("delete") ? "the per-row action area or the detail view, whichever your acceptance criteria describe" : "the per-row action area"
   return "the filter area or the list region"
 }
 
@@ -1542,7 +1547,7 @@ function buildOwnersAndContracts(
   // An edit reuses the add feature's form and validation, so it builds after it.
   for (const editor of features) {
     for (const data of blueprint.domainData) {
-      if (!opsOn(editor, data.name).includes("update")) continue
+      if (!editor.editsRecords || !opsOn(editor, data.name).includes("update")) continue
       const adder = features.find(candidate => candidate.ownerId !== editor.ownerId && opsOn(candidate, data.name).includes("create") && !(preset.id === "tauri2-rust-typescript-desktop" && ownsItsControls(candidate)))
       if (adder) addDependency(editor.ownerId, adder.ownerId)
     }
@@ -1706,7 +1711,7 @@ function buildPhases(
     const ownedAcceptance = acceptance.filter(item => item.ownerId === draft.id)
     const routeExtras = placement?.kind === "page" && placement.pageFile !== files.implementationFile ? [placement.pageFile] : []
     // Android exposes a detail view (and an edit that reuses the add form) only when a feature declares the item-page surface.
-    const detailView = preset.id !== "android-kotlin-compose" || features.some(feature => feature.surface === "item-page")
+    const detailView = preset.id === "android-kotlin-compose" ? features.some(feature => feature.surface === "item-page") : features.some(feature => feature.editsRecords || feature.dataOperations.includes("delete"))
     const androidExtras = preset.id === "android-kotlin-compose" && blueprint
       ? androidTaskExtras({
           kind: draft.kind,
@@ -1886,6 +1891,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       requiredCapabilities: feature.requiredCapabilities,
       dataOperations: feature.dataOperations,
       operationsByData: feature.operationsByData,
+      editsRecords: feature.editsRecords,
       invokedBy: feature.invokedBy,
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,

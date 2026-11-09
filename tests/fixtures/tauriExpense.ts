@@ -22,7 +22,7 @@ const feature = (name: string, behavior: string, acceptance: string, uses: Parti
   ...uses,
 })
 
-const ops = (...operations: ("create" | "read" | "update" | "delete")[]) => [{ data: "Expenses", operations }]
+const ops = (...operations: ("create" | "read" | "update" | "edit" | "delete")[]) => [{ data: "Expenses", operations }]
 const categories = ["Food", "Rent", "Travel", "Other"]
 
 // Expense log: a list that falls back without a retry, an add form with a choice list, and an edit that reuses it.
@@ -35,7 +35,7 @@ export const expenseLogBlueprint: SemanticBlueprint = {
   features: [
     feature("Expense list", "List every expense with its amount, date and category, loading them when the app launches, and show this month's total.", "Saved expenses are listed with the monthly total.", { dataOperations: ops("read"), failureRecovery: "fallback", usesPlatformNeeds: ["local-storage"] }),
     feature("Add expense", "Add an expense with an amount above zero, a date, and a category chosen from the list.", "A new expense appears in the list.", { dataOperations: ops("create"), buildsOn: ["Expense list"], choiceLists: [{ name: "Expense category", options: categories, initial: "Other" }] }),
-    feature("Edit expense", "Change the amount, date, or category of a saved expense.", "The changed values show after reload.", { dataOperations: ops("read", "update"), buildsOn: ["Expense list"], choiceLists: [{ name: "Expense category", options: categories, initial: "Other" }] }),
+    feature("Edit expense", "Change the amount, date, or category of a saved expense.", "The changed values show after reload.", { dataOperations: ops("read", "edit"), buildsOn: ["Expense list"], choiceLists: [{ name: "Expense category", options: categories, initial: "Other" }] }),
   ],
   dataObjects: [
     { name: "Expenses", purpose: "One record per expense.", sensitivity: "personal", retentionIntent: "Keep until the user changes it.", storage: "records", writeMode: "direct", singleRecord: false, fields: [

@@ -31,7 +31,7 @@ export function feature(name: string, behavior: string, acceptance: string, uses
   }
 }
 
-export const ops = (data: string, ...operations: ("create" | "read" | "update" | "delete")[]) => [{ data, operations }]
+export const ops = (data: string, ...operations: ("create" | "read" | "update" | "edit" | "delete")[]) => [{ data, operations }]
 
 // Offline records app with no settings, no network, and no secrets; edit and delete come from a detail view.
 export const snippetLibraryBlueprint: SemanticBlueprint = {
@@ -43,7 +43,7 @@ export const snippetLibraryBlueprint: SemanticBlueprint = {
   features: [
     feature("Snippet list", "Show every snippet, most recently updated first; selecting a row opens its detail.", "The list shows the stored snippets.", { usesData: ["Snippets"], dataOperations: ops("Snippets", "read"), usesPlatformNeeds: ["local-storage"] }),
     feature("Add snippet", "Add a snippet with a required title of at most 120 characters, a language and the code.", "A valid snippet appears in the list.", { usesData: ["Snippets"], dataOperations: ops("Snippets", "create"), buildsOn: ["Snippet list"] }),
-    feature("Edit snippet", "Edit a snippet from its detail view.", "An edited snippet shows the new values.", { usesData: ["Snippets"], dataOperations: ops("Snippets", "read", "update"), buildsOn: ["Snippet list"] }),
+    feature("Edit snippet", "Edit a snippet from its detail view.", "An edited snippet shows the new values.", { usesData: ["Snippets"], dataOperations: ops("Snippets", "read", "edit"), buildsOn: ["Snippet list"] }),
     feature("Delete snippet", "Delete a snippet from its detail view.", "A deleted snippet leaves the list.", { usesData: ["Snippets"], dataOperations: ops("Snippets", "delete"), buildsOn: ["Snippet list"] }),
   ],
   dataObjects: [

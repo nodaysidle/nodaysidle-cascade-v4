@@ -24,7 +24,7 @@ const feature = (name: string, behavior: string, acceptance: string, uses: Parti
   ...uses,
 })
 
-const ops = (data: string, ...operations: ("create" | "read" | "update" | "delete")[]) => [{ data, operations }]
+const ops = (data: string, ...operations: ("create" | "read" | "update" | "edit" | "delete")[]) => [{ data, operations }]
 const base: Pick<SemanticBlueprint, "targetUsers" | "nonGoals" | "externalServices" | "platformNeeds" | "qualityRequirements" | "productConstraints"> = {
   targetUsers: ["People who jot short notes"],
   nonGoals: ["Cloud sync"],
@@ -43,7 +43,7 @@ export const habitStreakBlueprint: SemanticBlueprint = {
   features: [
     feature("Habit list", "List every saved habit with its streak, loading the saved habits when the app launches.", "Saved habits are listed with their streaks after launch.", { usesData: ["Habits", "Habit completions"], dataOperations: [...ops("Habits", "read"), ...ops("Habit completions", "read")], usesPlatformNeeds: ["local-storage"], invokedBy: "launch" }),
     feature("Add habit", "Add a habit with a name.", "A new habit appears in the list.", { usesData: ["Habits"], dataOperations: ops("Habits", "create"), buildsOn: ["Habit list"] }),
-    feature("Edit habit name", "Rename a habit and keep its creation time.", "The new name shows after reload.", { usesData: ["Habits"], dataOperations: ops("Habits", "read", "update"), buildsOn: ["Habit list"] }),
+    feature("Edit habit name", "Rename a habit and keep its creation time.", "The new name shows after reload.", { usesData: ["Habits"], dataOperations: ops("Habits", "read", "edit"), buildsOn: ["Habit list"] }),
     feature("Mark done today", "Mark a habit done for today's local calendar day; a second mark the same day changes nothing.", "A habit marked twice on one day has one completion.", { usesData: ["Habit completions"], dataOperations: ops("Habit completions", "read", "create"), buildsOn: ["Habit list"] }),
   ],
   dataObjects: [
@@ -68,7 +68,7 @@ export const quickNotesBlueprint: SemanticBlueprint = {
   features: [
     feature("Note list", "List notes, most recently edited first; selecting one opens it in the editor.", "Selecting a note opens its text in the editor.", { usesData: ["Notes"], dataOperations: ops("Notes", "read"), usesPlatformNeeds: ["local-storage"] }),
     feature("Add note", "Open an empty editor and save a new note.", "A saved note appears in the list.", { usesData: ["Notes"], dataOperations: ops("Notes", "create"), buildsOn: ["Note list"] }),
-    feature("Edit note", "Edit a note's text and save it.", "The edited text shows after reload.", { usesData: ["Notes"], dataOperations: ops("Notes", "read", "update"), buildsOn: ["Note list"] }),
+    feature("Edit note", "Edit a note's text and save it.", "The edited text shows after reload.", { usesData: ["Notes"], dataOperations: ops("Notes", "read", "edit"), buildsOn: ["Note list"] }),
     feature("Export notes as Markdown", "Write every note into one Markdown file at a path the user chooses.", "The chosen file contains every note text.", { usesData: ["Notes", "Notes export"], dataOperations: [{ data: "Notes", operations: ["read"] }, { data: "Notes export", operations: ["create"] }], userFileAccess: "saves", buildsOn: ["Note list"] }),
   ],
   dataObjects: [
