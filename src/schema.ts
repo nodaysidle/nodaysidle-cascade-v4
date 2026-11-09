@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { fieldIdentifier } from "./kitText"
 
 const shortMeaning = z.string().trim().min(1).max(120)
 const compactMeaning = z.string().trim().min(1).max(480)
@@ -533,6 +534,22 @@ function duplicateNameIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
   return issues
 }
 
+// Field names become identifiers (SQL columns, Rust fields, settings keys, Astro keys): two that map to one identifier, or one that is the built-in id, cannot coexist.
+function fieldNameIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
+  return blueprint.dataObjects.flatMap((item, index) => {
+    const seen = new Set<string>()
+    return item.fields.flatMap((field, position): SemanticIssue[] => {
+      const path = `dataObjects[${index}].fields[${position}].name`
+      const key = nameKey(field.name) || referenceKey(field.name)
+      if (key === "id") return [{ path, rule: "semantic.field-id", message: `Field '${field.name}' of '${item.name}' is the id the compiler adds to every record; remove it.` }]
+      const keys = [`name:${key}`, `identifier:${fieldIdentifier(field.name)}`]
+      const duplicate = keys.some(entry => seen.has(entry))
+      keys.forEach(entry => seen.add(entry))
+      return duplicate ? [{ path, rule: "semantic.duplicate-field", message: `Data object '${item.name}' has field '${field.name}' more than once after case, spacing and punctuation normalization; give each field a distinct name.` }] : []
+    })
+  })
+}
+
 function platformNeedIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
   const issues: SemanticIssue[] = []
   const used = new Set(blueprint.features.flatMap(feature => feature.usesPlatformNeeds))
@@ -753,7 +770,7 @@ function dataShapeIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
 }
 
 export function auditSemanticIntake(blueprint: SemanticBlueprint): SemanticIssue[] {
-  const issues: SemanticIssue[] = [...buildOrderIssues(blueprint), ...dataShapeIssues(blueprint), ...featureReferenceIssues(blueprint), ...savedFileDocumentIssues(blueprint), ...choiceListIssues(blueprint), ...duplicateNameIssues(blueprint), ...platformNeedIssues(blueprint)]
+  const issues: SemanticIssue[] = [...buildOrderIssues(blueprint), ...dataShapeIssues(blueprint), ...featureReferenceIssues(blueprint), ...savedFileDocumentIssues(blueprint), ...choiceListIssues(blueprint), ...duplicateNameIssues(blueprint), ...fieldNameIssues(blueprint), ...platformNeedIssues(blueprint)]
   if (unusableMeaning.test(blueprint.productName)) {
     issues.push({ path: "productName", rule: "semantic.unusable-product", message: "The product name does not contain usable product meaning." })
   }
@@ -834,7 +851,7 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "For every feature, set buildsOn to the names of the other features whose screen, list, or state it extends (for example a search or filter feature builds on the feature that shows the list); leave it empty for a feature that stands alone. The first screen a user sees is built by a feature that builds on nothing. Never form a cycle.",
     "For every feature, set dataOperations with one entry per data object the feature changes or reads: data is the exact dataObject name (it must also be in usesData) and operations lists what the feature does to that object: create, read, update (change a stored value through a control, such as marking something done or toggling a flag), edit (open a record and change its fields in a form), delete. A feature that only reads a data object lists read for it. Declare delete only when the idea explicitly asks the user to remove something; then no other text may promise removal. A dataObject's retentionIntent must not mention deleting or removing unless a feature declares delete.",
     "For every dataObject, set entryCount to the number of entries the idea states for it (for example five wild flowers is 5) only when the idea gives that count and names none of the entries; otherwise null. Never invent entry names to fill a count.",
-    "For every dataObject stored as records or document, list its fields: one entry per value the app keeps (name and valueType: text, long-text, number, whole-number, flag, date for a calendar day with no time of day, date-time for a moment in time, time for a local time of day written HH:MM, text-list, reference). Do not list an id; the compiler adds one. Other storage kinds may leave fields empty.",
+    "For every dataObject stored as records or document, list its fields: one entry per value the app keeps (name and valueType: text, long-text, number, whole-number, flag, date for a calendar day with no time of day, date-time for a moment in time, time for a local time of day written HH:MM, text-list, reference). Do not list an id; the compiler adds one. Give each field of one dataObject a distinct name. Other storage kinds may leave fields empty.",
     "Never invent a keyboard shortcut, key combination, command name, or menu path. Say 'a global shortcut' or 'a keyboard shortcut' unless the idea itself names the keys.",
     "For a feature that runs by itself, set runsEverySeconds to the exact interval the idea states in seconds (30 minutes is 1800), or runsDailyAt to the stated local time as HH:MM; otherwise leave both null. For a reminder whose time of day is a stored field of each record (for example a per-item time), leave both null and set runsAtField to the records data object, its time-valued field, its text field that titles the notification, and the constant notification body, which must be quoted exactly in one of the feature acceptanceSignals; declare no data object to remember which reminders were sent. Mark a record field optional only when a value can legitimately be missing, for example the end time of something still running.",
     "Set readsCurrentDay to true only for a feature whose behavior selects, counts, or totals stored records by the current calendar day (for example today's entries) or by a calendar period that contains today (this week's total), or computes anything relative to today (a streak, days since, overdue); leave it out for a feature that shows stored dates or times without comparing them with the present.",

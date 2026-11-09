@@ -1,6 +1,7 @@
 import type { DataField, DataOperation, NormalizedBlueprint } from "./compiler"
 import type { OwnerKind, PresetContract, PresetOptionValue } from "./presets"
 import { clockInitial, type DataValueType, type FeatureRecovery } from "./schema"
+import { fieldIdentifier } from "./kitText"
 
 // Tauri-only contract text: the Rust/TypeScript wire format, the store and document command
 // interfaces, the option-dependent preset text, and the per-task prompt additions. Everything here is
@@ -55,7 +56,7 @@ const RUST_TYPE: Record<DataValueType, string> = {
 }
 
 const SQL_TYPE: Record<DataValueType, string> = { text: "TEXT", "long-text": "TEXT", number: "REAL", "whole-number": "INTEGER", flag: "INTEGER", date: "TEXT", "date-time": "TEXT", time: "TEXT", "text-list": "TEXT", reference: "INTEGER" }
-const snake = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value"
+const snake = fieldIdentifier
 const rustField = (field: DataField): string => `${snake(field.name)}: ${field.optional ? `Option(${RUST_TYPE[field.valueType]})` : RUST_TYPE[field.valueType]}`
 const saves = (feature: TauriFeatureUse): boolean => feature.userFileAccess === "saves" || feature.userFileAccess === "opens-and-saves"
 const opens = (feature: TauriFeatureUse): boolean => feature.userFileAccess === "opens" || feature.userFileAccess === "opens-and-saves"

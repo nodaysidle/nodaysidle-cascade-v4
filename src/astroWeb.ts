@@ -55,7 +55,9 @@ export const ASTRO_BUDGET_TEXT = `every built HTML page under ${ASTRO_PERFORMANC
 export function fieldKey(name: string): string {
   const words = name.normalize("NFKD").replace(/[̀-ͯ]/g, "").split(/[^A-Za-z0-9]+/).filter(Boolean)
     .map(word => word === word.toUpperCase() ? word.toLowerCase() : word)
-  return words.map((word, index) => (index === 0 ? word[0]!.toLowerCase() : word[0]!.toUpperCase()) + word.slice(1)).join("") || "value"
+  const key = words.map((word, index) => (index === 0 ? word[0]!.toLowerCase() : word[0]!.toUpperCase()) + word.slice(1)).join("") || "value"
+  // A property name read as entry.data.<key> cannot start with a digit.
+  return /^[0-9]/.test(key) ? `field${key}` : key
 }
 
 // A static site with no declared service and no browser storage: build-time files only, so no runtime error, retry, form or listener exists.

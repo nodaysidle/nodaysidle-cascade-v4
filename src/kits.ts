@@ -3,7 +3,7 @@ import { astroKit } from "./astroKit"
 import { tauriKitFiles, tauriKitReadme, tauriKitUses } from "./tauriKit"
 import type { NormalizedBlueprint } from "./compiler"
 import type { PresetId, ProjectIdentity } from "./presets"
-import { desktopValue, rustString, shellWord, systemdValue, xmlText } from "./kitText"
+import { desktopValue, fieldIdentifier, rustString, shellWord, systemdValue, xmlText } from "./kitText"
 import { WAYBAR_EMPTY_LABEL, WAYBAR_FAILURE_RULE, waybarKitParts, waybarRequestSlots, waybarSources } from "./waybarContracts"
 import { waybarLocalTimeKit, waybarSystemKit } from "./waybarKit"
 
@@ -688,9 +688,6 @@ export function gtkKitFlags(blueprint: NormalizedBlueprint): { settings: boolean
 const WAYBAR_DEFAULT_SERVICE_SECONDS = 900
 const WAYBAR_STALE_SUFFIX = " (stale)"
 
-function snakeKey(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value"
-}
 
 // The external programs the click action runs, read from declared fields: a service web page the click feature
 // uses (xdg-open) and the notifications platform need (notify-send). Both go through src/platform/launcher.rs.
@@ -731,7 +728,7 @@ export function waybarRoles(blueprint: NormalizedBlueprint): WaybarRoles {
   const written = new Set(refreshOwner === undefined ? [] : Object.entries(refreshOwner.operationsByData).filter(([, operations]) => operations.some(operation => operation === "create" || operation === "update")).map(([key]) => key))
   const labelOwners = features.filter(feature => feature !== refreshOwner && feature !== clickOwner && Object.entries(feature.operationsByData).some(([key, operations]) => written.has(key) && operations.includes("read"))).map(feature => feature.name)
   const settingKeys = [...new Set(blueprint.domainData.filter(item => item.storage === "settings")
-    .flatMap(item => item.fields.length ? item.fields.map(field => snakeKey(field.name)) : [snakeKey(item.name)]))]
+    .flatMap(item => item.fields.length ? item.fields.map(field => fieldIdentifier(field.name)) : [fieldIdentifier(item.name)]))]
   return {
     refreshOwner: refreshOwner?.name,
     labelOwners,
@@ -756,7 +753,7 @@ export function waybarTaskNotes(blueprint: NormalizedBlueprint, featureNames: re
       const slots = waybarRequestSlots(service, blueprint.domainData)
       notes.push(slots === undefined
         ? `The stored record carries the value of the saved setting '${service.requestValueFrom}' it was fetched for; write it with every successful fetch.`
-        : `The request is built from several saved values: read each of ${slots.map(slot => `'${slot.name}' (settings key ${snakeKey(slot.name)})`).join(", ")} from the saved settings of '${service.requestValueFrom}' and pass them to the integration owner's request_url, which builds the address with http::fill_url (src/platform/http.rs). A value that is not saved, or that fill_url refuses (empty, not a number, outside the field's min..max), is a failed fetch: no request is sent and the failure rule above applies exactly as for a missing single value. The stored record carries every one of those saved values it was fetched for; write them with every successful fetch.`)
+        : `The request is built from several saved values: read each of ${slots.map(slot => `'${slot.name}' (settings key ${fieldIdentifier(slot.name)})`).join(", ")} from the saved settings of '${service.requestValueFrom}' and pass them to the integration owner's request_url, which builds the address with http::fill_url (src/platform/http.rs). A value that is not saved, or that fill_url refuses (empty, not a number, outside the field's min..max), is a failed fetch: no request is sent and the failure rule above applies exactly as for a missing single value. The stored record carries every one of those saved values it was fetched for; write them with every successful fetch.`)
     }
     notes.push(`Set ModuleOutput.value to the raw numeric reading${blueprint.features.some(feature => feature.thresholds.length) ? " in the unit the declared thresholds use (bytes for a size)" : ""} when the label shows one; severity is the kit's: THRESHOLDS in src/module.rs is generated from the declared thresholds${blueprint.features.some(feature => feature.thresholds.length) ? "" : " (none are declared, so the class is always normal)"} and no task edits it. Set ModuleOutput.tooltip to the label text unless the acceptance criteria state tooltip wording. The empty label is ${WAYBAR_EMPTY_LABEL}, the kit default of Settings.text; do not change it.`)
     if (blueprint.persistenceNeeds.some(need => need.storage === "records")) {

@@ -1,5 +1,6 @@
 import type { GraphContract, NormalizedBlueprint, SystemSource } from "./compiler"
 import { referenceKey, requestSettingsObject, templatePlaceholders, type SemanticBlueprint, type SemanticIssue } from "./schema"
+import { fieldIdentifier } from "./kitText"
 
 // Everything the Waybar preset states once and deterministically: units, system sources, and the rules
 // the provider is told and the intake checks. Kit code, TRD wording, and provider notes all read it.
@@ -279,7 +280,7 @@ export function waybarLifecycleNote(blueprint: NormalizedBlueprint): string {
 // Settings are the config.json values map and nothing else: no table, migration, or generated id.
 export function waybarSettingsInterface(item: NormalizedBlueprint["domainData"][number], operations: readonly string[]): string {
   const record = item.name.replace(/[^A-Za-z0-9]+(.)?/g, (_, next: string | undefined) => (next ?? "").toUpperCase()).replace(/^./, first => first.toUpperCase())
-  const keys = item.fields.map(field => field.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")).join(", ")
+  const keys = item.fields.map(field => fieldIdentifier(field.name)).join(", ")
   const reads = operations.includes("read") ? ` get(settings) returns the ${record} struct built from those keys in Settings.values, or a String error that names a missing key (never a default);` : ""
   const writes = operations.some(operation => operation !== "read") ? " set(key, value) saves through config::set_pair;" : ""
   return `Interface: ${item.name} lives only in config.json (Settings.values, keys ${keys || "none"}); there is no SQLite table, migration, or generated id for it.${reads}${writes} OWN-DATA-STORE adds these functions to src/config.rs and no trait over a database. Its focused test saves a value through config::set_pair (the --set path) and reads it back; set_pair and load read XDG_CONFIG_HOME, so the test points it at a temporary directory inside one single test function (std::env::set_var is unsafe in edition 2024 and races across parallel tests, so every environment change stays in that one function), and asserts that reading an unset key returns the error that names the key.`

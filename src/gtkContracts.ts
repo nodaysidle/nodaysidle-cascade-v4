@@ -2,6 +2,7 @@ import { allocateStableIds, pascal, slug, type GraphContract, type GraphPhase, t
 import { clockInitial, type DataValueType } from "./schema"
 import { gtkKitFlags, rustKitHelpers } from "./kits"
 import type { PresetContract } from "./presets"
+import { fieldIdentifier } from "./kitText"
 
 // The preset names SQLite, settings, a systemd unit, the portal and a text rule only for a product that
 // declares them; the kit reads the same flags (gtkKitFlags), so the packet and the kit cannot disagree.
@@ -103,8 +104,7 @@ const referenceKey = (name: string): string => name.normalize("NFKC").trim().rep
 // The concrete store interface for the SQLite records of one data object: argument and return types, the one
 // typed error, integer widths, and the table and column names, all derived from declared fields.
 export function gtkStoreInterface(item: NormalizedBlueprint["domainData"][number], operations: readonly string[], record: string, base: string): string {
-  const column = (name: string) => name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value"
-  const fields = item.fields.map(field => ({ name: column(field.name), ...SQL_TYPES[field.valueType], optional: field.optional }))
+  const fields = item.fields.map(field => ({ name: fieldIdentifier(field.name), ...SQL_TYPES[field.valueType], optional: field.optional }))
   const rustFields = fields.map(field => `${field.name}: ${field.optional ? `Option of ${field.rust}` : field.rust}`).join(", ")
   const columns = ["id INTEGER PRIMARY KEY AUTOINCREMENT", ...fields.map(field => `${field.name} ${field.sql}${field.optional ? "" : " NOT NULL"}${field.note ? ` (${field.note})` : ""}`)].join(", ")
   const signatures = [
@@ -182,7 +182,7 @@ export function refineGtkPhases(phases: readonly GraphPhase[], blueprint: Normal
     const shape = formShape(owned)
     if (!shape) return []
     const { item, appSet, inputs, edited } = shape
-    const names = inputs.map(field => field.name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value")
+    const names = inputs.map(field => fieldIdentifier(field.name))
     const setNote = (field: typeof appSet[number]): string => clockInitial(field) ? `the add function stamps ${field.name.toLowerCase()} from the Clock trait when the record is created (${field.valueType === "date" ? "today_string(clock), the local YYYY-MM-DD day" : "the current moment"}, from the clock it is given; tests pass a fixed clock)` : `the app sets ${field.name.toLowerCase()} to ${(field.initial ?? "") !== "" ? `"${field.initial}"` : "false"} itself inside validate`
     const numeric = item.fields.some(field => field.valueType === "number" || field.valueType === "whole-number")
     const dates = inputs.filter(field => field.valueType === "date")

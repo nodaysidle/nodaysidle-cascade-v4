@@ -1,5 +1,6 @@
 import type { PresetContract } from "./presets"
 import type { SemanticBlueprint, SemanticIssue } from "./schema"
+import { fieldIdentifier } from "./kitText"
 import { waybarCapabilityIssues } from "./waybarContracts"
 
 // The preset declares what the platform can express. The blueprint declares what the product
@@ -17,6 +18,12 @@ export function auditCapabilities(blueprint: SemanticBlueprint, preset: PresetCo
   if (preset.id === "linux-hyprland-waybar-module") {
     issues.push(...waybarCapabilityIssues(blueprint))
     blueprint.dataObjects.forEach((item, index) => {
+      // The kit's Settings already owns refresh_seconds (the module's own refresh interval, set with `config set refresh_seconds`).
+      item.fields.forEach((field, position) => {
+        if (item.storage === "settings" && fieldIdentifier(field.name) === "refresh_seconds") {
+          issues.push({ path: `dataObjects[${index}].fields[${position}].name`, rule: "capability.waybar-refresh-setting", message: `Setting '${field.name}' is the module's built-in refresh_seconds setting; remove the field (the refresh interval already exists).` })
+        }
+      })
       if (item.storage === "session" || item.storage === "temporary") {
         issues.push({ path: `dataObjects[${index}].storage`, rule: "capability.waybar-process-memory", message: `Data object '${item.name}' is ${item.storage}, but each Waybar module run is a separate process; use records or settings for anything kept between runs.` })
       }

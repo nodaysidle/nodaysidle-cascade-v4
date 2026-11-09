@@ -124,6 +124,8 @@ describeBuild("v4 starter kits compile and pass their own tests", () => {
   const astroFixtures = [
     ...fixtureCases.filter(item => item.presetId === "astro-web"),
     { presetId: counted.presetId, blueprint: { ...counted.blueprint, productName: "Counted Samples", dataObjects: counted.blueprint.dataObjects.map((item, index) => index === 0 ? { ...item, entryCount: 5, fields: [...item.fields, { name: "Opens at", valueType: "time" as const, optional: false }] } : item) } },
+    // A digit-leading field name becomes a valid content-schema key (field2ndEdition).
+    { presetId: counted.presetId, blueprint: { ...counted.blueprint, productName: "Digit Fields", dataObjects: counted.blueprint.dataObjects.map((item, index) => index === 0 ? { ...item, fields: [...item.fields, { name: "2nd edition", valueType: "text" as const, optional: false }] } : item) } },
   ]
   for (const fixture of astroFixtures) {
     it(`Astro site kit: ${fixture.blueprint.productName}`, async () => {
