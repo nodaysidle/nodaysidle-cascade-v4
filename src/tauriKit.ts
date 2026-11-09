@@ -105,6 +105,8 @@ export function tauriKitFiles(identity: ProjectIdentity, uses: TauriKitUses): Ta
     { path: "src/errors.ts", content: ERRORS_TS },
     { path: "src/ui.ts", content: withoutSettingsUi(UI_TS, uses, "let nextControlId = 0") },
     ...(uses.shortcut ? [{ path: "src/shortcut.ts", content: SHORTCUT_TS }, { path: "tests/shortcut.test.ts", content: SHORTCUT_TEST_TS }] : []),
+    { path: "src/store.ts", content: STORE_TS },
+    { path: "tests/store.test.ts", content: STORE_TEST_TS },
     { path: "src/main.ts", content: mainTs(identity) },
     { path: "src/style.css", content: uses.settings ? STYLE_CSS : STYLE_CSS.replace(/\.settings \{[\s\S]*?\n(?=button:focus-visible)/, "") },
     { path: "tests/kit.test.ts", content: KIT_TEST_TS },
@@ -139,6 +141,9 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     "",
     "## Behavior to keep",
     "",
+    "- src/store.ts: createStore(initial) is the one shared view state (get, set(patch), subscribe) and createSlots() the named mount points (host(name), mount(name, element)). The task that builds the main screen creates the store and places every host; a later task never edits that task's file: it reads the store, calls store.set, subscribes to re-render its own view, and mounts its control from src/main.ts with slots.mount.",
+    "- Time: no kit file reads the clock. A feature that needs the time takes now: () => Date in the dependencies object of its factory; src/main.ts passes () => new Date() to every such factory, so every task sees the same today, and a test passes a fake clock.",
+    "- src/errors.ts: errors.show(message, onRetry?) shows a message; passing onRetry adds a Retry button that repeats the failed command (the banner has no other retry control). src/ui.ts confirmDialog(message, confirmLabel) is the in-page confirmation (Cancel and the confirm button; Escape cancels), styled in src/style.css.",
     "- src-tauri/src/lib.rs: app_builder registers every plugin and command and nothing else; run() owns the only setup closure, because Builder::setup replaces any earlier one. Add each new command to generate_handler! and each new store to manage_state.",
     "- manage_state(app, folder) opens every store in one folder: run() passes app_data_dir(), tests pass a temporary folder, so tests never touch real app data.",
     "- src-tauri/tests/kit_tests.rs builds app_builder(mock_builder()) with the app's own context() and calls commands through get_ipc_response from the devUrl origin (http://localhost:1420); a request from any other origin is refused. Keep this test passing as commands are added.",
@@ -146,7 +151,7 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     "- src-tauri/capabilities/default.json lists only core:default and the permissions of the plugins lib.rs initializes. Add a permission only with the plugin feature that needs it.",
     "- Its windows array starts as [\"main\"]. When a feature opens another window, give it a fixed label and add that label there, or Tauri refuses every command the window calls. Create that window fresh each time it opens (close it, never just hide it), so it always loads current data.",
     ...(uses.settings ? ["- settings.rs replaces settings.json whole: a temporary file in the same folder, synced, then renamed."] : []),
-    ...(uses.records ? ["- database.rs applies MIGRATIONS in order and records the schema version in PRAGMA user_version; append new migrations, never edit a shipped one."] : []),
+    ...(uses.records ? ["- database.rs applies MIGRATIONS in order and records the schema version in PRAGMA user_version; append new migrations, never edit a shipped one. database::open creates the data folder (create_dir_all) before opening records.sqlite3, so a launch step that opens the store before manage_state still works on a fresh install."] : []),
     ...(uses.timestamps ? ["- src-tauri/Cargo.toml already has the time crate (parsing, formatting) for the RFC3339 date-time fields: validate with time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339) and require a UTC offset; write no parser of your own."] : []),
     ...(uses.services ? ["- src-tauri/Cargo.toml already has reqwest (json) for the declared services; integration owners use one reqwest::Client and add no HTTP crate of their own."] : []),
     ...(uses.secrets ? ["- vault.rs is the only place secrets are stored: generic passwords in the login keychain under the bundle ID's credentials service. Tests use MemoryStore, never the keychain."] : []),
@@ -261,25 +266,37 @@ export const createErrorBanner = (host: HTMLElement) => {
   banner.setAttribute("role", "alert")
   banner.hidden = true
   const text = document.createElement("p")
+  const retry = document.createElement("button")
+  retry.type = "button"
+  retry.textContent = "Retry"
+  retry.hidden = true
+  let repeat: (() => void) | undefined
+  retry.addEventListener("click", () => {
+    banner.hidden = true
+    repeat?.()
+  })
   const dismiss = document.createElement("button")
   dismiss.type = "button"
   dismiss.textContent = "Dismiss"
   dismiss.addEventListener("click", () => { banner.hidden = true })
-  banner.append(text, dismiss)
+  banner.append(text, retry, dismiss)
   const header = host.querySelector(".app-header")
   if (header) header.after(banner)
   else host.prepend(banner)
 
-  const show = (message: string) => {
+  // onRetry gives the message a Retry button that repeats the failed command; omit it for a message with no retry.
+  const show = (message: string, onRetry?: () => void) => {
     text.textContent = message
+    repeat = onRetry
+    retry.hidden = !onRetry
     banner.hidden = false
   }
 
   return {
-    /** A message the frontend wrote for the user. */
+    /** A message the frontend wrote for the user, with an optional retry action. */
     show,
     /** A failed command: shows the message Rust wrote, never a raw runtime error. */
-    report: (error: unknown) => show(messageFor(error)),
+    report: (error: unknown, onRetry?: () => void) => show(messageFor(error), onRetry),
     dismiss: () => { banner.hidden = true },
   }
 }
@@ -359,6 +376,38 @@ export const clampedText = (text: string, lines: 2 | 3 = 2): HTMLElement => {
   return element
 }
 
+/**
+ * A confirmation inside the page (no browser or plugin dialog): a modal with the message, a Cancel
+ * button, and a confirm button labelled confirmLabel. Resolves true on confirm, false on Cancel or Escape.
+ */
+export const confirmDialog = (message: string, confirmLabel: string): Promise<boolean> =>
+  new Promise(resolve => {
+    const overlay = document.createElement("div")
+    overlay.className = "dialog-overlay"
+    const dialog = document.createElement("div")
+    dialog.className = "dialog"
+    dialog.setAttribute("role", "alertdialog")
+    dialog.setAttribute("aria-modal", "true")
+    dialog.setAttribute("aria-label", message)
+    const text = document.createElement("p")
+    text.textContent = message
+    const finish = (answer: boolean) => {
+      document.removeEventListener("keydown", onKey)
+      overlay.remove()
+      resolve(answer)
+    }
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") finish(false) }
+    const actions = document.createElement("div")
+    actions.className = "dialog-actions"
+    const cancel = button("Cancel", () => finish(false))
+    actions.append(cancel, button(confirmLabel, () => finish(true), { primary: true }))
+    dialog.append(text, actions)
+    overlay.append(dialog)
+    document.addEventListener("keydown", onKey)
+    document.body.append(overlay)
+    cancel.focus()
+  })
+
 let nextControlId = 0
 
 /** One settings line: the label (and an optional detail) on the left, the control on the right. */
@@ -411,7 +460,7 @@ export const switchControl = (checked: boolean, onChange: (checked: boolean) => 
 
 const UI_TEST_TS = `// @vitest-environment happy-dom
 import { describe, expect, it } from "vitest"
-import { button, clampedText, emptyState, setEnabled, settingsGroup, settingsRow, switchControl } from "../src/ui"
+import { button, clampedText, confirmDialog, emptyState, setEnabled, settingsGroup, settingsRow, switchControl } from "../src/ui"
 
 describe("ui building blocks", () => {
   it("disables a command until it has something to act on", () => {
@@ -437,6 +486,18 @@ describe("ui building blocks", () => {
     const group = settingsGroup("General", [row], "Off until you turn it on.")
     expect(group.querySelector(".settings-rows")!.children).toHaveLength(1)
     expect(group.querySelector(".footnote")!.textContent).toBe("Off until you turn it on.")
+  })
+
+  it("confirms in the page: Delete resolves true, Cancel and Escape resolve false", async () => {
+    const asked = confirmDialog("Delete this item?", "Delete")
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>(".dialog button")]
+    expect(buttons.map(item => item.textContent)).toEqual(["Cancel", "Delete"])
+    buttons[1]!.click()
+    expect(await asked).toBe(true)
+    expect(document.querySelector(".dialog")).toBeNull()
+    const cancelled = confirmDialog("Delete this item?", "Delete")
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+    expect(await cancelled).toBe(false)
   })
 
   it("clamps long text and keeps the full text on hover", () => {
@@ -488,6 +549,10 @@ body { color: var(--text); background: var(--bg); overflow: hidden; }
 .error-banner { display: flex; align-items: flex-start; gap: 12px; margin: 10px 20px 0; padding: 9px 12px; color: var(--danger); background: var(--danger-bg); border-radius: 8px; }
 .error-banner p { flex: 1; margin: 0; }
 .error-banner button { color: inherit; background: none; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
+.dialog-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.35); }
+.dialog { min-width: 260px; max-width: 420px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.dialog p { margin: 0 0 14px; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
 /* Building blocks from src/ui.ts. */
 .button {
@@ -558,6 +623,71 @@ describe("command errors", () => {
 
   it("never shows a raw runtime error", () => {
     expect(messageFor("IPC failed: stack trace")).toBe("Something went wrong. Try again.")
+  })
+})
+`
+
+const STORE_TS = `/** The shared view state of the main screen: one object, changed only through set, observed through subscribe. */
+export const createStore = <S extends object>(initial: S) => {
+  let state = initial
+  const listeners = new Set<() => void>()
+  return {
+    get: (): S => state,
+    /** Merges the patch into the state and tells every subscriber, so every view re-renders from one source. */
+    set: (patch: Partial<S>): void => {
+      state = { ...state, ...patch }
+      for (const listener of [...listeners]) listener()
+    },
+    /** Returns the function that unsubscribes. */
+    subscribe: (listener: () => void): (() => void) => {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+  }
+}
+
+/**
+ * Named mount points of the main screen. The task that builds the screen places each host with host(name);
+ * a later task adds its control with mount(name, element) from main.ts and never edits the screen's file.
+ */
+export const createSlots = () => {
+  const hosts = new Map<string, HTMLElement>()
+  const host = (name: string): HTMLElement => {
+    let element = hosts.get(name)
+    if (!element) {
+      element = document.createElement("div")
+      element.dataset.slot = name
+      hosts.set(name, element)
+    }
+    return element
+  }
+  return { host, mount: (name: string, ...children: HTMLElement[]): void => host(name).append(...children) }
+}
+`
+
+const STORE_TEST_TS = `// @vitest-environment happy-dom
+import { describe, expect, it, vi } from "vitest"
+import { createSlots, createStore } from "../src/store"
+
+describe("shared view state and slots", () => {
+  it("merges a patch and notifies subscribers until they unsubscribe", () => {
+    const store = createStore({ query: "", selectedId: null as number | null })
+    const listener = vi.fn()
+    const stop = store.subscribe(listener)
+    store.set({ query: "tea" })
+    expect(store.get()).toEqual({ query: "tea", selectedId: null })
+    expect(listener).toHaveBeenCalledTimes(1)
+    stop()
+    store.set({ selectedId: 3 })
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it("mounts a control into the host the screen placed, whichever is built first", () => {
+    const slots = createSlots()
+    const control = document.createElement("button")
+    slots.mount("filter", control)
+    expect(slots.host("filter").contains(control)).toBe(true)
+    expect(slots.host("filter")).toBe(slots.host("filter"))
   })
 })
 `
@@ -1028,8 +1158,11 @@ use crate::error::AppError;
 /// Schema changes, applied in order. Feature tasks append their tables; never edit one that has shipped.
 pub const MIGRATIONS: &[&str] = &[];
 
-/// The records database in the app-data folder; PRAGMA user_version holds the schema version.
+/// The records database in the app-data folder (created when missing); PRAGMA user_version holds the schema version.
 pub fn open(folder: &Path) -> Result<Connection, AppError> {
+    // A fresh install has no app-data folder yet, and launch opens the store before manage_state would create it.
+    std::fs::create_dir_all(folder)
+        .map_err(|_| AppError::Storage("The app-data folder could not be created.".into()))?;
     let mut connection = Connection::open(folder.join("records.sqlite3"))
         .map_err(|_| AppError::Storage("The saved records could not be opened.".into()))?;
     migrate(&mut connection, MIGRATIONS)?;
@@ -1207,6 +1340,18 @@ fn migrations_apply_in_order_and_record_the_schema_version() {
     assert_eq!(user_version(&connection).unwrap(), 2);
     migrate(&mut connection, &[create, alter]).unwrap();
     assert_eq!(user_version(&connection).unwrap(), 2, "applied migrations never run twice");
+}
+
+#[test]
+fn open_creates_a_missing_data_folder() {
+    let parent = tempfile::tempdir().unwrap();
+    let folder = parent.path().join("fresh").join("install");
+    let connection = backend::database::open(&folder).unwrap();
+    assert_eq!(
+        backend::database::user_version(&connection).unwrap(),
+        backend::database::MIGRATIONS.len()
+    );
+    assert!(folder.join("records.sqlite3").is_file());
 }
 ` : ""}${uses.secrets ? `
 #[test]

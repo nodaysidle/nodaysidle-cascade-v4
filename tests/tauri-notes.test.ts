@@ -103,7 +103,8 @@ describe("Tauri notes app with an editor and a Markdown export", () => {
   it("asks for the injected clock only where a date-time is written", async () => {
     const tasks = (await compilePacket(quickNotesBlueprint, PRESET, linux)).documents["TASKS.md"]
     expect(task(tasks, "TASK-05-ADD-NOTE")).toContain("injected clock")
-    expect(task(tasks, "TASK-06-EDIT-NOTE")).toContain("injected clock")
+    // A form edit carries the stored date-time back unchanged, so the edit task gets no clock.
+    expect(task(tasks, "TASK-06-EDIT-NOTE")).not.toContain("injected clock")
     expect(task(tasks, "TASK-04-NOTE-LIST")).not.toContain("injected clock")
     expect(task(tasks, "TASK-08-EXPORT-NOTES-AS-MARKDOWN")).not.toContain("injected clock")
   })
@@ -132,7 +133,7 @@ describe("Tauri audit round 3", () => {
     const mark = task(tasks, "TASK-07-MARK-REPORT-FIXED")
     expect(mark).not.toMatch(/Edit button|prefilled|entry form/)
     expect(mark).toContain("replaces every field")
-    expect(mark).not.toContain("the shared view state, now")
+    expect(mark).not.toContain("the shared view state (the store), now")
     expect(mark).not.toContain("injected clock")
     const add = task(tasks, "TASK-05-ADD-REPORT")
     expect(add).toContain("(title (text), steps (long-text)) and no others")
@@ -163,7 +164,7 @@ describe("Tauri audit round 3", () => {
     const packet = await compilePacket(timeZonesBlueprint, PRESET, linux)
     expect(packet.failures).toEqual([])
     const list = task(packet.documents["TASKS.md"], "TASK-04-CITY-LIST")
-    expect(list).toContain("the shared view state, now")
+    expect(list).toContain("the shared view state (the store), now")
     expect(list).toContain("re-render every 60 seconds")
     expect(list).toContain("never through errors.report()")
     expect(list).not.toContain("get_cities(id)")
