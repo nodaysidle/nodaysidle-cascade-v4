@@ -286,7 +286,7 @@ describe("Waybar system sources, units, and one failure rule", () => {
       expect(trd).toContain("MODULE_THERMAL_DIR")
       expect(trd).toContain("the highest zone is taken")
       expect(trd).toContain("rounds to the nearest degree")
-      expect(trd).toContain("With no saved setting, no reachable service, or no thermal zone, --action refresh exits 2")
+      expect(trd).toContain("The kit defines exactly these environment variables for the binary test: MODULE_THERMAL_DIR and no other")
       const source = packet.kit.find(file => file.name === "kit/src/platform/system_source.rs")!.content
       expect(source).toContain("pub struct TemperatureReader")
       expect(source).toContain("MODULE_THERMAL_DIR")
