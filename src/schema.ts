@@ -113,6 +113,8 @@ const DataFieldSchema = z.strictObject({
   max: z.number().nullable().optional(),
   // The value the app itself stores when it creates a record, so the user never types the field (a status that starts as Not started); null for a value the user enters.
   initial: z.string().max(80).nullable().optional(),
+  // True for a date or date-time that an action of the app writes (a last-watered day a Watered button stamps); the add and edit forms have no input for it. False for every field the user enters.
+  appStamped: z.boolean().nullable().optional(),
 })
 
 const DataObjectSchema = z.strictObject({
@@ -613,6 +615,9 @@ function dataShapeIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
     if (initial !== "" && (((field.valueType === "number" || field.valueType === "whole-number") && !Number.isFinite(Number(initial))) || (field.valueType === "flag" && initial !== "true" && initial !== "false") || field.valueType === "date-time" || field.valueType === "date" || field.valueType === "time")) {
       issues.push({ path: `dataObjects[${index}].fields[${position}]`, rule: "semantic.initial-value-type", message: `Field '${field.name}' has an initial value that does not fit its type (a number, true or false for a flag; a date or time is never set as an initial text).` })
     }
+    if (field.appStamped && field.valueType !== "date" && field.valueType !== "date-time") {
+      issues.push({ path: `dataObjects[${index}].fields[${position}]`, rule: "semantic.stamped-not-date", message: `Field '${field.name}' is appStamped but is not a date or date-time.` })
+    }
     if (field.min != null && field.max != null && field.min > field.max) {
       issues.push({ path: `dataObjects[${index}].fields[${position}]`, rule: "semantic.bound-order", message: `Field '${field.name}' has min above max.` })
     }
@@ -782,6 +787,7 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "Do not create a feature for restoring data after a restart or for loading data when the app starts: persistence and restoring belong to the feature that shows or uses the data. Write failure outcomes and acceptance signals as conditions the finished app can show or a test can assert; never describe an error message for something the stack cannot produce at run time.",
     ...(input.presetNotes ?? []),
     "Set initial on a field only when the app, not the user, gives it its first value when the record is created (a state that starts as Not started); the add form then has no input for it. Give the value as text (true or false for a flag). Leave it null for every field the user enters or that a feature stamps. A state that follows only from time passing (a timer that has run out) is not stored: derive it, and do not list it as an option of a stored field.",
+    "Set appStamped to true only on a date or date-time field that an action of the app writes (a last-watered day that a Watered today button stamps); the add and edit forms then have no input for it, and it is false for every date the user enters. For a delete, state in the behavior whether it asks for confirmation: the default is a confirmation dialog, and no confirmation is stated only when the idea says so, once and in the same words everywhere (no rule can detect a contradiction here, so write it once).",
     "Set refreshesEverySeconds on a feature that shows a value changing on its own while the app is open (a countdown or elapsed time shown in seconds is 1); otherwise leave it null.",
     "Set min and max on a number or whole-number field only when the idea states the range (a mood from one to five: min 1, max 5; an amount that cannot be negative: min 0); otherwise leave them null. Never invent a bound the idea does not state. A choice list of consecutive whole numbers (1 to 5) needs the same min and max on the whole-number field it picks. A number field whose acceptance signal states a format (a four-digit year: min 1000, max 9999) takes the bounds that format implies, so the sample values the compiler writes satisfy that signal. Likewise never invent a capacity or performance target (a number of records, a duration) in qualityRequirements that the idea does not state.",
     "When the order of a list depends on when something changed, declare a date-time field for that moment (for example updated at); the compiler orders by it. Without such a field the list is ordered by newest created first.",
