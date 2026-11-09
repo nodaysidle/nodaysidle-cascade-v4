@@ -62,7 +62,7 @@ cross-platform, but native macOS is not a preset.
 - Local path: `/home/arch/dev/nodaysidle/nodaysidle-cascade-v4`
 - Remote: `https://github.com/nodaysidle/nodaysidle-cascade-v4` (private)
 - Branch: `main`
-- Pushed commits: `27810a9`, `6582197`; many app/UI/kit/live-test changes are **not yet committed**.
+- Commits: `27810a9`, `6582197`, `7f6fbc7` (the last one is local-only, not pushed at handoff time).
 - The app is installed at `~/.local/bin/nodaysidle-cascade-v4`; desktop entry at
   `~/.local/share/applications/com.nodaysidle.cascade.v4.desktop`; Omarchy menu entry is in
   `~/.config/omarchy/extensions/omarchy-menu.jsonc`.
@@ -92,8 +92,8 @@ npx tsx scripts/live-astro.ts     # live Astro packet; needs both keys
   acceptance ID across all five documents for the fixture matrix.
 - GTK, Waybar, Astro, and Android kits build and pass their own tests through `npm run kit:check`.
 - Tauri kit was failing only because `mod platform;` was placed before the crate-level `//!` docs in
-  `src-tauri/src/lib.rs`; that is fixed, but the Tauri-only kit rerun had not finished when this
-  handoff was written.
+  `src-tauri/src/lib.rs`; that is fixed and the Tauri-only rerun was still running at handoff time.
+  Re-run it first.
 - The Tauri desktop app builds (`deb`), installs, launches on Wayland, and shows the V4 brand and
   preset-options panel. Screenshot: `/tmp/cascade-ui4.png`.
 
@@ -215,3 +215,67 @@ Concretely:
 - `tests/alignment.test.ts` — cross-document contract alignment.
 - `tests/kit-build.test.ts` — all five kit builds.
 - `tests/live-probe.test.ts` and `scripts/live-presets.ts` — live paid checks.
+
+
+## Prompt for the next agent
+
+Copy this into the next agent session.
+
+```text
+You are taking over NODAYSIDLE Cascade V4 at
+/home/arch/dev/nodaysidle/nodaysidle-cascade-v4.
+
+Read HANDOFF.md first. Then audit the previous agent's work instead of trusting it. The previous
+agent wrote the compiler, the Tauri desktop UI, all five preset kits, the Omarchy menu/bar
+integration, and five live packets. The latest local commit is 7f6fbc7 on main; check git status and
+git log before touching anything. The remote is private.
+
+PHASE 1 — AUDIT (read-only first)
+1. Read HANDOFF.md, README.md, AGENTS.md, and the source in this order: schema.ts, pipeline.ts,
+   compiler.ts, presets.ts, renderers.ts, audit.ts, kits.ts, tauriKit.ts, astroKit.ts,
+   androidKit.ts, app.ts/state.ts, src-tauri/.
+2. Run: npm ci; npm run typecheck; npm test; npm run kit:check. Note that kit:check builds GTK4,
+   Waybar, Tauri, Astro, and Android; the Tauri case was the last known failure and was fixed but
+   not confirmed when the handoff was written.
+3. Inspect /tmp/v4-live-final2/<preset>/<slug> for all five presets. Run
+   npm run cascade -- verify --packet <dir> for every one. If those folders are gone, regenerate
+   from the live blueprints or run scripts/live-presets.ts and scripts/live-astro.ts with the
+   DEEPSEEK_API_KEY and TYPESAFE_API_KEY already available.
+4. Do NOT trust the validation ledger. For each live packet, read PRD.md, ARD.md, TRD.md, TASKS.md,
+   AGENTS.md, blueprint.json, and kit/. Check by hand:
+   - every FEAT/REQ/ACC/CON/OWN/PHASE/TASK ID resolves in all five documents;
+   - every contract decision, detail, failure behavior, and recovery is rendered once in TRD.md;
+   - every task's filesToCreate/filesToModify matches its owner, and no task claims another owner's
+     file;
+   - no contradictions in cadence, persistence, permissions, file paths, package managers, launch
+     commands, or platform boundaries;
+   - no placeholders, TODO/TBD/FIXME, example.invalid, or empty kit files;
+   - the kit files match the task create lists and the app's declared stack.
+5. Audit the actual app: build it with npm run tauri -- build --bundles deb, install with
+   npm run install:app, launch on Wayland, and look at the UI (V4 brand, preset options, five tabs,
+   ledger, export). Check the Omarchy menu entry and the bar widget:
+   omarchy menu summon apps.cascade-v4; omarchy-shell shell listPlugins; screenshot the bar.
+6. Label every finding: compiler blocking, compiler polish, idea/provider, or environment/tooling.
+   Never edit an exported packet to hide a compiler defect.
+
+PHASE 2 — FIX AND FINISH
+Fix the compiler, preset contracts, kits, or UI. Add a synthetic fixture/test for every blocking
+finding in tests/ and run the full checks. Regenerate the five live packets from their real
+blueprints into separate folders; if a blueprint is genuinely invalid, run a new live request with
+the existing keys and capture the issues. Build every kit with its own validation commands. Build,
+install, and launch the Tauri app. Verify the Omarchy menu entry and bar widget visually.
+
+Keep these invariants: exactly five documents then kit/ and blueprint.json; preview bytes equal
+export bytes; one DeepSeek request plus at most one repair; keys memory-only; no silent drops;
+declared fields, not prose; no placeholders; every preset has a real kit.
+
+DEFINITION OF DONE
+All five presets produce working Markdown packets that an agent can build from with no
+contradictions: every ID and contract aligns across PRD/ARD/TRD/TASKS/AGENTS; every kit builds with
+its own commands; cascade verify passes for all five; the desktop app launches on Wayland and the
+Omarchy menu/bar integration works. Commit the result and push to the private repo; use the
+documented NDS_ALLOW_PUSH=1 override if the pre-push hook blocks main.
+
+Known open items and exact file references are in HANDOFF.md under "Where the remaining problems
+are". Start by closing the Tauri kit rerun, then regenerate and audit the five live packets.
+```
