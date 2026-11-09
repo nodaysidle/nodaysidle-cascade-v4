@@ -71,6 +71,22 @@ all five presets.** Done means all of these hold:
 
 ## 4. State of the repo
 
+### Progress, session 2 (2026-11-09) — read this first
+
+- **Section 5 is done**: F8, F1, F2, F3, F6, F4, F7, F11, F15, F5, F10 (+ SQL table names), F9, F12,
+  F13, F16, F14 are committed on `main` (19f11cf … 0727dcb), not pushed. After them: typecheck green,
+  `npm test` 408 passed / 19 skipped, `npm run check` green (Rust 9 tests).
+- Not verified: the F2 scripts were only checked by hand; the app.ts stale-intake fix has no test (no DOM
+  harness); the CI desktop job has never run on GitHub; `render.deterministic` has no firing test.
+- `scripts/agent-ready/snapshot-fixtures.ts` hashes every fixture × preset output, which proves a
+  refactor changed no bytes.
+- **Round 9 = regression of round 8**: the round-8 idea texts were not kept, so the round-8 blueprints
+  were recompiled for free (`cascade compile`) into `/tmp/v4-round9`. 9/10 compile Gate Clean and
+  verify; Wind Check is now rejected by `capability.waybar-response-path` (a live run would repair it).
+  Read-only audit agents ran on the 9 packets; results go into section 6 history.
+- Next: group the round-9 findings by class → fix agents per preset → round 10 with 10 NEW ideas (live,
+  paid: **tell Alan before the first paid generation**) → section 7.
+
 - Branch `main`, head `b55d01f` when this was written, many commits ahead of `origin/main`
   (**not pushed**). Remote `https://github.com/nodaysidle/nodaysidle-cascade-v4` (private). The
   pre-push hook blocks `main`. **Do not push until Alan says "push".** Then:
