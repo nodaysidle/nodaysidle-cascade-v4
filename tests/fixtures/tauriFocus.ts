@@ -28,6 +28,8 @@ function feature(name: string, behavior: string, acceptance: string, uses: Parti
   }
 }
 
+const ops = (data: string, ...operations: ("create" | "read" | "update" | "delete")[]) => [{ data, operations }]
+
 // Offline time tracker: a record with an optional end time, a Markdown document export, and a global shortcut.
 export const focusLedgerBlueprint: SemanticBlueprint = {
   productName: "Focus Ledger",
@@ -36,11 +38,11 @@ export const focusLedgerBlueprint: SemanticBlueprint = {
   goals: ["Track time per task", "Export a week"],
   nonGoals: ["Cloud sync"],
   features: [
-    feature("Timer control", "Start or stop the timer for a named task; stopping within 2 seconds of starting keeps the entry.", "Starting a task shows it running; stopping saves the end time.", { usesData: ["Time entries"], dataOperations: ["create", "update"], usesPlatformNeeds: ["local-storage"] }),
-    feature("Today totals", "Show today's total per task from the stored entries.", "Totals equal the sum of today's entries.", { usesData: ["Time entries"], dataOperations: ["read"], buildsOn: ["Timer control"] }),
-    feature("Entry editing", "Edit the task name or times of a past entry.", "An edited entry shows the new values after reload.", { usesData: ["Time entries"], dataOperations: ["read", "update"], buildsOn: ["Today totals"] }),
-    feature("Shortcut toggle", "A global shortcut starts or stops the timer for the last task.", "Pressing the shortcut toggles the timer.", { usesPlatformNeeds: ["global-hotkey"], usesData: ["Time entries"], dataOperations: ["read", "update"], buildsOn: ["Timer control"] }),
-    feature("Week export", "Write one week of entries as a Markdown file at a path the user chooses.", "The chosen file lists the week's entries.", { usesData: ["Time entries", "Week report"], dataOperations: ["read", "create"], userFileAccess: "saves", buildsOn: ["Today totals"] }),
+    feature("Timer control", "Start or stop the timer for a named task; stopping within 2 seconds of starting keeps the entry.", "Starting a task shows it running; stopping saves the end time.", { usesData: ["Time entries"], dataOperations: ops("Time entries", "create", "update"), usesPlatformNeeds: ["local-storage"] }),
+    feature("Today totals", "Show today's total per task from the stored entries.", "Totals equal the sum of today's entries.", { usesData: ["Time entries"], dataOperations: ops("Time entries", "read"), buildsOn: ["Timer control"] }),
+    feature("Entry editing", "Edit the task name or times of a past entry.", "An edited entry shows the new values after reload.", { usesData: ["Time entries"], dataOperations: ops("Time entries", "read", "update"), buildsOn: ["Today totals"] }),
+    feature("Shortcut toggle", "A global shortcut starts or stops the timer for the last task.", "Pressing the shortcut toggles the timer.", { usesPlatformNeeds: ["global-hotkey"], usesData: ["Time entries"], dataOperations: ops("Time entries", "read", "update"), buildsOn: ["Timer control"] }),
+    feature("Week export", "Write one week of entries as a Markdown file at a path the user chooses.", "The chosen file lists the week's entries.", { usesData: ["Time entries", "Week report"], dataOperations: [{ data: "Time entries", operations: ["read"] }, { data: "Week report", operations: ["create"] }], userFileAccess: "saves", buildsOn: ["Today totals"] }),
   ],
   dataObjects: [
     { name: "Time entries", purpose: "One entry per timer run.", sensitivity: "personal", retentionIntent: "Keep until the user changes it.", storage: "records", writeMode: "direct", fields: [

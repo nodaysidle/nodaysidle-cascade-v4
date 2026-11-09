@@ -18,16 +18,18 @@ const base = (name: string, behavior: string, extra: Partial<SemanticBlueprint["
   ...extra,
 })
 
+const ops = (data: string, ...operations: ("create" | "read" | "update" | "delete")[]) => [{ data, operations }]
+
 export const pantryBlueprint: SemanticBlueprint = {
   ...habitTrackerBlueprint,
   productName: "Pantry Pal",
   summary: "A grocery tracker that stores items on the device and reminds the user about food that expires soon.",
   features: [
-    base("Add grocery item", "Add an item with a quantity and an expiry date.", { dataOperations: ["create"], usesPlatformNeeds: ["local-storage"] }),
-    base("Mark item used", "Mark an item as used.", { dataOperations: ["read", "update"] }),
-    base("Expiring soon", "Show items that expire within three days of today.", { dataOperations: ["read"] }),
+    base("Add grocery item", "Add an item with a quantity and an expiry date.", { dataOperations: ops("Grocery items", "create"), usesPlatformNeeds: ["local-storage"] }),
+    base("Mark item used", "Mark an item as used.", { dataOperations: ops("Grocery items", "read", "update") }),
+    base("Expiring soon", "Show items that expire within three days of today.", { dataOperations: ops("Grocery items", "read") }),
     base("Daily reminder", "Send one notification every day at 09:00 listing items that expire within three days.", {
-      dataOperations: ["read"],
+      dataOperations: ops("Grocery items", "read"),
       usesPlatformNeeds: ["notifications", "background-execution"],
       runsDailyAt: "09:00",
       usesData: ["Grocery items", "Reminder preferences"],

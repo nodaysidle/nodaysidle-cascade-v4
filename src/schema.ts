@@ -71,7 +71,7 @@ const FeatureSchema = z.strictObject({
   // Other features whose screen or state this feature extends; fixes the build order.
   buildsOn: z.array(shortMeaning).max(3).default([]),
   // What this feature does to the data it uses; "delete" is promised only when a feature declares it.
-  dataOperations: z.array(z.enum(["create", "read", "update", "delete"])).max(4).default([]),
+  dataOperations: z.array(z.strictObject({ data: shortMeaning, operations: z.array(z.enum(["create", "read", "update", "delete"])).min(1).max(4) })).max(8).default([]),
   // How often the feature runs by itself; null when the user triggers it. Give the exact interval the idea states.
   runsEverySeconds: z.number().int().min(1).max(604800).nullable().default(null),
   // A fixed local time of day the feature runs, as HH:MM; null otherwise.
@@ -536,9 +536,11 @@ function dataShapeIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
     }
   })
   blueprint.features.forEach((feature, index) => {
-    if (feature.dataOperations.length && !feature.usesData.length) {
-      issues.push({ path: `features[${index}].dataOperations`, rule: "semantic.operations-without-data", message: `Feature '${feature.name}' declares data operations but uses no data object.` })
-    }
+    feature.dataOperations.forEach((entry, position) => {
+      if (!feature.usesData.some(name => referenceKey(name) === referenceKey(entry.data))) {
+        issues.push({ path: `features[${index}].dataOperations[${position}].data`, rule: "semantic.operations-without-data", message: `Feature '${feature.name}' declares operations on '${entry.data}', which is not in its usesData.` })
+      }
+    })
   })
   return issues
 }
@@ -622,7 +624,7 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     ...(input.backgroundAvailable === false ? ["The selected preset cannot run work while the app is closed. Declare the background-execution platform need only for work that must continue or start while the app is closed; work the user watches while the app is open, such as a copy with progress and a cancel button, is not background execution."] : []),
     ...(input.trayAvailable === false ? ["The selected preset has no tray surface. Set usesTray to false for every feature: the preset's own surface (a bar module, web page, or mobile screen) is not a tray."] : []),
     "For every feature, set buildsOn to the names of the other features whose screen, list, or state it extends (for example a search or filter feature builds on the feature that shows the list); leave it empty for a feature that stands alone. The first screen a user sees is built by a feature that builds on nothing. Never form a cycle.",
-    "For every feature, set dataOperations to what it does to the data it uses: create, read, update, delete. Declare delete only when the idea explicitly asks the user to remove something; then no other text may promise removal. A dataObject's retentionIntent must not mention deleting or removing unless a feature declares delete.",
+    "For every feature, set dataOperations with one entry per data object the feature changes or reads: data is the exact dataObject name (it must also be in usesData) and operations lists what the feature does to that object: create, read, update, delete. A feature that only reads a data object lists read for it. Declare delete only when the idea explicitly asks the user to remove something; then no other text may promise removal. A dataObject's retentionIntent must not mention deleting or removing unless a feature declares delete.",
     "For every dataObject stored as records or document, list its fields: one entry per value the app keeps (name and valueType: text, long-text, number, whole-number, flag, date-time, text-list, reference). Do not list an id; the compiler adds one. Other storage kinds may leave fields empty.",
     "Never invent a keyboard shortcut, key combination, command name, or menu path. Say 'a global shortcut' or 'a keyboard shortcut' unless the idea itself names the keys.",
     "For a feature that runs by itself, set runsEverySeconds to the exact interval the idea states in seconds (30 minutes is 1800), or runsDailyAt to the stated local time as HH:MM; otherwise leave both null. Mark a record field optional only when a value can legitimately be missing, for example the end time of something still running.",

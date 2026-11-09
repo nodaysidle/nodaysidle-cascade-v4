@@ -19,7 +19,7 @@ interface FeatureUses {
   readonly choices?: Feature["choiceLists"]
   readonly runsEvery?: number
   readonly buildsOn?: readonly string[]
-  readonly operations?: Feature["dataOperations"]
+  readonly operations?: readonly ("create" | "read" | "update" | "delete")[]
 }
 
 function feature(name: string, userOutcome: string, behavior: string, acceptance: string, uses: FeatureUses = {}): Feature {
@@ -41,7 +41,7 @@ function feature(name: string, userOutcome: string, behavior: string, acceptance
     userFileAccess: uses.files ?? "none",
     choiceLists: [...(uses.choices ?? [])],
     buildsOn: [...(uses.buildsOn ?? [])],
-    dataOperations: [...(uses.operations ?? [])],
+    dataOperations: uses.operations?.length && uses.data?.[0] ? [{ data: uses.data[0], operations: [...uses.operations] }] : [],
     runsEverySeconds: uses.runsEvery ?? null,
     runsDailyAt: null,
   }

@@ -282,7 +282,7 @@ describe("v4 deterministic core", () => {
     const withOps = (operations: ("create" | "read" | "update" | "delete")[]) => ({
       ...base,
       dataObjects: base.dataObjects.map(item => item === records ? { ...item, fields: [{ name: "Recipe name", valueType: "text" as const, optional: false }, { name: "Steps", valueType: "text-list" as const, optional: false }] } : item),
-      features: base.features.map(feature => usesRecords(feature) ? { ...feature, dataOperations: operations } : feature),
+      features: base.features.map(feature => usesRecords(feature) ? { ...feature, dataOperations: [{ data: records.name, operations }] } : feature),
     })
     const without = await compilePacket(withOps(["create", "read"]), "linux-wayland-gtk4-desktop")
     const trd = without.documents["TRD.md"]

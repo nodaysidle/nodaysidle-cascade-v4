@@ -44,6 +44,7 @@ export interface NormalizedBlueprint {
     readonly providedCapabilities: readonly string[]
     readonly requiredCapabilities: readonly string[]
     readonly dataOperations: readonly DataOperation[]
+    readonly operationsByData: Readonly<Record<string, readonly DataOperation[]>>
     readonly runsEverySeconds: number | null
     readonly runsDailyAt: string | null
     readonly resourceIds: readonly string[]
@@ -124,6 +125,7 @@ export interface GraphFeature {
   readonly providedCapabilities: readonly string[]
   readonly requiredCapabilities: readonly string[]
   readonly dataOperations: readonly DataOperation[]
+  readonly operationsByData: Readonly<Record<string, readonly DataOperation[]>>
   readonly runsEverySeconds: number | null
   readonly runsDailyAt: string | null
   readonly resourceIds: readonly string[]
@@ -505,7 +507,8 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       // A feature provides itself, so another feature's buildsOn becomes an owner dependency.
       providedCapabilities: [slug(name)],
       requiredCapabilities: unique(feature.buildsOn.map(other => slug(cleanMeaning(other)))),
-      dataOperations: unique(feature.dataOperations),
+      dataOperations: unique(feature.dataOperations.flatMap(entry => entry.operations)),
+      operationsByData: Object.fromEntries(feature.dataOperations.map(entry => [referenceKey(entry.data), unique(entry.operations)])),
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,
       resourceIds: [],
@@ -594,7 +597,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
         ? `Delete ${item.name} automatically at its stated retention boundary without waiting for a user action, verify it is absent, and report a cleanup failure honestly.`
         : item.storage === "session"
           ? `${item.name} is never written to disk and is discarded when the session ends; verify no file for it exists.`
-          : source.features.some(feature => feature.dataOperations.includes("delete") && featureDataUses(source, feature).some(name => referenceKey(name) === referenceKey(item.name)))
+          : source.features.some(feature => feature.dataOperations.some(entry => entry.operations.includes("delete") && referenceKey(entry.data) === referenceKey(item.name)))
             ? `Delete ${item.name} only through the feature that declares delete, after an explicit user action, and report deletion failure honestly.`
             : `No feature deletes ${item.name}; build no delete action for it.`,
       sensitivity: item.sensitivity,
@@ -903,6 +906,11 @@ const VALUE_TYPE_LABEL: Record<DataValueType, string> = {
   reference: "reference to another stored item",
 }
 
+// What one feature does to one data object, as declared per object.
+function opsOn(feature: GraphFeature, dataName: string): readonly DataOperation[] {
+  return feature.operationsByData[referenceKey(dataName)] ?? []
+}
+
 // The stored shape and the exact operations the declared features perform, so every task that
 // touches the store uses one schema and builds no operation nobody asked for.
 function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainData"][number], features: readonly GraphFeature[], allData: NormalizedBlueprint["domainData"] = []): string[] {
@@ -911,7 +919,7 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
   if (tauri && item.storage === "document") return [tauriDocumentInterface(tauriData(item), users)]
   const documentResources = new Set(allData.filter(other => other.storage === "document").flatMap(other => dataResourceIds(other.name)))
   // A Tauri feature that saves a document writes only that file; its records are read, not created.
-  const operationsOf = (feature: GraphFeature): readonly DataOperation[] => tauri ? tauriFeatureOps(item.storage, feature, documentResources) : feature.dataOperations
+  const operationsOf = (feature: GraphFeature): readonly DataOperation[] => tauri ? tauriFeatureOps(item.storage, { ...feature, dataOperations: opsOn(feature, item.name) }, documentResources) : opsOn(feature, item.name)
   const operations = unique(users.flatMap(operationsOf))
   if (item.storage === "app-files" && operations.length && presetId !== "astro-web") {
     const names = operations.flatMap(operation => operation === "create" ? ["import_file(source)"] : operation === "delete" ? ["remove_file(reference)"] : operation === "read" ? ["file_path(reference)"] : [])
@@ -1004,7 +1012,8 @@ function androidClockFeatureIds(blueprint: NormalizedBlueprint, features: readon
   const ids = new Set(features.filter(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null).map(feature => feature.id))
   for (const item of blueprint.domainData.filter(entry => entry.fields.some(field => field.valueType === "date-time"))) {
     for (const featureId of dataFeatureIds(item.name, features)) {
-      if (features.find(feature => feature.id === featureId)?.dataOperations.includes("read")) ids.add(featureId)
+      const reader = features.find(feature => feature.id === featureId)
+      if (reader && opsOn(reader, item.name).includes("read")) ids.add(featureId)
     }
   }
   return ids
@@ -1673,6 +1682,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       providedCapabilities: feature.providedCapabilities,
       requiredCapabilities: feature.requiredCapabilities,
       dataOperations: feature.dataOperations,
+      operationsByData: feature.operationsByData,
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,
       resourceIds: feature.resourceIds,
