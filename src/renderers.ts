@@ -93,6 +93,12 @@ function kitRules(graph: ProjectGraph): string[] {
   ]
 }
 
+// Hardware-bound gates are listed apart from the exit-zero commands, with the rule that decides when they run.
+function deviceGateLines(graph: ProjectGraph): string[] {
+  if (!graph.deviceValidation) return []
+  return [graph.deviceValidation.rule, ...graph.deviceValidation.commands.map(command => `- Device gate: \`${command}\``)]
+}
+
 function renderContract(contract: GraphContract): string {
   return [
     `### ${contract.id} — ${contract.name}`,
@@ -239,7 +245,7 @@ function renderTRD(graph: ProjectGraph): string {
     section("Packaging Contract", contractsOfKind(graph, "packaging")),
     section("Signing Contract", graph.signingDecision),
     section("Installation Contract", graph.installationDecision),
-    section("Validation Commands", numbered(graph.validationCommands.map(command => `\`${command}\``))),
+    section("Validation Commands", [numbered(graph.validationCommands.map(command => `\`${command}\``)), ...deviceGateLines(graph)].join("\n\n")),
     section("Completion Evidence", bullets(graph.completionEvidence)),
     section("Traceability Index", featureTrace(graph)),
   ].join("\n\n") + "\n"
@@ -282,7 +288,7 @@ function renderTASKS(graph: ProjectGraph): string {
     ...contentSeedSection(graph),
     phases,
     section("Packaging and Installation", bullets([...graph.packagingRules, graph.installationDecision])),
-    section("Final Validation Commands", numbered(graph.validationCommands.map(command => `\`${command}\``))),
+    section("Final Validation Commands", [numbered(graph.validationCommands.map(command => `\`${command}\``)), ...deviceGateLines(graph)].join("\n\n")),
     section("Completion Evidence", bullets(graph.completionEvidence)),
     section("Traceability Index", featureTrace(graph)),
   ].join("\n\n") + "\n"
@@ -322,7 +328,7 @@ function renderAGENTS(graph: ProjectGraph): string {
       ...sharedModifyLines(graph),
     ])),
     section("Required Phase Order", numbered(phaseOrder)),
-    section("Validation Gates", numbered(graph.validationCommands.map(command => `Run \`${command}\` and require exit status zero.`))),
+    section("Validation Gates", [numbered(graph.validationCommands.map(command => `Run \`${command}\` and require exit status zero.`)), ...deviceGateLines(graph)].join("\n\n")),
     section("Stop Conditions", bullets(["Stop when a requested implementation decision is absent from all five documents.", "Stop when an ID, owner, file, focused test, dependency, or command conflicts across documents.", "Stop when a task would modify a file before its create task.", "Stop when a forbidden technology or undeclared remote service is required.", "Stop when a relevant test, build, package, signing, install, or launch check fails after root-cause diagnosis.", "Report the exact blocker without claiming completion.", "Report PARTIAL, not DONE, while any production entry point uses a test double or any CON-RUNTIME-WIRING check fails."])),
     section("Completion Reporting", bullets(["DONE: every declared feature and contract is implemented, every required command passed, the artifact was verified, and no required work remains.", "PARTIAL: safe implemented work is verified but a named external proof or user-controlled action remains; list it precisely.", "BLOCKED: an exact missing authority, unavailable dependency, unsafe conflict, or repeated external failure prevents further safe progress; include the failing command and next action."])),
     section("Review Checklist", bullets(["Product and non-goal boundaries match PRD.md.", "Architecture and state ownership match ARD.md.", "Stack, files, contracts, permissions, persistence, credentials, lifecycle, recovery, packaging, and signing match TRD.md.", "Task and phase ordering match TASKS.md.", "Focused tests and every final command passed with fresh output."])),

@@ -12,7 +12,7 @@ V4 targets Arch Linux / Omarchy / Hyprland directly:
 - **Astro Web** — static by default, server output by option, content collections, routes, a11y and
   performance gates.
 - **Android Kotlin Compose** — Navigation 3, Room, DataStore, edge-to-edge, predictive back, adaptive
-  layouts, baseline profile.
+  layouts, WorkManager schedules.
 
 The macOS SwiftUI presets are gone. MacOS remains a host for the Cascade app and for Tauri, but no
 preset emits a native macOS app.
