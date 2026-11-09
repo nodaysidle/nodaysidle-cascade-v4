@@ -62,7 +62,7 @@ cross-platform, but native macOS is not a preset.
 - Local path: `/home/arch/dev/nodaysidle/nodaysidle-cascade-v4`
 - Remote: `https://github.com/nodaysidle/nodaysidle-cascade-v4` (private)
 - Branch: `main`
-- Commits: `27810a9`, `6582197`, `7f6fbc7` (the last one is local-only, not pushed at handoff time).
+- Commits: `27810a9`, `6582197`, `7f6fbc7`, `94a8320` (all local; not pushed at handoff time).
 - The app is installed at `~/.local/bin/nodaysidle-cascade-v4`; desktop entry at
   `~/.local/share/applications/com.nodaysidle.cascade.v4.desktop`; Omarchy menu entry is in
   `~/.config/omarchy/extensions/omarchy-menu.jsonc`.
@@ -85,39 +85,19 @@ npx tsx scripts/live-astro.ts     # live Astro packet; needs both keys
 
 ## Current verified state
 
-- All five live packets exist under `/tmp/v4-live-final/<preset>/<slug>` and `cascade verify` passes
-  for GTK, Waybar, Tauri, Astro, and Android.
+- All five live packets exist under `/tmp/v4-live-final2/<preset>/<slug>` and `cascade verify`
+  passes for GTK, Waybar, Tauri, Astro, and Android.
 - All five output exactly five Markdown files + `blueprint.json` + `kit/`.
 - `tests/alignment.test.ts` checks every feature, requirement, contract, owner, phase, task, and
   acceptance ID across all five documents for the fixture matrix.
-- GTK, Waybar, Astro, and Android kits build and pass their own tests through `npm run kit:check`.
-- Tauri kit was failing only because `mod platform;` was placed before the crate-level `//!` docs in
-  `src-tauri/src/lib.rs`; that is fixed and the Tauri-only rerun was still running at handoff time.
-  Re-run it first.
+- All five kits pass `npm run kit:check`: GTK4, Waybar, Tauri, Astro, and Android.
+- The Tauri kit rerun was confirmed after the `mod platform;` placement fix.
 - The Tauri desktop app builds (`deb`), installs, launches on Wayland, and shows the V4 brand and
   preset-options panel. Screenshot: `/tmp/cascade-ui4.png`.
 
 ## Where the remaining problems are
 
-### 1. Tauri kit rerun
-
-`npm run kit:check` had 4/5 pass: GTK, Waybar, Astro, Android. The Tauri failure was:
-
-```text
-error[E0753]: expected outer doc comment
-src-tauri/src/lib.rs:3: //! Composition root...
-```
-
-Fix applied: `tauriKit.ts` now appends `mod platform;` after `libRs` instead of before it. Run:
-
-```sh
-CASCADE_KIT_BUILD=1 npx vitest run tests/kit-build.test.ts -t "Tauri 2 kit"
-```
-
-If it still fails, the next likely issues are icon generation (`npm run tauri -- icon app-icon.svg`)
-and the `keyring` / `vault.rs` API on Linux.
-
-### 2. Omarchy bar widget is enabled but not visibly rendering
+### 1. Omarchy bar widget is enabled but not visibly rendering
 
 - Menu entry works: `omarchy menu summon apps.cascade-v4`.
 - Bar plugin installed at `~/.config/omarchy/plugins/nodaysidle.cascade-v4`, manifest validates,
@@ -129,7 +109,7 @@ and the `keyring` / `vault.rs` API on Linux.
   `/usr/share/omarchy/shell/plugins/bar/Bar.qml` and `README.md`. Do not break the user's existing
   bar; test with `omarchy-shell shell listPlugins` and a screenshot.
 
-### 3. Remaining contract-quality gaps from live audits
+### 2. Remaining contract-quality gaps from live audits
 
 The live audits found these; some are fixed, some need a compiler pass:
 
@@ -153,7 +133,7 @@ The live audits found these; some are fixed, some need a compiler pass:
 - All presets: `CON-PLATFORM-FILES` and a `Launch check:` line are added to runtime wiring; verify
   they render in every live packet.
 
-### 4. Not implemented yet
+### 3. Not implemented yet
 
 - A single generated `provider-contract.json` shared by TS and Rust, with a build digest handshake.
 - Offline replay/verify corpus from failed live requests.
@@ -191,14 +171,13 @@ Concretely:
 
 ## Suggested order for the next agent
 
-1. Finish the Tauri kit rerun and fix any remaining Rust/frontend errors.
-2. Regenerate all five live packets from their live blueprints after the latest compiler changes;
+1. Regenerate all five live packets from their live blueprints after the latest compiler changes;
    run `cascade verify` and the cross-document alignment checks.
-3. Make Waybar/GTK kit helper inclusion conditional on the blueprint, or document the optional
+2. Make Waybar/GTK kit helper inclusion conditional on the blueprint, or document the optional
    helpers explicitly.
-4. Debug the Omarchy bar widget scanner path with a working third-party widget as the reference.
-5. Run CI on GitHub; fix the Android SDK package names if needed.
-6. Clean dead macOS code, add the provider contract/offline replay, commit and push.
+3. Debug the Omarchy bar widget scanner path with a working third-party widget as the reference.
+4. Run CI on GitHub; fix the Android SDK package names if needed.
+5. Clean dead macOS code, add the provider contract/offline replay, commit and push.
 
 ## Files that matter most
 
@@ -227,7 +206,7 @@ You are taking over NODAYSIDLE Cascade V4 at
 
 Read HANDOFF.md first. Then audit the previous agent's work instead of trusting it. The previous
 agent wrote the compiler, the Tauri desktop UI, all five preset kits, the Omarchy menu/bar
-integration, and five live packets. The latest local commit is 7f6fbc7 on main; check git status and
+integration, and five live packets. The latest local commit is 94a8320 on main; check git status and
 git log before touching anything. The remote is private.
 
 PHASE 1 — AUDIT (read-only first)
@@ -277,5 +256,5 @@ Omarchy menu/bar integration works. Commit the result and push to the private re
 documented NDS_ALLOW_PUSH=1 override if the pre-push hook blocks main.
 
 Known open items and exact file references are in HANDOFF.md under "Where the remaining problems
-are". Start by closing the Tauri kit rerun, then regenerate and audit the five live packets.
+are". Start by regenerating and auditing the five live packets; the Tauri kit is confirmed passing.
 ```
