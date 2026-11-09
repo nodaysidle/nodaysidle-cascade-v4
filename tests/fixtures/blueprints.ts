@@ -322,6 +322,18 @@ export const tideTickBlueprint = blueprint({
   productConstraints: ["Send only the harbor name to the tide service."],
 })
 
+// A click feature that opens a declared service web page and sends one notification: both go through the kit launcher.
+export const tidePageBlueprint: SemanticBlueprint = (() => {
+  const page = structuredClone(tideTickBlueprint)
+  page.productName = "Tide Page"
+  const click = page.features.find(item => item.invokedBy === "click")!
+  click.usesServices = ["Tide service"]
+  click.usesPlatformNeeds = ["network", "notifications"]
+  page.platformNeeds = [...page.platformNeeds, "notifications"]
+  page.externalServices[0]!.webPage = "https://tides.example.org/harbor"
+  return page
+})()
+
 export const scanDrawerBlueprint = blueprint({
   productName: "Scan Drawer",
   summary: "A local drawer for scanned paper documents that copies each imported PDF or image into its own library folder, tags it, and keeps everything on the device.",
@@ -373,6 +385,7 @@ export const fixtureCases: ReadonlyArray<{ presetId: FixturePresetId; blueprint:
   { presetId: "linux-hyprland-waybar-module", blueprint: forecastGlanceBlueprint },
   { presetId: "linux-hyprland-waybar-module", blueprint: networkMonitorBlueprint },
   { presetId: "linux-hyprland-waybar-module", blueprint: tideTickBlueprint },
+  { presetId: "linux-hyprland-waybar-module", blueprint: tidePageBlueprint },
   { presetId: "tauri2-rust-typescript-desktop", blueprint: knowledgeManagerBlueprint },
   { presetId: "tauri2-rust-typescript-desktop", blueprint: invoiceArchiveBlueprint },
   { presetId: "astro-web", blueprint: landingPageBlueprint },

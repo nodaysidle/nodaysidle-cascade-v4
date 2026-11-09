@@ -4,7 +4,7 @@ import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionC
 import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
-import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers, waybarHookSummary, waybarTaskNotes } from "./kits"
+import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarTaskNotes } from "./kits"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
 import { TAURI_WIRE_FORMAT, tauriDocumentInterface, tauriFeatureOps, tauriStoreInterface, tauriTaskPrompt, type TauriData, type TauriFeatureUse } from "./tauriContracts"
@@ -1476,7 +1476,7 @@ function buildPhases(
   const foundationCriteria = [
     "Every foundation file exists at the exact listed path.",
     `The locked identity is ${identity.bundleId}.`,
-    `The implementation marker is ${preset.implementationMarker}.`,
+    `The implementation marker is ${preset.implementationMarker}${preset.id === "linux-hyprland-waybar-module" ? ` (the Waybar module key prefix; this module's key is custom/${identity.slug})` : ""}.`,
     ...(preset.id === "astro-web" ? ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS.map(script => `package.json defines npm run ${script}.`) : []),
   ]
   const foundationTask: GraphTask = {
@@ -1654,7 +1654,8 @@ function lockedStackFor(preset: PresetContract, blueprint: NormalizedBlueprint):
   }
   if (preset.id !== "linux-hyprland-waybar-module" && preset.id !== "linux-wayland-gtk4-desktop") return preset.allowedTechnologies
   const { records, secrets, http } = rustKitHelpers(blueprint)
-  const omitted = new Set([...(records ? [] : ["rusqlite"]), ...(secrets ? [] : ["keyring (Secret Service)"]), ...(http ? [] : ["reqwest with rustls"])])
+  const launchers = preset.id === "linux-hyprland-waybar-module" ? waybarLaunchers(blueprint) : { pages: [], notifies: false }
+  const omitted = new Set([...(records ? [] : ["rusqlite"]), ...(secrets ? [] : ["keyring (Secret Service)"]), ...(http ? [] : ["reqwest with rustls"]), ...(launchers.pages.length ? [] : ["xdg-open (xdg-utils)"]), ...(launchers.notifies ? [] : ["notify-send (libnotify)"])])
   return preset.allowedTechnologies.filter(technology => !omitted.has(technology))
 }
 

@@ -230,7 +230,7 @@ const linuxGtkPermissionPatterns: Readonly<Record<PermissionCapability, string>>
 const waybarPermissionPatterns: Readonly<Record<PermissionCapability, string>> = {
   microphone: "A status module captures no audio; reject a feature that needs capture.",
   accessibility: "Waybar owns the UI; the module cannot control another application on Wayland.",
-  notifications: "Use notify-send or D-Bus only from a click action; never prompt in the background.",
+  notifications: "Run notify-send (libnotify) through std::process::Command behind an injectable Launcher trait in src/platform/launcher.rs, called only from the click action; never prompt in the background.",
   filesystem: "Read and write only the app's XDG config/data directories and explicit CLI paths; never scan $HOME.",
   network: "Use reqwest with rustls and HTTPS only; the module's output must never contain a secret.",
   camera: "A status module captures no camera; reject a feature that needs capture.",
@@ -526,13 +526,24 @@ const linuxGtk: PresetContract = {
   },
 }
 
+// Without a records data object the packet describes no SQLite file, record line, or SQLite shutdown step, and the persisted values are the settings file alone.
+function waybarSpecialize(preset: PresetContract, blueprint: NormalizedBlueprint): Partial<PresetContract> {
+  if (blueprint.persistenceNeeds.some(need => need.storage === "records")) return {}
+  return {
+    persistence: { ...preset.persistence, recordsPlacement: "None: no data object declares records, so no database file is created." },
+    runtimeArchitecture: preset.runtimeArchitecture.map(line => line.replace("persisted records (SQLite records and the JSON settings file,", "persisted values (the JSON settings file,")),
+    lifecycleRules: preset.lifecycleRules.map(rule => rule.replace("close the SQLite connection and ", "")),
+    fileBoundaryDetails: preset.fileBoundaryDetails?.filter(detail => !detail.startsWith("Records:")),
+  }
+}
+
 const linuxWaybar: PresetContract = {
   id: "linux-hyprland-waybar-module",
-  providerNotes: ["Each run of the Waybar module command is a separate process and nothing stays in memory between runs. Anything the module must remember between runs (a last good value, a saved choice) must be a dataObject with storage records or settings, never session or temporary. Set invokedBy to click for the feature that reacts to a click on the module and to schedule for the feature that refreshes by itself."],
+  providerNotes: ["Each run of the Waybar module command is a separate process and nothing stays in memory between runs. Anything the module must remember between runs (a last good value, a saved choice) must be a dataObject with storage records or settings, never session or temporary. Set invokedBy to click for the feature that reacts to a click on the module and to schedule for the feature that refreshes by itself. The bar re-reads the cache only on its fragment interval, so state no latency tighter than that: write timings as how soon the cache is written after a successful fetch, never as when the bar label changes."],
   label: "Hyprland Waybar Module",
   platform: "Linux (Wayland; Hyprland; Waybar)",
   implementationMarker: "custom/",
-  allowedTechnologies: ["Rust", "Waybar custom module JSON", "serde", "serde_json", "clap", "dirs", "thiserror", "tempfile", "rusqlite", "reqwest with rustls", "tokio", "keyring (Secret Service)", "systemd user units", "cargo test", "PKGBUILD"],
+  allowedTechnologies: ["Rust", "Waybar custom module JSON", "serde", "serde_json", "clap", "dirs", "thiserror", "tempfile", "rusqlite", "reqwest with rustls", "tokio", "keyring (Secret Service)", "xdg-open (xdg-utils)", "notify-send (libnotify)", "systemd user units", "cargo test", "PKGBUILD"],
   forbiddenTechnologies: ["GTK windows", "Qt windows", "Tauri", "Electron", "X11-only APIs", "xdotool", "libappindicator", "background clipboard watching"],
   testFramework: "cargo test, JSON output schema tests, and a hands-on Waybar launch check",
   sourceLayout: identity => [
@@ -556,7 +567,7 @@ const linuxWaybar: PresetContract = {
   ownerFiles: waybarOwnerFiles,
   registrationFile: () => "src/main.rs",
   registrationFiles: (kind, identity) => kind === "feature"
-    ? ["src/features/mod.rs", "src/module.rs", "src/main.rs"]
+    ? ["src/features/mod.rs", "src/module.rs", "src/config.rs", "src/main.rs"]
     : kind === "data"
       ? ["src/platform/mod.rs", "src/config.rs", "src/main.rs"]
       : kind === "packaging"
@@ -566,10 +577,12 @@ const linuxWaybar: PresetContract = {
   runtimeArchitecture: [
     "The binary is a Waybar custom module: with no arguments or --once it prints exactly one JSON object on stdout and exits 0; logs go to stderr only.",
     "A declared background feature may run with --service under a systemd user unit; the Waybar exec path reads the cached value and never blocks the bar.",
-    "The command line is exactly: no argument or --once (print one JSON object), --service (the refresh loop), --action click or --action refresh, and --set KEY=VALUE (save one declared setting into the config store). An unknown action or key exits 2 with a message on stderr. The Waybar fragment binds on-click to --action click only, and only when a feature declares a read-only click action; right and middle click stay unbound unless a feature declares them. There is no window, no key grab, and no clipboard watcher.",
+    "The command line is exactly: no argument or --once (print one JSON object), --service (the refresh loop), --action click or --action refresh, and --set KEY=VALUE (save one declared setting into the config store). An unknown action or key exits 2 with a message on stderr. The Waybar fragment (resources/waybar/config.jsonc, copied from the kit) binds on-click to --action click only, and only when a feature declares invokedBy click; that feature owns the click hook in src/module.rs. Right and middle click stay unbound unless a feature declares them. There is no window, no key grab, and no clipboard watcher.",
     "Two different intervals: the Waybar fragment interval (preset option refreshSeconds) is how often Waybar re-runs the exec path to re-read the cache and never fetches; the service refresh interval is the refreshing feature's declared runsEverySeconds (the Schedule line in its interface contract), and settings.refresh_seconds in src/config.rs defaults to it (900 only when no feature declares a schedule) with the kit test asserting the same value.",
     "Source of truth: persisted records (SQLite records and the JSON settings file, per each data object's declared storage) are authoritative; cache.json under $XDG_RUNTIME_DIR is only a derived render of the final label text, written by the --service loop and read by --once, and no feature reads it as data.",
     "Display: the label format and any stale wording come only from the declared acceptance criteria of the owning features; where they name no stale wording, the one constant STALE_SUFFIX in src/module.rs is appended to the label and the class becomes stale. No other marker is invented.",
+    "Classes: the output class is exactly one of normal, warning, critical, stale, empty, each coloured in resources/waybar/style.css. render_with sets it. Before the first successful refresh the class is empty and the text is settings.text. A reading is stale when the last refresh failed or it is older than twice the service interval: the class is stale, the text keeps the last value plus the stale marker, and stale wins over warning and critical, so the severity colour is not shown while stale. Otherwise the class is normal, or warning or critical from the raw ModuleOutput.value (not the rounded label) only when a feature's acceptance criteria state thresholds (amber is warning, red is critical); with no stated thresholds it is always normal.",
+    "A click feature that opens a declared service web page runs xdg-open through std::process::Command behind an injectable Launcher trait (src/platform/launcher.rs) and the Arch package depends on xdg-utils; a click feature that sends a notification runs notify-send the same way and the package depends on libnotify.",
   ],
   integrationBoundary: "Use one reqwest client with rustls inside each integration owner; HTTPS only, typed serde DTOs, timeouts, and privacy-safe errors. The module output never contains a credential or raw response body.",
   recoveryRules: [
@@ -578,7 +591,9 @@ const linuxWaybar: PresetContract = {
   ],
   persistence: {
     enabledDecision: "Persistence: enabled with atomic JSON settings in XDG config and SQLite records in XDG data.",
-    disabledDecision: "Persistence: disabled; the module keeps only its last value in memory.",
+    settingsDecision: "Persistence: atomic JSON settings in XDG config.",
+    recordsDecision: "Persistence: SQLite records in XDG data.",
+    disabledDecision: "Persistence: disabled; the module stores no data object, and its only file is the derived cache.json render under XDG runtime.",
     settingsPlacement: "Atomic JSON at $XDG_CONFIG_HOME/{app-id}/config.json with versioned keys and explicit reset behavior; each declared setting is a key in its values map, set with the binary's --set KEY=VALUE action (declared keys only) or by editing the file.",
     recordsPlacement: "SQLite at $XDG_DATA_HOME/{app-id}/records.sqlite3 with PRAGMA user_version and transactional migrations.",
     temporaryPlacement: "One per-operation directory under $XDG_RUNTIME_DIR/{app-id}/; delete on success, discard, cancellation, or exhausted recovery.",
@@ -588,11 +603,12 @@ const linuxWaybar: PresetContract = {
   credentialPlacement: "Store credentials through the Secret Service with the locked application ID as service and a deterministic account name; output never contains a credential.",
   fileBoundary: "Read and write only the app's XDG config, data, and runtime directories and explicit CLI paths; never scan the user's home directory.",
   fileBoundaryDetails: ["Settings: $XDG_CONFIG_HOME/{app-id}/config.json.", "Records: $XDG_DATA_HOME/{app-id}/records.sqlite3 only when the blueprint declares records.", "Cache (derived render of the label, never authoritative): $XDG_RUNTIME_DIR/{app-id}/cache.json.", "Every path outside this boundary is rejected."],
-  launchCheck: identity => `./scripts/package.sh --install (installs and starts the systemd user service), run ${identity.slug} --once and validate the JSON with jq, add the Waybar include, restart Waybar, and click the ${identity.slug} module.`,
+  launchCheck: identity => `./scripts/package.sh --install (installs and starts the systemd user service), run ${identity.slug} --once and validate the JSON with jq, add the Waybar include and "custom/${identity.slug}" to modules-right, restart Waybar, and click the ${identity.slug} module.`,
   permissionPatterns: waybarPermissionPatterns,
   permissionOwnerId: "OWN-LIFECYCLE-COORDINATOR",
   permissionTexts: waybarPermissionTexts,
   explainOptions: true,
+  specialize: waybarSpecialize,
   lifecycleRules: [
     "The Waybar exec path is stateless per invocation and exits after one JSON object.",
     "A declared background feature runs under a systemd user unit with Restart=on-failure.",
@@ -606,13 +622,14 @@ const linuxWaybar: PresetContract = {
     () => "cargo clippy --all-targets --all-features -- -D warnings",
     () => "cargo test",
     () => "cargo build --release",
+    () => "./scripts/package.sh --install",
     identity => `systemd-analyze verify resources/systemd/${identity.slug}.service`,
     () => "makepkg --printsrcinfo",
   ],
   packagingRules: [
     "scripts/package.sh is the sole packaging authority for local proof: release build copied to dist/ under the project slug; with --install also the binary under ~/.local/bin, Waybar fragment under ~/.config/waybar, systemd unit under ~/.config/systemd/user, daemon-reload, and systemctl --user enable --now of the unit.",
     "PKGBUILD is the Arch distribution authority: install binary under /usr/bin, Waybar fragment (exec path rewritten to /usr/bin), style fragment, systemd unit (exec path rewritten to /usr/bin), and license; its depends list holds only what the locked stack needs at run time.",
-    "Validate the systemd unit with systemd-analyze and the PKGBUILD with makepkg --printsrcinfo before completion.",
+    "Validate the systemd unit with systemd-analyze only after ./scripts/package.sh --install, because verify fails when the unit's ExecStart binary is not installed yet, and the PKGBUILD with makepkg --printsrcinfo before completion.",
     "The launch check adds the fragment to the user's Waybar config, restarts Waybar, and confirms the module renders and its click action works.",
   ],
   wiringRules: [
@@ -621,7 +638,7 @@ const linuxWaybar: PresetContract = {
     "Kit helpers that no contract names are optional; do not call a credential or HTTP helper only to satisfy the wiring gate. Every owner named in TRD.md must be reachable from the production entry point.",
     ...WAYBAR_WIRING_RULES,
   ],
-  installationDecision: identity => `For local proof, run scripts/package.sh --install: build into dist/${identity.slug}, install the binary under ~/.local/bin, copy resources/waybar/config.jsonc and style.css into ~/.config/waybar, install the systemd unit, run systemctl --user daemon-reload, and enable and start the unit with systemctl --user enable --now. For distribution, run makepkg -si.`,
+  installationDecision: identity => `For local proof, run scripts/package.sh --install: build into dist/${identity.slug}, install the binary under ~/.local/bin, copy resources/waybar/config.jsonc to ~/.config/waybar/${identity.slug}.jsonc and resources/waybar/style.css to ~/.config/waybar/${identity.slug}.css, install the systemd unit, run systemctl --user daemon-reload, and enable and start the unit with systemctl --user enable --now. For distribution, run makepkg -si.`,
   signingDecision: () => "Local proof is unsigned. Distribution signing is a separate release decision using the packager's GPG key; the local packet does not require a signature.",
   outputArtifact: "Waybar module binary, fragments, systemd unit, and Arch package",
   artifactPath: identity => `dist/${identity.slug}`,
