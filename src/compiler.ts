@@ -3,7 +3,7 @@ import { CATALOG_PATH } from "./astroKit"
 import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, astroStaticContentSite, dataKey, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetOptionValue, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { androidKitNeeds } from "./androidKit"
-import { ANDROID_DELETE_PROMPT, androidFormRules } from "./androidForms"
+import { ANDROID_DELETE_PROMPT, androidChoiceMatchesPicker, androidFormRules } from "./androidForms"
 import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
@@ -598,7 +598,7 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       usesData: unique(featureDataUses(source, feature).map(name => dataNameByKey.get(referenceKey(name))!)),
       usesServices: unique(feature.usesServices.map(name => serviceNameByKey.get(referenceKey(name))!)),
       userFileAccess: feature.userFileAccess,
-      choices: feature.choiceLists.map(list => `${cleanMeaning(list.name)}: ${cleanList(list.options).join(", ")}${astroStaticSource(source, presetId) ? "" : `; initially ${tauriEditsOnly(feature, presetId) ? "the stored value of the record being edited" : cleanMeaning(list.initial)}`}`),
+      choices: feature.choiceLists.map(list => `${cleanMeaning(list.name)}: ${cleanList(list.options).join(", ")}${astroStaticSource(source, presetId) ? "" : `; initially ${tauriEditsOnly(feature, presetId) || androidEditsPicker(feature, list.options, source, presetId) ? "the stored value of the record being edited" : cleanMeaning(list.initial)}`}`),
       surface: feature.surface,
     }
   }))
@@ -988,6 +988,11 @@ function documentWriteDetail(storage: string, placement: string, preset: PresetC
 const SESSION_MEMORY_PLACEMENT = "Held in memory for the session and not written to disk."
 const ATOMIC_RENAME_SCRATCH_PLACEMENT = "A temporary file in the destination file's own directory, renamed over the destination on success and removed on failure; never in temporaryDirectory or Application Support."
 
+// Android: an edit feature's choice list that is the picker of a bounded field starts at that record's stored value.
+function androidEditsPicker(feature: SemanticBlueprint["features"][number], options: readonly string[], source: SemanticBlueprint, presetId: PresetId): boolean {
+  return presetId === "android-kotlin-compose" && feature.dataOperations.some(entry => entry.operations.includes("edit")) && source.dataObjects.some(item => androidChoiceMatchesPicker(options, item.fields))
+}
+
 // A declared bound is part of the field's type everywhere it is stated.
 function rangeNote(field: DataField): string {
   const initial = field.initial != null && field.initial !== "" ? `, set to "${field.initial}" by the app when the record is created (never typed by the user)` : ""
@@ -1064,7 +1069,7 @@ function androidFeatureFormDetails(feature: GraphFeature, data: NormalizedBluepr
   const itemPage = features.some(other => other.surface === "item-page")
   const details = data.flatMap(item => {
     const form = androidFormFeature(feature, item)
-    return form ? androidFormRules(item.name, item.fields, { edits: form.edits, itemPage }) : []
+    return form ? androidFormRules(item.name, item.fields, { edits: form.edits, creates: form.creates, itemPage }) : []
   })
   if (data.some(item => item.storage === "records" && opsOn(feature, item.name).includes("delete"))) details.push(ANDROID_DELETE_PROMPT)
   return details
@@ -1251,7 +1256,7 @@ function mainSlotsSentence(features: readonly GraphFeature[], detailView = true,
   if (rowOpensEditor) return tauriMainSlotsSentence({ create: ops.has("create"), directAdd, entryForm: !directAdd && ops.has("create") && features.some(feature => feature.editsRecords && feature.dataOperations.includes("update")), rowArea: changes && needsRowArea(features), detail: changes && features.some(feature => feature.editsRecords), filter: filterSlot })
   const slots = [
     android ? "a status area that carries only the empty-list message (the exact text an acceptance signal quotes, else a short plain sentence) and the form errors" : "a status area shared by every message the main screen shows (empty state, no match, errors)",
-    ...(ops.has("create") ? [directAdd ? "an add-entry control: a button that the add task connects to the create command (no stored field takes user input, so build no entry form shell)" : android && !detailView ? "the inline add form shell on the main screen above the list (the add task builds the form fields and validation; an edit task reuses them)" : "an add-entry control that opens the entry form shell (the add task builds the form fields and validation; an edit task reuses them)"] : []),
+    ...(ops.has("create") ? [directAdd ? "an add-entry control: a button that the add task connects to the create command (no stored field takes user input, so build no entry form shell)" : android && !detailView ? "the add-entry area on the main screen above the list: the Add button (testTag \"add-entry\") plus the inline form shell, which hosts whichever form (add or edit) is open, one at a time, so opening one closes the other (the add task builds the form fields, validation, and the open or closed state in its own file; an edit task reuses them)" : "an add-entry control that opens the entry form shell (the add task builds the form fields and validation; an edit task reuses them)"] : []),
     ...(ops.has("update") || ops.has("delete") ? [...(rowOpensEditor && !needsRowArea(features) ? [] : [android ? "a per-row action area on every row of the main list (rows a later feature shows in the area above the list get none)" : "a per-row action area on every list row"]), ...(detailView ? [`a detail view for the selected record that shows every stored field
 ${mainDetailControls(features)}, ${rowOpensEditor && features.some(feature => feature.editsRecords) ? "it is always built because the packet has an edit feature: every list row is selectable (activating the row selects the record, marks it aria-selected, and shows this detail view), which is how the user reaches the editor; a single mark or toggle action belongs in the per-row action area and never uses the Edit button" : "built only if an acceptance criterion of a later task opens a record to edit or delete it"}`] : [])] : []),
     ...(filterSlot ? [android ? "one area above the list for the features that filter, sort, total, or summarise it, including a feature that also marks rows (each mounts its one control or section there; the shared view state holds the selected filter and the list applies it, and a total or summary is built from a display-free function its owner exports)" : "a filter area above the list for read-only features that narrow or reorder it"] : []),
@@ -1844,7 +1849,7 @@ function buildPhases(
           focusedTestFile: files.focusedTestFile,
           firstMain: draft.id === firstMainOwnerId,
           detailView,
-          selectionFor: androidScheduledFeatures(preset, identity, features, blueprint.domainData).filter(item => item.at === null && item.selectionFiles.includes(files.implementationFile)).map(item => item.name),
+          selectionFor: androidScheduledFeatures(preset, identity, features, blueprint.domainData).filter(item => item.at === null && item.selectionFiles.includes(files.implementationFile)).map(item => ({ name: item.name, pascal: item.pascal })),
         })
       : undefined
     const filesToCreate = unique([
@@ -2097,7 +2102,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
   const androidWithoutSettings = presetId === "android-kotlin-compose" && !androidKitNeeds(blueprint).settingsData
   const persistenceSettings = (astroPlan?.usesContentCollections
     ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.settingsPlacement
-    : androidWithoutSettings ? "No setting is declared. OWN-DATA-STORE is Room only: add no Jetpack DataStore." : preset.persistence.settingsPlacement).replaceAll("{app-id}", identity.bundleId)
+    : androidWithoutSettings ? "No setting is declared. OWN-DATA-STORE is Room only: it adds no Jetpack DataStore key of its own (the kit's SettingsRepository, built on Jetpack DataStore, holds run and permission state)." : preset.persistence.settingsPlacement).replaceAll("{app-id}", identity.bundleId)
   const persistenceRecords = (astroPlan?.usesContentCollections
     ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.recordsPlacement.replace("{collection}", astroPlan.collections.map(item => `src/content/${item.name}/`).join(", "))
     : preset.persistence.recordsPlacement).replaceAll("{app-id}", identity.bundleId)

@@ -617,6 +617,15 @@ function dataShapeIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
       issues.push({ path: `dataObjects[${index}].fields[${position}]`, rule: "semantic.bound-order", message: `Field '${field.name}' has min above max.` })
     }
   }))
+  // A choice list of consecutive whole numbers (a mood from 1 to 5) is a range: a whole-number field the feature uses must declare it as min and max.
+  blueprint.features.forEach((feature, index) => feature.choiceLists.forEach((list, position) => {
+    const numbers = list.options.map(Number)
+    if (!numbers.every((value, at) => Number.isInteger(value) && (at === 0 || value === numbers[at - 1]! + 1))) return
+    const fields = blueprint.dataObjects.filter(item => feature.usesData.some(name => referenceKey(name) === referenceKey(item.name))).flatMap(item => item.fields).filter(field => field.valueType === "whole-number")
+    if (fields.length && !fields.some(field => field.min === numbers[0] && field.max === numbers[numbers.length - 1])) {
+      issues.push({ path: `features[${index}].choiceLists[${position}]`, rule: "semantic.choice-range-bounds", message: `Choice list '${list.name}' of '${feature.name}' is the whole numbers ${numbers[0]} to ${numbers[numbers.length - 1]}; set min ${numbers[0]} and max ${numbers[numbers.length - 1]} on the whole-number field it picks.` })
+    }
+  }))
   blueprint.externalServices.forEach((item, index) => {
     if (!/^https:\/\/\S+$/.test(item.endpoint)) {
       issues.push({ path: `externalServices[${index}].endpoint`, rule: "semantic.missing-service-endpoint", message: `Service '${item.name}' must declare the documented HTTPS endpoint the app calls.` })
@@ -774,7 +783,7 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     ...(input.presetNotes ?? []),
     "Set initial on a field only when the app, not the user, gives it its first value when the record is created (a state that starts as Not started); the add form then has no input for it. Give the value as text (true or false for a flag). Leave it null for every field the user enters or that a feature stamps. A state that follows only from time passing (a timer that has run out) is not stored: derive it, and do not list it as an option of a stored field.",
     "Set refreshesEverySeconds on a feature that shows a value changing on its own while the app is open (a countdown or elapsed time shown in seconds is 1); otherwise leave it null.",
-    "Set min and max on a number or whole-number field only when the idea states the range (a mood from one to five: min 1, max 5; an amount that cannot be negative: min 0); otherwise leave them null. Never invent a bound the idea does not state. A number field whose acceptance signal states a format (a four-digit year: min 1000, max 9999) takes the bounds that format implies, so the sample values the compiler writes satisfy that signal. Likewise never invent a capacity or performance target (a number of records, a duration) in qualityRequirements that the idea does not state.",
+    "Set min and max on a number or whole-number field only when the idea states the range (a mood from one to five: min 1, max 5; an amount that cannot be negative: min 0); otherwise leave them null. Never invent a bound the idea does not state. A choice list of consecutive whole numbers (1 to 5) needs the same min and max on the whole-number field it picks. A number field whose acceptance signal states a format (a four-digit year: min 1000, max 9999) takes the bounds that format implies, so the sample values the compiler writes satisfy that signal. Likewise never invent a capacity or performance target (a number of records, a duration) in qualityRequirements that the idea does not state.",
     "When the order of a list depends on when something changed, declare a date-time field for that moment (for example updated at); the compiler orders by it. Without such a field the list is ordered by newest created first.",
     "Coverage is checked structurally. Before finalizing, map every numbered idea sentence in ideaCoverage, then define only the features those mappings name. If a feature is listed by no sentence, remove it. If a sentence asks for behavior, map at least one feature to it. Never add a feature to make the design feel complete.",
     "For web surfaces: main is the home page, so anything the idea says the home page shows (including a list of featured entries) is main; use collection-index only for a separate page that lists all entries, tag-page for a tag or category page, search-page for a search results page, and page for any other page of its own that the idea names (an events page, a services page, an opening hours page). Use each value only when the idea asks for that page.",
