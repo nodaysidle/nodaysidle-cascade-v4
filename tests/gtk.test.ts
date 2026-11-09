@@ -246,7 +246,7 @@ describe("GTK packet precision for search, forms, store interface and lifecycle"
 
   it("splits row state display from the row controls and keeps list tests off the add form", async () => {
     const documents = await compile(choreChartBlueprint)
-    expect(task(documents["TASKS.md"], "TASK-04-CHORE-LIST")).toContain("including a state such as done as the row subtitle or a label")
+    expect(task(documents["TASKS.md"], "TASK-04-CHORE-LIST")).toContain("which is left out of the row text")
     expect(task(documents["TASKS.md"], "TASK-04-CHORE-LIST")).toContain("insert records through the store trait, never through the add form")
     expect(task(documents["TASKS.md"], "TASK-06-MARK-CHORE-DONE")).toContain("a GtkCheckButton or GtkToggleButton")
     expect(task(documents["TASKS.md"], "TASK-06-MARK-CHORE-DONE")).toContain("Add no second state indicator")
@@ -276,5 +276,51 @@ describe("GTK packet precision for search, forms, store interface and lifecycle"
     bad.features[1]!.narrowsListBy = "text"
     expect(auditSemanticIntake(bad).some(issue => issue.rule === "semantic.narrow-not-read-only")).toBe(true)
     expect(auditSemanticIntake(wineCellarBlueprint).some(issue => issue.rule === "semantic.narrow-not-read-only")).toBe(false)
+  })
+})
+
+describe("GTK round-5 compiler-owned facts", () => {
+  it("states the form facts, the shared helpers, the failed-open rule and the order convention", async () => {
+    const { documents } = await compilePacket(choreChartBlueprint, PRESET)
+    const tasks = documents["TASKS.md"]
+    const add = task(tasks, "TASK-05-ADD-CHORE")
+    expect(add).toContain('Save slot button is labelled "Add"')
+    expect(add).toContain("form_state(values) -> {save_enabled, errors}")
+    expect(add).toContain("reset to empty after a successful save and every time the dialog opens")
+    expect(add).not.toContain("an edit task reuses them")
+    expect(add).not.toMatch(/, \.|,\s*,/)
+    const list = task(tasks, "TASK-04-CHORE-LIST")
+    expect(list).toContain("show_toast(message)")
+    expect(list).toContain("reload()")
+    expect(list).toContain("never says where it sits")
+    expect(documents["TRD.md"]).toContain("build_services never panics")
+    expect(documents["TRD.md"]).toContain("newest created first, by descending id")
+  })
+
+  it("omits the flag from rows of a flag-filtered list and the mark task does not promise a new value", async () => {
+    const { documents } = await compilePacket(choreChartBlueprint, PRESET)
+    const list = task(documents["TASKS.md"], "TASK-04-CHORE-LIST")
+    expect(list).toContain("left out of the row text")
+    expect(list).not.toContain("such as done")
+    expect(task(documents["TASKS.md"], "TASK-06-MARK-CHORE-DONE")).not.toContain("shows the new value")
+  })
+
+  it("drops the flag sentence and the preview rule when there is no flag or long text, and fixes 3 lines when there is", async () => {
+    const plain = await compilePacket(snippetLibraryBlueprint, PRESET)
+    const list = task(plain.documents["TASKS.md"], "TASK-04-SNIPPET-LIST")
+    expect(list).not.toMatch(/state such as done|including a flag/)
+    expect(list).toContain("row_preview(text)")
+    expect(plain.documents["TRD.md"]).toContain("cut to 3 lines and ellipsized")
+    expect(plain.documents["TRD.md"]).not.toContain("a few lines")
+    const noText = await compilePacket(choreChartBlueprint, PRESET)
+    expect(noText.documents["TRD.md"]).not.toMatch(/long text in a list|a few lines/)
+    expect(task(noText.documents["TASKS.md"], "TASK-04-CHORE-LIST")).not.toContain("row_preview")
+  })
+
+  it("labels the Save button with the label an acceptance signal quotes", async () => {
+    const blueprint = structuredClone(choreChartBlueprint)
+    blueprint.features[1]!.acceptanceSignals = ['With the name field empty, the "Add errand" button is disabled.']
+    const { documents } = await compilePacket(blueprint, PRESET)
+    expect(task(documents["TASKS.md"], "TASK-05-ADD-CHORE")).toContain('Save slot button is labelled "Add errand"')
   })
 })
