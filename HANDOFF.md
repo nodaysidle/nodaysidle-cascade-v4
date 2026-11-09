@@ -1,275 +1,230 @@
-# HANDOFF — NODAYSIDLE Cascade V4
+# HANDOFF — NODAYSIDLE Cascade V4 (written 2026-11-09)
 
-## What this app is
+Read this file first, then `AGENTS.md`. It tells you what the app is, what has been done, what is
+still wrong, and exactly how to continue. Written for Claude Opus 5.5 / Fable 5.1 taking over.
 
-Cascade V4 is a local-first compiler and Tauri desktop app. It takes:
+Workspace rules that apply: `/home/arch/dev/nodaysidle/CLAUDE.md` (start every reply with `ALAN`;
+this repo's `AGENTS.md` wins over the root one). The owner is Alan (git user `nodaysidle`).
 
-- one software idea,
-- one locked tech-stack preset,
-- optional preset options,
-- one DeepSeek key and one TypeSafe Jev key (memory only),
+## 1. What the app is
 
-and produces exactly five Markdown contracts plus a starter kit and `blueprint.json`:
-
-```text
-PRD.md
-ARD.md
-TRD.md
-TASKS.md
-AGENTS.md
-blueprint.json
-kit/
-```
-
-The point is **agent-ready contracts**, not generated application source. A coding agent opens the
-output folder, reads `AGENTS.md` first, follows `TASKS.md` in order, copies `kit/` where the task says
-to, and runs every validation command. The contracts must be concrete, non-contradictory, and aligned
-across all five documents.
-
-## What it should do
-
-1. Validate the idea, preset, options, and capabilities locally before spending money.
-2. Send one DeepSeek Responses request with a strict JSON schema, temperature 0, `top_p` 1,
-   `reasoning.effort: none`, 16,384 output tokens, stream/store false.
-3. Run a deterministic intake audit: references, `ideaCoverage`, duplicate names, unused platform
-   needs, choice lists, saved-file documents, secrets, and capabilities.
-4. Run Jev preflight and integrity decisions, with additive platform-need healing only.
-5. Normalize strictly. No silent drops or dedupes.
-6. Compile a deterministic project graph: stable IDs, owners, contracts, phases, tasks,
-   create-before-modify, focused tests, validation commands.
-7. Run mechanical, agent-readiness, and rendered-byte audits.
-8. Render the five documents and the preset kit. Preview bytes must equal export bytes.
-9. Export atomically: five documents, `kit/`, and `blueprint.json` with document and kit hashes,
-   selected options, and resolved capabilities.
-10. Offer one repair request only for provider-content failures. Never repair transport, input,
-    capability, Jev service, compiler, or export failures.
-
-## Tech-stack presets
-
-| Preset ID | Stack | Kit |
-| --- | --- | --- |
-| `linux-wayland-gtk4-desktop` | Rust, GTK4, libadwaita, XDG, Secret Service, systemd, PKGBUILD | Yes |
-| `linux-hyprland-waybar-module` | Rust CLI, Waybar JSON, systemd user unit, Waybar fragments, PKGBUILD | Yes |
-| `tauri2-rust-typescript-desktop` | Tauri 2, Rust, TypeScript, Vite, capabilities, Linux/macOS packaging | Yes |
-| `astro-web` | Astro 5, TypeScript, content collections, routes, a11y/performance gates | Yes |
-| `android-kotlin-compose` | Kotlin, Compose M3, Navigation 3, Room, DataStore, edge-to-edge, predictive back | Yes |
-
-There is **no native macOS preset**. The macOS SwiftUI presets were removed. Tauri remains
-cross-platform, but native macOS is not a preset.
-
-## Repo state
-
-- Local path: `/home/arch/dev/nodaysidle/nodaysidle-cascade-v4`
-- Remote: `https://github.com/nodaysidle/nodaysidle-cascade-v4` (private)
-- Branch: `main`
-- Commit history includes `27810a9`, `6582197`, `7f6fbc7`, `94a8320`; run `git log` for the current head. All commits are local and not pushed at handoff time.
-- The app is installed at `~/.local/bin/nodaysidle-cascade-v4`; desktop entry at
-  `~/.local/share/applications/com.nodaysidle.cascade.v4.desktop`; Omarchy menu entry is in
-  `~/.config/omarchy/extensions/omarchy-menu.jsonc`.
-- Tauri build artifacts: `src-tauri/target/release/nodaysidle-cascade-v4` and a `.deb` under
-  `src-tauri/target/release/bundle/deb/`.
-
-## Commands
-
-```sh
-npm install
-npm run typecheck
-npm test
-npm run kit:check                 # builds all five kits; slow
-npm run tauri -- build --bundles deb
-npm run install:app               # Linux install + Omarchy menu/bar plugin
-CASCADE_LIVE_PROBE=1 npm run probe:live
-npx tsx scripts/live-presets.ts [preset-id]   # one live idea per preset (all five); needs both keys; CASCADE_LIVE_ROOT sets the output folder
-```
-
-## Current verified state (2026-11-09)
-
-- Live set `/tmp/v4-live-final/<preset>/<slug>` (Receipt Shelf, Tide Tick, Focus Ledger, Lantern Books,
-  Pantry Pal): one DeepSeek request each, all Gate Clean, `cascade verify` passes for all five, and every kit
-  passes its own commands (GTK/Waybar fmt+clippy+test(+release), Tauri typecheck/test/build/icons/cargo,
-  Astro check/test/build/a11y/performance, Android assembleDebug).
-- `npm run typecheck`, `npm test` (41 pass), `npm run kit:check` (6 kit builds incl. the bare Waybar kit)
-  and the src-tauri fmt/clippy/test pass.
-- The app builds (deb), installs (`scripts/install-linux-app.sh --no-build`), launches on Wayland, shows the V4
-  brand, preset options, five tabs, ledger and export; `omarchy menu summon apps.cascade-v4` works; C4 is in the bar.
-- Document quality is NOT yet agent-ready for every preset: see 2b.
-
-## Where the remaining problems are
-
-### 1. Omarchy bar widget: works
-
-`listPlugins` reports `"active": false` for every enabled widget (even first-party Clock), so that flag
-is not a signal. The C4 widget renders in the bar (left of the clock, 2026-11-09 screenshot), and
-`omarchy menu summon apps.cascade-v4` opens the app. Nothing to fix.
-
-### 2. Remaining contract-quality gaps from live audits
-
-The live audits found these; some are fixed, some need a compiler pass:
-
-- GTK: local file boundary and Downloads/named-folder rules were added as
-  `CON-PLATFORM-FILES`; owner map no longer says "modify phases none"; Rust file names are
-  snake_case. Regenerate the GTK live packet after the latest changes and confirm the boundary
-  contract and launch check are present.
-- Waybar: cadence contradiction was fixed (fragment poll 15 s; service refresh 900 s). The kit still
-  ships SQLite/keyring/HTTP helpers even when the blueprint declares no records/secrets; either make
-  kit file/dependency inclusion conditional or document the helpers as optional. The click action
-  in the starter kit toggles a setting; the feature task owns launching the terminal.
-- Astro: static personal records are now rejected with
-  `normalization.astro-personal-record`; the Astro data owner can edit `src/content.config.ts`.
-  The old contact-form live packet is intentionally invalid; the new live Astro idea uses contact
-  details without a form. Confirm `src/content.config.ts` (Astro 5 path) and detail route ownership.
-- Tauri: platform module root, icon-generation foundation step, and `kit_tests.rs` modification
-  ownership were added. Regenerate the Tauri live packet and build its kit.
-- Android: validation commands now use `./scripts/gradle.sh`; the kit has Navigation 3, Room,
-  DataStore, edge-to-edge, and `App.kt`. `assembleDebug` passed. Regenerate the live Android packet
-  so its docs and kit match the current commands.
-- All presets: `CON-PLATFORM-FILES` and a `Launch check:` line are added to runtime wiring; verify
-  they render in every live packet.
-
-### 2b. Open quality findings from the 2026-11-09 document audit (five live packets, read by hand)
-
-Fixed this session: Waybar kit helpers conditional on declared storage/secret/service; task prompts split
-into "Create only these files" / "Modify only these files"; dead macOS branches removed; GTK Downloads/move
-rules removed (they came from one test idea); `cargo test --test` names use the file stem; kit READMEs no
-longer hard-code TASK-08; doubled Screen Map bullet; metainfo summary cut at a word; Waybar main.rs and kit
-Rust files are rustfmt-stable for any project name; Astro kit builds without the native sharp binary; Waybar
-prompt tells the provider that a bar module is not a tray.
-
-Still open (compiler, ranked):
-1. Astro: no route for an events-style surface; the home listing has no owning task; 404 text and nav not owned.
-2. Android: the kit is a Habit tracker (Habit* entities); no task converts it; reminder Worker, manifest
-   permission, and screens have no owner file.
-3. Tauri: dependency order (shortcut/edit tasks run before the timer task); no command/schema table; global
-   shortcut accelerator uses macOS "Option"; `npm run tauri -- build` builds all bundles despite linuxPackaging.
-4. All presets: irrelevant stack boilerplate in contracts (form/fetch text on a site with no forms, retry rules
-   that contradict declared automatic retries, "namcap pass" with no command), and filler task criteria
-   ("implement exactly as rendered in TRD.md"). Gate boilerplate on declared features.
-5. Waybar: kit default refresh 900 s conflicts with the declared interval; click action vocabulary undefined;
-   persistence vs cache split unstated; no declared saved-harbor input.
-6. GTK: desktop file name differs from the application id.
-
-### 3. Not implemented yet
-
-- A single generated `provider-contract.json` shared by TS and Rust, with a build digest handshake.
-- Offline replay/verify corpus from failed live requests.
-- Dead macOS branches in `src/compiler.ts` / `src/audit.ts` (`NATIVE_MAC`, `nativePersistenceStores`,
-  `nativePackagingDetails`) remain for historical reasons; remove them in a cleanup pass.
-- CI workflow exists (`.github/workflows/checks.yml`) but has not been run on GitHub.
-- `namcap` is not installed (no sudo password); PKGBUILD validation uses
-  `makepkg --printsrcinfo`. `waybar` is not installed either; Waybar visual launch is unverified
-  because this Omarchy uses `omarchy-shell`.
-
-## Definition of done
-
-Done means **all five presets produce working Markdown packets that an agent can build from with no
-contradictions**, not merely that the compiler exits 0.
-
-Concretely:
-
-1. A live DeepSeek + Jev run for each preset reaches Gate Clean.
-2. Each exported folder has exactly `PRD.md`, `ARD.md`, `TRD.md`, `TASKS.md`, `AGENTS.md`,
-   `blueprint.json`, and a non-empty `kit/` where the preset has one.
-3. `cascade verify <folder>` passes for all five.
-4. In each packet every FEAT/REQ/ACC/CON/OWN/PHASE/TASK ID resolves in all five documents, every
-   contract decision/details/failure/recovery is rendered once in TRD, every task's create/modify
-   scope matches its owner, and no task claims another owner's file.
-5. Each kit builds with its own validation commands:
-   - GTK/Waybar: `cargo fmt --check`, clippy `-D warnings`, `cargo test`, release build.
-   - Tauri: npm typecheck/test/build, cargo fmt/test, icon generation.
-   - Astro: `npm run check`, `npm test`, `npm run build`, `npm run test:a11y`,
-     `npm run audit:performance`.
-   - Android: `./scripts/gradle.sh assembleDebug`.
-6. The desktop app builds, installs, launches on Wayland, and its UI shows the V4 brand, preset
-   options, five preview tabs, ledger, and export.
-7. The Omarchy menu entry works; the bar widget is either visibly working or explicitly removed.
-8. The latest changes are committed and pushed to the private repo.
-
-## Suggested order for the next agent
-
-1. Regenerate all five live packets from their live blueprints after the latest compiler changes;
-   run `cascade verify` and the cross-document alignment checks.
-2. Make Waybar/GTK kit helper inclusion conditional on the blueprint, or document the optional
-   helpers explicitly.
-3. Debug the Omarchy bar widget scanner path with a working third-party widget as the reference.
-4. Run CI on GitHub; fix the Android SDK package names if needed.
-5. Clean dead macOS code, add the provider contract/offline replay, commit and push.
-
-## Files that matter most
-
-- `src/schema.ts` — provider schema, prompt, intake rules.
-- `src/pipeline.ts` — stages, one repair, statuses.
-- `src/compiler.ts` — normalization, graph, owners, contracts, phases.
-- `src/presets.ts` — five preset contracts, options, capabilities, file boundaries.
-- `src/renderers.ts` — the five Markdown documents.
-- `src/audit.ts` — graph and rendered-byte gates.
-- `src/kits.ts`, `src/tauriKit.ts`, `src/astroKit.ts`, `src/androidKit.ts` — starter kits.
-- `src/app.ts`, `src/state.ts`, `src/bridge.ts` — Tauri UI.
-- `src-tauri/` — provider/Jev/export boundary.
-- `omarchy/plugin/` — bar widget; `scripts/install-linux-app.sh` — Omarchy install.
-- `tests/alignment.test.ts` — cross-document contract alignment.
-- `tests/kit-build.test.ts` — all five kit builds.
-- `tests/live-probe.test.ts` and `scripts/live-presets.ts` — live paid checks.
-
-
-## Prompt for the next agent
-
-Copy this into the next agent session.
+Cascade V4 is a local-first **compiler** and Tauri 2 desktop app (Arch Linux / Omarchy, Wayland).
+Input: one software idea (plain text) + one locked tech-stack preset + optional preset options.
+Output: a folder with exactly five Markdown contracts + a starter kit + a manifest:
 
 ```text
-You are taking over NODAYSIDLE Cascade V4 at
-/home/arch/dev/nodaysidle/nodaysidle-cascade-v4.
+PRD.md  ARD.md  TRD.md  TASKS.md  AGENTS.md   (the five documents)
+kit/                                          (real, tested starter code the agent copies, not invents)
+blueprint.json                                (validated provider blueprint + preset + options + all hashes)
+```
 
-Read HANDOFF.md first. Then audit the previous agent's work instead of trusting it. The previous
-agent wrote the compiler, the Tauri desktop UI, all five preset kits, the Omarchy menu/bar
-integration, and five live packets. The commit history is in HANDOFF.md; run git status and git log
-before touching anything. The remote is private.
+A coding agent (Claude Code etc.) is then opened in that folder, reads `AGENTS.md` first, follows
+`TASKS.md` task by task, copies `kit/` instead of inventing plumbing, and builds the product.
+**The product of this repo is the quality of those documents: "agent-ready".** This repo is the
+compiler, not any app it produced. `PROMPT.md` is the paste-in prompt for the *builder* agent (it is a
+product file, keep it).
 
-PHASE 1 — AUDIT (read-only first)
-1. Read HANDOFF.md, README.md, AGENTS.md, and the source in this order: schema.ts, pipeline.ts,
-   compiler.ts, presets.ts, renderers.ts, audit.ts, kits.ts, tauriKit.ts, astroKit.ts,
-   androidKit.ts, app.ts/state.ts, src-tauri/.
-2. Run: npm ci; npm run typecheck; npm test; npm run kit:check. Note that kit:check builds GTK4,
-   Waybar, Tauri, Astro, and Android; the Tauri case was the last known failure and was fixed but
-   not confirmed when the handoff was written.
-3. Inspect /tmp/v4-live-final2/<preset>/<slug> for all five presets. Run
-   npm run cascade -- verify --packet <dir> for every one. If those folders are gone, regenerate
-   from the live blueprints or run scripts/live-presets.ts with the
-   DEEPSEEK_API_KEY and TYPESAFE_API_KEY already available.
-4. Do NOT trust the validation ledger. For each live packet, read PRD.md, ARD.md, TRD.md, TASKS.md,
-   AGENTS.md, blueprint.json, and kit/. Check by hand:
-   - every FEAT/REQ/ACC/CON/OWN/PHASE/TASK ID resolves in all five documents;
-   - every contract decision, detail, failure behavior, and recovery is rendered once in TRD.md;
-   - every task's filesToCreate/filesToModify matches its owner, and no task claims another owner's
-     file;
-   - no contradictions in cadence, persistence, permissions, file paths, package managers, launch
-     commands, or platform boundaries;
-   - no placeholders, TODO/TBD/FIXME, example.invalid, or empty kit files;
-   - the kit files match the task create lists and the app's declared stack.
-5. Audit the actual app: build it with npm run tauri -- build --bundles deb, install with
-   npm run install:app, launch on Wayland, and look at the UI (V4 brand, preset options, five tabs,
-   ledger, export). Check the Omarchy menu entry and the bar widget:
-   omarchy menu summon apps.cascade-v4; omarchy-shell shell listPlugins; screenshot the bar.
-6. Label every finding: compiler blocking, compiler polish, idea/provider, or environment/tooling.
-   Never edit an exported packet to hide a compiler defect.
+Five presets (`src/presets.ts`): `linux-wayland-gtk4-desktop` (Rust, GTK4, libadwaita),
+`linux-hyprland-waybar-module` (Rust CLI + Waybar JSON + systemd user unit), `tauri2-rust-typescript-desktop`,
+`astro-web` (static site, content collections), `android-kotlin-compose`. No macOS preset exists.
 
-PHASE 2 — FIX AND FINISH
-Fix the compiler, preset contracts, kits, or UI. Add a synthetic fixture/test for every blocking
-finding in tests/ and run the full checks. Regenerate the five live packets from their real
-blueprints into separate folders; if a blueprint is genuinely invalid, run a new live request with
-the existing keys and capture the issues. Build every kit with its own validation commands. Build,
-install, and launch the Tauri app. Verify the Omarchy menu entry and bar widget visually.
+## 2. How it works
 
-Keep these invariants: exactly five documents then kit/ and blueprint.json; preview bytes equal
-export bytes; one DeepSeek request plus at most one repair; keys memory-only; no silent drops;
-declared fields, not prose; no placeholders; every preset has a real kit.
+```text
+idea + preset
+  -> local intake checks (src/schema.ts, src/capabilities.ts)        no money spent if invalid
+  -> TypeSafe Jev preflight (src/jev.ts, src-tauri/src/jev.rs)
+  -> ONE DeepSeek request, strict JSON schema (src/pipeline.ts, src/provider.ts)
+     -> blueprint (declared product meaning only; no IDs, files, commands)
+  -> intake audit + capability audit of the blueprint
+     -> on failure: exactly ONE repair request (intake AND capability rejections are repairable)
+  -> Jev integrity -> normalize (src/compiler.ts normalizeBlueprint) -> project graph
+     (owners, contracts, phases, tasks, IDs) -> render five docs (src/renderers.ts)
+     + kit (src/kits.ts, tauriKit.ts, astroKit.ts, androidKit.ts, waybarKit.ts)
+  -> auditPacket (src/audit.ts) gates export; preview bytes == export bytes
+  -> atomic export (src-tauri/src/export.rs) with blueprint.json manifest
+```
 
-DEFINITION OF DONE
-All five presets produce working Markdown packets that an agent can build from with no
-contradictions: every ID and contract aligns across PRD/ARD/TRD/TASKS/AGENTS; every kit builds with
-its own commands; cascade verify passes for all five; the desktop app launches on Wayland and the
-Omarchy menu/bar integration works. Commit the result and push to the private repo; use the
-documented NDS_ALLOW_PUSH=1 override if the pre-push hook blocks main.
+Core philosophy (do not break): everything after the provider answer is **deterministic local code**.
+The compiler never guesses from feature prose with regexes. It uses **declared fields** the provider
+fills in `src/schema.ts` (features: `buildsOn`, `dataOperations` per data object incl. `edit` vs
+`update`, `invokedBy`, `runsEverySeconds`/`runsDailyAt`/`runsAtField`, `systemSource`, `thresholds`,
+`labelTemplate`, `narrowsListBy`, `refreshesEverySeconds`...; data fields: `valueType` incl. `date`/
+`time`, `optional`, `min`/`max`, `initial` (`today`/`now` = clock-stamped); services: `endpoint`,
+`responseFields`, `webPage`, `requestValueFrom` ...). A new fact the docs need = a new declared field +
+an intake rule + one provider-prompt sentence (`buildBlueprintInstructions`, preset `providerNotes`).
 
-Known open items and exact file references are in HANDOFF.md under "Where the remaining problems
-are". Start by regenerating and auditing the five live packets; the Tauri kit is confirmed passing.
+Invariants: exactly five docs then `kit/` then `blueprint.json`; preview bytes equal export bytes;
+one provider request + at most one repair; API keys memory-only, never logged/persisted/exported;
+no silent drops; no placeholders/TODO; every preset has a real kit; **provider strict JSON mode needs
+every schema property in `required`** (`src/schema.ts` forces this; `tests/schema.test.ts` guards it
+— a violation makes the provider answer HTTP 400 and every generation fail, it happened once).
+
+## 3. The problem we are solving
+
+Packets passed the compiler's own checks (IDs align, `cascade verify`, kits build) while an agent
+reading them would still stall or guess: tasks used screens a later task builds, the data store had no
+interface, owners contradicted shared-file lists, boilerplate for other products leaked in, kits were
+product-specific, labels/units/dates were ambiguous. **Mechanical checks were not enough; independent
+read-throughs by fresh agents found the real defects.** So the loop below (generate fresh ideas ->
+build every kit -> independent audits -> fix the compiler -> repeat) is the method.
+
+### History (blocking findings per audit round; fresh ideas every round)
+
+| Round | Packets | Blocking | Notes |
+| --- | --- | --- | --- |
+| 1 | 10 | 38 | first full audit |
+| 2 | 10 | ~45 | new classes found after round-1 fixes |
+| 3 | 10 | 26 | |
+| 4 | 10 | 20 | one regression: provider rejected the schema (400) — fixed + guarded |
+| 5 | 9 | 17 | |
+| 6 | 10 | 19 | one real bug: package `com.class.schedule` (keyword) — fixed |
+| 7 | 9 | 3 | six of nine packets had **zero** blocking |
+| 8 | 10 | 16 | fixes for these are in flight (section 5) |
+
+Honest reading: strict LLM auditors always find a few new idiosyncratic issues per packet; "every
+audit of a brand-new idea set returns zero" is statistically unlikely. A reasonable stop rule: two
+consecutive rounds where no finding is a *systematic compiler class* (same defect in several
+packets/presets) and every kit builds. Judge by classes, not raw counts.
+
+## 4. State of the repo (main at the time of writing)
+
+- Branch `main`, head `00a0a49`, ~96 commits ahead of `origin/main` (**not pushed**; the last push was
+  `4900297`). Remote `https://github.com/nodaysidle/nodaysidle-cascade-v4` (private). The pre-push hook
+  blocks `main`; Alan said "push" only for earlier work. **Do not push until Alan says push.**
+  When he does: `NDS_ALLOW_PUSH=1 git push origin main`.
+- `npm run typecheck`, `npm test` (257 passed, 16 skipped build tests), kit builds: green.
+- The **installed desktop app is outdated** (built before most compiler changes). Rebuild with
+  `scripts/install-linux-app.sh` (it must use the Tauri CLI build; a plain `cargo build` ships a window
+  that loads `localhost:1420` — see `.trail/learnings/`). Open via `omarchy menu summon apps.cascade-v4`;
+  screenshot to verify (`grim`). The C4 bar widget works (`active:false` in `listPlugins` is normal).
+- `src-tauri` Rust checks (`cargo fmt/clippy/test` in AGENTS.md) were **not re-run** after the many
+  TypeScript-only changes; run them before release. CI (`.github/workflows/checks.yml`) never ran on GitHub.
+- `npm run probe:live` (paid) was **not run** after the schema/prompt changes; live generation via the
+  CLI worked for 70+ ideas, so the probe is a formality, but run it once (ask Alan).
+- Learnings are force-added in `.trail/learnings/` (the global git config ignores `.trail/`; use
+  `git add -f`).
+
+## 5. In-flight work you must pick up first
+
+Round 8 fixes were running in four isolated git worktrees when this was written (branches
+`worktree-wf_402c080e-29f-1..4`, directories under `.claude/worktrees/`). Check `git branch --list
+'worktree-wf_402c080e*'` and `git log main..<branch>`:
+
+1. `-1` GTK: date-field form reset vs default, local-today conversion for a user date, list feature that
+   itself owns the mark control, edit dialog Save label, pending-delete state, empty-state vs filter.
+2. `-2` Waybar: response key paths per service field, label template + unit, `disk-read` source,
+   rate sources keep the previous counter, round-half-away-from-zero decimals (Rust `{:.1}` rounds 1.25
+   to 1.2), fixed unit vs units rule.
+3. `-3` Tauri + shared prompt: read-only date-added display in edit forms; provider prompt rule "a
+   feature must match a verb the idea states" (the model keeps inventing Edit features).
+4. `-4` Android: Save-button/validation mode stated once, Material date picker for user dates, decimal
+   places rule, acceptance naming a later task's control.
+
+If a branch has no commits or the agent died, redo that area: the findings were in
+`/tmp/claude-1000/audit8/*.json` (may be gone; otherwise regenerate by running the loop). Then run the
+loop (section 6) with a fresh idea set and re-run the **same round-8 ideas** once to prove the fixes
+hold (round-8 ideas: Gift Tracker, Reading Goals, Wind Check, Disk IO, Travel Journal, Workout Log,
+Cycle Shop, Seed Library, Subscription Tracker, Vaccine Reminder).
+
+Merge conflicts are common because `src/compiler.ts` has one enormous task-prompt template line that
+every preset appends to. Use `scripts/agent-ready/split-merge.py` (see section 6).
+
+## 6. The loop (copy this process)
+
+Keys: `DEEPSEEK_API_KEY` and `TYPESAFE_API_KEY` exist in the **fish** environment (`fish -lc ...`), not in
+bash. Never print or log them.
+
+1. **Ideas.** Write ~10 NEW ideas (2 per preset), never reused. Style: 3-5 plain sentences, no stack names
+   (see `scripts/live-presets.ts` and `scripts/agent-ready/run-round.fish`).
+2. **Generate live:** `fish scripts/agent-ready/run-round.fish /tmp/v4-roundN` (edit the `g` lines).
+   Expect `Gate Clean`. A `capability-rejected` after the repair is a preset limit (document it) or a
+   compiler bug.
+3. **Verify:** `npm run -s cascade -- verify --packet <dir>` for each packet.
+4. **Build every kit with its own commands:** `bash scripts/agent-ready/build-round-kits.sh /tmp/v4-roundN`
+   (prints only failures: GTK/Waybar fmt+clippy+test, Astro check/test/build/a11y/perf, Tauri
+   typecheck/test/build/icon/cargo, Android `assembleDebug testDebugUnitTest`). Real kit bugs surface
+   here (e.g. missing value-type mapping, keyword package names).
+5. **Independent audits:** one fresh read-only agent per packet using `scripts/agent-ready/audit-brief.md`
+   (fill preset/slug/idea; structured JSON output). Use the Workflow tool or parallel Agent calls.
+   Collect blocking/polish per packet; group by **class**.
+6. **Fix the compiler** (never an exported packet): one agent per preset in an isolated worktree using
+   `scripts/agent-ready/fix-brief.md` plus the findings. Merge branches into `main`
+   (`git merge --no-commit --no-ff <branch>`; on conflict `python3 scripts/agent-ready/split-merge.py
+   <branch> <file>`; then typecheck, test, commit).
+7. Add a test for every fix (`tests/*.test.ts`; fixtures in `tests/fixtures/`). When you add a schema
+   field also update fixtures (they are typed as the zod output type) and keep `tests/schema.test.ts` green.
+8. Repeat from 1. Re-run old ideas occasionally as regression.
+
+## 7. Repo map
+
+- `src/schema.ts` provider schema, prompt (`buildBlueprintInstructions`), intake rules, declared fields.
+- `src/capabilities.ts` blueprint vs preset capability audit. `src/pipeline.ts` the flow + one repair.
+- `src/compiler.ts` normalization, graph, owners, contracts, phases/tasks, the giant task-prompt line,
+  slots (`mainSlotsSentence`), store interfaces. `src/renderers.ts` the five documents.
+- `src/audit.ts` export gates incl. agent-readiness gates (shared-file lines, one settings name, desktop id,
+  launch env var, unrequested delete, task order, dangling punctuation).
+- `src/presets.ts` five preset contracts, options, `providerNotes`, wiring rules.
+- Per-preset: `gtkContracts.ts`; `waybarContracts.ts`+`waybarKit.ts`; `tauriContracts.ts`+`tauriKit.ts`;
+  `astroWeb.ts`+`astroKit.ts`; `androidPlan.ts`+`androidForms.ts`+`androidKit.ts`; shared `kits.ts`.
+- `src/app.ts`, `state.ts`, `bridge.ts` UI; `src-tauri/` provider/Jev/export boundary (Rust).
+- `tests/` unit + fixture tests; `tests/kit-build.test.ts` real kit builds (`CASCADE_KIT_BUILD=1`).
+- `scripts/install-linux-app.sh` build + install + Omarchy menu/bar; `scripts/live-presets.ts`;
+  `scripts/agent-ready/` the loop helpers; `omarchy/` bar plugin.
+
+## 8. Known limits and open questions
+
+- Waybar: a service that needs coordinates works only through named `{field}` placeholders backed by saved
+  latitude/longitude settings; there is no geocoding step. Services needing an API key, or an invented
+  query parameter, are provider mistakes the compiler can only warn about in the prompt.
+- Provider-content defects the compiler cannot detect without prose regexes (forbidden): wrong numeric
+  examples, invented extra features, UI placement words. The strategy is a provider prompt sentence +
+  a deterministic intake rule where a declared field exists.
+- `deb`/`pkgbuild` Tauri packaging options were removed (only AppImage is built).
+- A product name that is a single Rust keyword (e.g. "Loop") would make an invalid crate name (not fixed).
+- Kit helpers shipped per blueprint (SQLite, keyring, reqwest, tokio, units, clock...) are conditional;
+  `tests/core.test.ts` asserts docs, Cargo and locked stack agree.
+
+## 9. Gotchas learned the hard way
+
+- Provider strict JSON: every property required (see above). Test it after any schema change.
+- `/cd` into an agent worktree changes the shell cwd for everything; use absolute paths to the main repo.
+- `npm` here refuses to run install scripts, so Astro's optional `sharp` is missing: the Astro kit
+  configures the no-op image service. Do not "fix" that by adding sharp.
+- Vitest does not typecheck: run `npm run typecheck` as well (a wrong field name once made a test vacuous).
+- Fixtures are typed as the zod output type: adding a default field breaks every fixture literal (add it
+  to the fixture helpers).
+- Rust `format!("{:.1}", 1.25)` is "1.2"; the compiler convention is round half away from zero.
+- Install the app only from a Tauri CLI build (`scripts/install-linux-app.sh`), then screenshot it.
+- The pre-push hook blocks `main`; never push without Alan's explicit "push".
+- `.claude/` is git-ignored; delete finished worktrees (`git worktree remove --force`) to save disk.
+
+## 10. Prompt to paste into the next agent
+
+Open Claude Code (Opus 5.5 or Fable 5.1) in this repo folder and paste:
+
+```text
+ALAN. You are taking over NODAYSIDLE Cascade V4 in this folder. Read HANDOFF.md fully, then AGENTS.md,
+then run `git status`, `git log --oneline -8`, `git worktree list`, `npm run typecheck && npm test`.
+
+Goal: every preset must produce AGENT-READY packets (five Markdown docs + kit + blueprint.json): a coding
+agent reading only the packet can build exactly the user's idea with no guesswork and no contradictions,
+and every kit builds with its own commands. Success is measured by independent audits of packets
+generated from FRESH ideas, judged by systematic classes of defect, not raw counts.
+
+Do, in order:
+1. Finish section 5 of HANDOFF.md: inspect the four in-flight branches `worktree-wf_402c080e-29f-1..4`,
+   merge what is committed (use scripts/agent-ready/split-merge.py on conflicts), redo any area whose
+   branch is empty, keep typecheck/tests green, commit.
+2. Run the loop in section 6 on a NEW set of ten ideas (two per preset), plus the round-8 ideas once as
+   regression. Use parallel read-only audit agents (scripts/agent-ready/audit-brief.md) and one fix agent
+   per preset in isolated worktrees (scripts/agent-ready/fix-brief.md). Fix the compiler, never an
+   exported packet. Add a test for every fix.
+3. Stop when two consecutive rounds show no systematic defect class and all kits build; then rebuild and
+   install the desktop app (`scripts/install-linux-app.sh`), screenshot it, run the src-tauri cargo checks
+   from AGENTS.md, and report to me with the numbers per round and any remaining limits.
+
+Rules: never push (I will say "push"); never edit an exported packet to hide a compiler defect; never
+print API keys; keep the invariants in HANDOFF.md section 2; do not ask me to test an app that still has
+known blocking gaps; tell me plainly what is not verified.
 ```
