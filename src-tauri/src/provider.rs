@@ -20,7 +20,8 @@ const PROVIDER_CODES: [&str; 10] = [
     "model_not_found",
 ];
 
-#[derive(Debug, Deserialize)]
+// No Debug: this struct holds the provider key.
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderCommandRequest {
     pub request_id: String,

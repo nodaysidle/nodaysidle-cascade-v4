@@ -65,10 +65,9 @@ export interface TauriKitUses {
   // Some records object stores a date-time field: Rust parses its RFC3339 string with the time crate.
   readonly timestamps: boolean
   readonly plugins: readonly TauriPlugin[]
-  readonly usageDescriptions: ReadonlyArray<readonly [string, string]>
 }
 
-export function tauriKitUses(blueprint: NormalizedBlueprint, usageDescriptions: ReadonlyArray<readonly [string, string]>, options: Readonly<Record<string, unknown>> = {}): TauriKitUses {
+export function tauriKitUses(blueprint: NormalizedBlueprint, options: Readonly<Record<string, unknown>> = {}): TauriKitUses {
   const storage = new Set(blueprint.persistenceNeeds.map(need => need.storage))
   const needs = new Set<string>(blueprint.platformNeeds)
   // The normalized needs include filesystem whenever a feature shows a file panel or reopens a document.
@@ -91,7 +90,6 @@ export function tauriKitUses(blueprint: NormalizedBlueprint, usageDescriptions: 
       ...(needs.has("notifications") ? [PLUGINS.notification] : []),
       ...(opensFiles ? [PLUGINS.dialog] : []),
     ],
-    usageDescriptions,
   }
 }
 
@@ -128,7 +126,6 @@ export function tauriKitFiles(identity: ProjectIdentity, uses: TauriKitUses): Ta
     { path: "src-tauri/tests/kit_tests.rs", content: kitTestsRs(lib, uses) },
     { path: "src-tauri/tauri.conf.json", content: tauriConf(identity, uses.linuxOnly) },
     { path: "src-tauri/capabilities/default.json", content: capabilities(uses) },
-    ...(uses.usageDescriptions.length ? [{ path: "src-tauri/Info.plist", content: infoPlist(uses.usageDescriptions) }] : []),
   ]
 }
 
@@ -159,7 +156,6 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     ...(uses.tray ? ["- The tray keeps the app running: closing the main window hides it, Show brings it back, and Quit (or quitting from outside) exits. RunEvent::ExitRequested with no exit code is prevented; an explicit exit code is not. Only the main window hides: every other window closes for real, so it is created fresh and loads current data each time it opens instead of showing a stale list."] : []),
     ...(uses.shortcut ? ["- src/shortcut.ts is the only file that names the system-wide accelerator (DEFAULT_ACCELERATOR, CommandOrControl+Shift+Space). registerShortcut(onPress, onFailure) registers it; a refused registration calls onFailure and returns false, and the app keeps working through its in-app controls. The capability file grants only global-shortcut register and unregister."] : []),
     ...(uses.records ? ["- src-tauri/tests/kit_tests.rs compares schema_version with database::MIGRATIONS.len(), so adding a migration needs no edit to that test."] : []),
-    ...(uses.usageDescriptions.length ? ["- src-tauri/Info.plist holds the privacy usage strings; Tauri merges it into the bundle's Info.plist."] : []),
     ...(uses.linuxOnly ? [] : ["- scripts/package_app.sh builds only the macOS .app (no DMG), signs it ad hoc, and verifies it; with --install it waits for the running app to quit, moves the installed copy to src-tauri/target/rollback/ (never inside /Applications), installs, restores the previous copy if verification fails, registers, and launches by bundle ID. The first run generates src-tauri/icons from app-icon.svg."]),
     "- scripts/package_linux.sh builds the AppImage, writes dist/, and with --install installs it under ~/.local/bin with a desktop entry and icon. On Arch/Omarchy use it for local proof; the AppImage runs on Wayland with GDK_BACKEND=wayland.",
     "- Versions are exact (= in Cargo.toml, no ^ in package.json) because they are tested together; keep src-tauri/Cargo.lock and package-lock.json from the first build, and change a version only on purpose, never by a broad update.",
@@ -1440,15 +1436,4 @@ function capabilities(uses: TauriKitUses): string {
     windows: ["main"],
     permissions: ["core:default", ...uses.plugins.flatMap(plugin => plugin.permissions)],
   }, null, 2)}\n`
-}
-
-function infoPlist(usageDescriptions: ReadonlyArray<readonly [string, string]>): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-${usageDescriptions.map(([key, value]) => `    <key>${key}</key>\n    <string>${value}</string>`).join("\n")}
-</dict>
-</plist>
-`
 }

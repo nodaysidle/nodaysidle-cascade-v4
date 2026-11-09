@@ -2109,7 +2109,7 @@ export function presetKit(presetId: PresetId, identity: ProjectIdentity, bluepri
   if (presetId === "astro-web") return astroKit(identity, blueprint, options).map(item => ({ path: item.path, content: item.content }))
   if (presetId === "android-kotlin-compose") return androidKit(identity, blueprint).map(item => ({ path: item.path, content: item.content }))
   if (presetId === "tauri2-rust-typescript-desktop") {
-    const uses = tauriKitUses(blueprint, nativeUsageDescriptions(identity, blueprint.platformNeeds), options)
+    const uses = tauriKitUses(blueprint, options)
     const files = tauriKitFiles(identity, uses)
     return [{ path: "README.md", content: tauriKitReadme(identity, files.map(item => item.path), uses) }, ...files]
   }
@@ -2120,6 +2120,3 @@ export function kitProjectPaths(kit: readonly KitFile[]): string[] {
   return kit.map(item => item.path)
 }
 
-export function nativeUsageDescriptions(_identity: ProjectIdentity, _platformNeeds: readonly string[]): ReadonlyArray<readonly [string, string]> {
-  return []
-}

@@ -8,7 +8,7 @@ import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeatur
 import { renderPacket } from "./renderers"
 import { clockInitial, featureDataUses, featureReferenceIssues, nameKey, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { gtkStoreInterface, refineGtkContracts, refineGtkPhases } from "./gtkContracts"
-import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarRoles, waybarTaskNotes } from "./kits"
+import { kitProjectPaths, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarRoles, waybarTaskNotes } from "./kits"
 import { waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarResponseDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarSourceDetail } from "./waybarContracts"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"

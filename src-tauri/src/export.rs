@@ -170,7 +170,43 @@ fn rename_exclusive(from: &Path, to: &Path) -> io::Result<()> {
             Err(io::Error::last_os_error())
         }
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        use std::ffi::CString;
+        use std::os::raw::{c_char, c_int, c_uint};
+        use std::os::unix::ffi::OsStrExt;
+        const AT_FDCWD: c_int = -100;
+        const RENAME_NOREPLACE: c_uint = 1;
+        extern "C" {
+            // glibc 2.28+; fails with EEXIST instead of replacing a destination that appeared after the exists() check.
+            fn renameat2(
+                olddirfd: c_int,
+                oldpath: *const c_char,
+                newdirfd: c_int,
+                newpath: *const c_char,
+                flags: c_uint,
+            ) -> c_int;
+        }
+        let from_c = CString::new(from.as_os_str().as_bytes())
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "export path"))?;
+        let to_c = CString::new(to.as_os_str().as_bytes())
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "export path"))?;
+        let rc = unsafe {
+            renameat2(
+                AT_FDCWD,
+                from_c.as_ptr(),
+                AT_FDCWD,
+                to_c.as_ptr(),
+                RENAME_NOREPLACE,
+            )
+        };
+        if rc == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         fs::rename(from, to)
     }
@@ -309,6 +345,21 @@ mod tests {
         let refs: Vec<&str> = names.iter().map(String::as_str).collect();
         assert!(validate_export_files(&packet(&refs)).is_err());
         assert!(validate_export_files(&packet(&refs[1..])).is_ok());
+    }
+
+    #[test]
+    fn exclusive_rename_never_replaces_a_destination() {
+        let parent = tempfile::tempdir().expect("tempdir");
+        let from = parent.path().join("staging");
+        let to = parent.path().join("packet");
+        fs::create_dir(&from).expect("staging");
+        // An empty directory is what a plain rename(2) silently replaces.
+        fs::create_dir(&to).expect("racing destination");
+        assert!(rename_exclusive(&from, &to).is_err());
+        assert!(from.is_dir(), "staging must be left in place");
+        let fresh = parent.path().join("fresh");
+        rename_exclusive(&from, &fresh).expect("rename to a new name");
+        assert!(fresh.is_dir() && !from.exists());
     }
 
     #[test]

@@ -506,6 +506,11 @@ export function mountApp(
       )
       if (activeIntakeRequestId !== requestId) return
       intakeEvaluating.hidden = true
+      // The user edited the idea while Jev was answering: this verdict is about older text, so show and apply nothing.
+      if (state.form.idea.trim() !== currentIdea) {
+        clearIntakeFeedback()
+        return
+      }
       if (result.ok) {
         latestIntakeDecision = result.decision
         renderIntakeFeedback(result.decision)
