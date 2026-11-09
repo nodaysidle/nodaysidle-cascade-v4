@@ -217,7 +217,28 @@ export const docsPortalBlueprint = blueprint({
   productConstraints: ["Do not collect reader behavior.", "Only released hardware revisions may be published."],
 })
 
-export const habitTrackerBlueprint = blueprint({
+export const lanternBooksBlueprint = blueprint({
+  productName: "Lantern Books",
+  summary: "A small bookshop site with featured books, one page per book, a page listing upcoming readings, and an about page showing opening hours.",
+  targetUsers: ["Local readers deciding what to read and when to visit"],
+  goals: ["Show featured books", "List upcoming readings", "Show opening hours"],
+  nonGoals: ["Online sales", "Customer accounts"],
+  features: [
+    feature("Featured books", "Browse the books the shop recommends", "List each featured book with its title, author, and short note.", "Every featured book shows its title and author.", { data: ["Featured book"], surface: "main", operations: ["read"] }),
+    feature("Book page", "Read about one book", "Show one page per featured book with its note.", "Each book has its own page.", { data: ["Featured book"], surface: "item-page", operations: ["read"] }),
+    feature("Events page", "See which readings are coming up", "List readings that have not happened yet, soonest first.", "Past readings are not listed.", { data: ["Reading event"], surface: "page", operations: ["read"] }),
+    feature("About page", "Know when the shop is open", "Show the opening hours for each weekday.", "Every weekday shows its hours.", { data: ["Opening hours"], surface: "about-page", operations: ["read"] }),
+  ],
+  dataObjects: [
+    { name: "Featured book", purpose: "A book the shop recommends.", sensitivity: "public", retentionIntent: "Published until removed.", storage: "records", writeMode: "direct", fields: [{ name: "Title", valueType: "text", optional: false }, { name: "Author", valueType: "text", optional: false }, { name: "Short note", valueType: "long-text", optional: false }] },
+    { name: "Reading event", purpose: "A reading held at the shop.", sensitivity: "public", retentionIntent: "Published until the event passes.", storage: "records", writeMode: "direct", fields: [{ name: "Event title", valueType: "text", optional: false }, { name: "Starts at", valueType: "date-time", optional: false }, { name: "Presenter", valueType: "text", optional: true }] },
+    { name: "Opening hours", purpose: "When the shop is open each weekday.", sensitivity: "public", retentionIntent: "Published until changed.", storage: "records", writeMode: "direct", fields: [{ name: "Weekday", valueType: "text", optional: false }, { name: "Hours", valueType: "text", optional: false }] },
+  ],
+  platformNeeds: [],
+  productConstraints: ["Collect no visitor data and no forms."],
+})
+
+export const habitTrackerBlueprint =blueprint({
   productName: "Steady Day",
   summary: "An offline habit tracker for scheduled routines, one-tap daily completion, deterministic streaks, and optional local reminders.",
   targetUsers: ["People building private repeatable routines"],
@@ -354,6 +375,7 @@ export const fixtureCases: ReadonlyArray<{ presetId: FixturePresetId; blueprint:
   { presetId: "tauri2-rust-typescript-desktop", blueprint: invoiceArchiveBlueprint },
   { presetId: "astro-web", blueprint: landingPageBlueprint },
   { presetId: "astro-web", blueprint: docsPortalBlueprint },
+  { presetId: "astro-web", blueprint: lanternBooksBlueprint },
   { presetId: "android-kotlin-compose", blueprint: habitTrackerBlueprint },
   { presetId: "android-kotlin-compose", blueprint: trailChecklistBlueprint },
 ]

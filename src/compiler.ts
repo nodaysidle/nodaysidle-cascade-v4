@@ -560,6 +560,8 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
   ])
   const permissionCapabilities = unique(rawPlatformNeeds.flatMap(need => permissionByNeed[need] ? [permissionByNeed[need]!] : []))
     .filter(capability => features.some(f => f.resourceIds.includes(permissionResourceId(capability))))
+    // A static Astro site with no declared service makes no network request that needs a permission contract.
+    .filter(capability => !(presetId === "astro-web" && capability === "network" && !source.externalServices.length))
   const platformNeeds = rawPlatformNeeds
   const permissionNeeds = permissionCapabilities.map(capability => ({ capability, purpose: needPurpose[capability], deniedBehavior: deniedBehavior[capability] }))
   if (presetId === "astro-web") {
@@ -939,8 +941,9 @@ function persistencePlacement(
   identity: ProjectIdentity,
   astroPlan?: AstroRoutePlan,
 ): string {
-  if (preset.id === "astro-web" && astroPlan?.usesContentCollections && item.storage === "records" && (item.sensitivity === "public" || item.sensitivity === "internal")) {
-    return `src/content/${astroPlan.contentCollection}/ as build-time markdown or MDX compiled through src/content.config.ts.`
+  const collection = astroPlan?.collections.find(candidate => candidate.dataName === item.data)
+  if (preset.id === "astro-web" && collection && item.storage === "records") {
+    return `src/content/${collection.name}/ as build-time markdown or MDX compiled through src/content.config.ts.`
   }
   if (preset.id === "astro-web" && astroPlan?.browserPersistence && item.storage === "records") return preset.persistence.recordsPlacement
   if (item.storage === "session") return SESSION_MEMORY_PLACEMENT
@@ -976,7 +979,8 @@ function buildOwnersAndContracts(
   const runtimeMode = preset.runtimeMode(blueprint)
   const staticAstroMinimal = preset.id === "astro-web"
     && runtimeMode === "static"
-    && !blueprint.persistenceNeeds.length
+    // Content collections are build-time files, not runtime persistence, so they keep a site static.
+    && blueprint.persistenceNeeds.every(item => astroPlan?.collections.some(collection => collection.dataName === item.data))
     && !blueprint.permissionNeeds.length
     && !integrationServices.some(service => service.credentialRequirement !== "none")
   const lifecycleOwnerId = staticAstroMinimal ? "OWN-PACKAGING" : "OWN-LIFECYCLE-COORDINATOR"
@@ -1059,6 +1063,7 @@ function buildOwnersAndContracts(
   for (const item of blueprint.domainData) {
     const credentialData = item.storage === "secret"
     const inMemoryData = item.storage === "session"
+    const contentCollection = !!astroPlan?.collections.some(collection => collection.dataName === item.name)
     const ownerId = credentialData ? "OWN-CREDENTIAL-VAULT" : dataOwnerId
     const credentialDataDetails = credentialData
       ? (credentialServices.length
@@ -1075,8 +1080,8 @@ function buildOwnersAndContracts(
       ownerId,
       credentialData ? `${preset.credentialPlacement} CredentialVault exclusively owns credential storage, retrieval, replacement, and deletion; DataStore receives no secret value.` : item.meaning,
       credentialData ? [...credentialDataDetails, `Retention: ${item.retention}`, `Sensitivity: ${item.sensitivity}`] : credentialDataDetails,
-      credentialData ? "Missing, rejected, unreadable, replacement-failed, or deletion-failed credentials block only the affected provider action without exposing or copying a secret." : inMemoryData ? "A failed update leaves the last in-memory state valid." : "Reject invalid or incomplete records without replacing the last valid state.",
-      credentialData ? ["Preserve the prior stored credential after failed replacement, report deletion only after the credential store confirms it, and expose an explicit replacement or provider-selection action."] : inMemoryData ? ["Keep the last in-memory value and rebuild it from its source on the next explicit action."] : ["Preserve the last valid record and expose a bounded correction or rebuild path."],
+      credentialData ? "Missing, rejected, unreadable, replacement-failed, or deletion-failed credentials block only the affected provider action without exposing or copying a secret." : inMemoryData ? "A failed update leaves the last in-memory state valid." : contentCollection ? "A content file that fails the collection schema fails the build and names the file and field." : "Reject invalid or incomplete records without replacing the last valid state.",
+      credentialData ? ["Preserve the prior stored credential after failed replacement, report deletion only after the credential store confirms it, and expose an explicit replacement or provider-selection action."] : inMemoryData ? ["Keep the last in-memory value and rebuild it from its source on the next explicit action."] : contentCollection ? ["Correct the named content file or field and rebuild."] : ["Preserve the last valid record and expose a bounded correction or rebuild path."],
     ))
   }
 
@@ -1095,7 +1100,8 @@ function buildOwnersAndContracts(
     ))
   }
 
-  for (const item of blueprint.lifecycleRequirements) {
+  // A static site has no application launch or termination to coordinate.
+  for (const item of staticAstroMinimal ? [] : blueprint.lifecycleRequirements) {
     contracts.push(contract(
       `CON-LIFECYCLE-${slug(item.event).toUpperCase()}`,
       "lifecycle",
@@ -1131,6 +1137,8 @@ function buildOwnersAndContracts(
       ).replaceAll("{app-id}", identity.bundleId)
       const memoryResident = /not written to disk/i.test(placement)
       const userDocument = item.storage === "document"
+      // A content collection is read-only at run time: its only failure is a build that rejects a bad file.
+      const contentFiles = preset.id === "astro-web" && placement.startsWith("src/content/")
       const persistenceDecision = preset.id === "astro-web" && astroPlan?.usesContentCollections
         ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.enabledDecision
         : preset.id === "astro-web" && astroPlan?.browserPersistence
@@ -1165,12 +1173,16 @@ function buildOwnersAndContracts(
           `Deletion: ${item.deletionBehavior}`,
           `Sensitivity: ${item.sensitivity}`,
         ],
-        memoryResident
+        contentFiles
+          ? "A content file that fails the collection schema fails the build and names the file and field; the site keeps no write path at run time."
+          : memoryResident
           ? "A failed update leaves the last in-memory state valid."
           : userDocument
             ? "A failed save leaves the user's existing document unchanged and the new state visibly unsaved."
             : "A failed write leaves the prior durable state valid and the new state visibly unsaved.",
-        memoryResident
+        contentFiles
+          ? ["Correct the named file or field and rebuild; no runtime write is retried.", item.deletionBehavior]
+          : memoryResident
           ? ["Keep the last in-memory value and allow an explicit retry.", item.deletionBehavior]
           : userDocument
             ? ["Retry through the same save boundary; never truncate or replace the user's file with partial content.", item.deletionBehavior]
@@ -1245,7 +1257,8 @@ function buildOwnersAndContracts(
     ["Fix the first failing validation command, rebuild the artifact, and rerun every later release gate."],
   ))
 
-  const optionEntries = Object.entries(presetOptions)
+  // A static site has no adapter; recording one would contradict the output mode.
+  const optionEntries = Object.entries(presetOptions).filter(([key]) => !(preset.id === "astro-web" && runtimeMode === "static" && key === "adapter"))
   if (optionEntries.length) {
     contracts.push(contract(
       "CON-PRESET-OPTIONS",
@@ -1260,7 +1273,8 @@ function buildOwnersAndContracts(
     ))
   }
 
-  if (preset.fileBoundary) {
+  // A site with no file-access feature has no local file boundary to state.
+  if (preset.fileBoundary && (preset.id !== "astro-web" || features.some(feature => feature.resourceIds.includes(permissionResourceId("filesystem"))))) {
     contracts.push(contract(
       "CON-PLATFORM-FILES",
       "security",
@@ -1456,13 +1470,15 @@ function buildPhases(
       : preset.registrationFiles?.(draft.kind, identity)
         ?? [preset.registrationFile(draft.kind, identity)]
     // The packaging task verifies runtime wiring, so it may fix the composition roots it checks.
-    const filesToModify = draft.kind === "packaging"
+    const modifyCandidates = draft.kind === "packaging"
       ? unique([
           ...(preset.registrationFiles?.("feature", identity) ?? [preset.registrationFile("feature", identity)]),
           ...(preset.registrationFiles?.("integration", identity) ?? [preset.registrationFile("integration", identity)]),
           ...(preset.wiringManifestFiles ?? []),
         ])
       : [...registrationTargets]
+    // A file this task creates is not also a file it modifies.
+    const filesToModify = modifyCandidates.filter(file => !filesToCreate.includes(file))
     const acceptanceCriteria = buildTaskAcceptanceCriteria(ownedAcceptance, ownedContracts, [files.focusedTestFile])
     const task: GraphTask = {
       id: taskId,
@@ -1507,7 +1523,9 @@ function buildPhases(
 }
 
 function recoveryRulesFor(preset: PresetContract, blueprint: NormalizedBlueprint): readonly string[] {
-  const interactive = blueprint.externalServices.length > 0 || blueprint.permissionNeeds.length > 0 || blueprint.platformNeeds.length > 0
+  // Without a declared service, a web page's network need is only its own assets, so it adds no form or fetch recovery.
+  const needs = preset.id === "astro-web" && !blueprint.externalServices.length ? blueprint.platformNeeds.filter(need => need !== "network") : blueprint.platformNeeds
+  const interactive = blueprint.externalServices.length > 0 || blueprint.permissionNeeds.length > 0 || needs.length > 0
   return preset.staticRecoveryRules && !interactive ? preset.staticRecoveryRules : preset.recoveryRules
 }
 
@@ -1595,7 +1613,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.settingsPlacement
     : preset.persistence.settingsPlacement).replaceAll("{app-id}", identity.bundleId)
   const persistenceRecords = (astroPlan?.usesContentCollections
-    ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.recordsPlacement.replace("{collection}", astroPlan.contentCollection)
+    ? ASTRO_CONTENT_COLLECTION_PERSISTENCE.recordsPlacement.replace("{collection}", astroPlan.collections.map(item => `src/content/${item.name}/`).join(", "))
     : preset.persistence.recordsPlacement).replaceAll("{app-id}", identity.bundleId)
   // Read back from the rendered contract so the summary always matches the per-object placement.
   const appFilesData = blueprint.persistenceNeeds.find(p => p.storage === "app-files")?.data
@@ -1603,9 +1621,11 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     ? contracts.find(item => item.kind === "persistence" && item.name === `${appFilesData} persistence`)?.details.find(detail => detail.startsWith("Placement: "))?.slice("Placement: ".length)
     : undefined
 
-  const effectiveIntegrationBoundary = integrationServices.length === 0 && !blueprint.platformNeeds.includes("network")
-    ? "Standalone local application: no remote network endpoints, cloud credentials, or third-party web services are used."
-    : preset.integrationBoundary
+  const effectiveIntegrationBoundary = preset.id === "astro-web" && integrationServices.length === 0
+    ? "Static site with no external service: pages call no remote endpoint and hold no credential; every request is for the site's own assets."
+    : integrationServices.length === 0 && !blueprint.platformNeeds.includes("network")
+      ? "Standalone local application: no remote network endpoints, cloud credentials, or third-party web services are used."
+      : preset.integrationBoundary
 
   const graph: ProjectGraph = {
     blueprint,

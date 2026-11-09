@@ -91,20 +91,22 @@ describeBuild("v4 starter kits compile and pass their own tests", () => {
     }
   }, 900_000)
 
-  it("Astro site kit", async () => {
-    const fixture = fixtureCases.find(item => item.presetId === "astro-web")!
-    const root = materialize(await compilePacket(fixture.blueprint, fixture.presetId))
-    try {
-      run("npm", ["install", "--no-audit", "--no-fund"], root)
-      run("npm", ["run", "check"], root)
-      run("npm", ["test"], root)
-      run("npm", ["run", "build"], root)
-      run("npm", ["run", "test:a11y"], root)
-      run("npm", ["run", "audit:performance"], root)
-    } finally {
-      rmSync(root, { recursive: true, force: true })
-    }
-  }, 900_000)
+  // Every Astro fixture: no stored data, one record type with item pages, and several record types.
+  for (const fixture of fixtureCases.filter(item => item.presetId === "astro-web")) {
+    it(`Astro site kit: ${fixture.blueprint.productName}`, async () => {
+      const root = materialize(await compilePacket(fixture.blueprint, fixture.presetId))
+      try {
+        run("npm", ["install", "--no-audit", "--no-fund"], root)
+        run("npm", ["run", "check"], root)
+        run("npm", ["test"], root)
+        run("npm", ["run", "build"], root)
+        run("npm", ["run", "test:a11y"], root)
+        run("npm", ["run", "audit:performance"], root)
+      } finally {
+        rmSync(root, { recursive: true, force: true })
+      }
+    }, 900_000)
+  }
 
   it("Tauri 2 kit", async () => {
     const fixture = fixtureCases.find(item => item.presetId === "tauri2-rust-typescript-desktop")!
