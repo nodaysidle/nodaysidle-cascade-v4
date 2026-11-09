@@ -64,7 +64,7 @@ function contentSeedSection(graph: ProjectGraph): string[] {
     "When the idea supplies no entries and states no count for a collection, keep its sample entry unchanged and invent nothing; the site owner replaces it with real entries after delivery, and no task rewrites it. When the idea names entries, OWN-DATA-STORE creates one file per named entry and deletes that collection's sample entries. Test fixtures live only under tests/.",
     "Page-level tests assert on the HTML in dist/ for the entries that exist. For a collection with a stated count they assert that exact count and that each seeded entry id has its page and list item; for any other collection they compare against the number of files in its src/content folder, never a fixed number. A test reads the expected values from the content files and never requires a real name.",
     ...(graph.astroPlan.collections.some(item => item.fields.some(field => field.valueType === "time")) ? ["A time-of-day field is written HH:MM, 24-hour, in the local time of the place the site describes (no timezone is stored); src/content.config.ts rejects any other spelling, so a malformed time fails npm run build. Pages show the value as written, and a pair of times reads from-to as HH:MM–HH:MM."] : []),
-    "A long-text field renders as paragraphs split on blank lines (one p element per paragraph) on the detail page; the markdown body renders only on a detail page.",
+    "A long-text field is one single-line frontmatter value shown in one element on the detail page; multi-paragraph text belongs in the markdown body, which renders only on a detail page.",
     "Order: the content files carry no order field, so every list is in ascending entry id (the file name without extension, compared as text) unless the feature behavior names a sort by one of its own declared fields, which the page then applies to the list it reads. Entry files are named with a two-digit numeric prefix (01-, 02-, ...) so the file order is the order the owner wants; a new entry takes the next prefix.",
   ]))]
 }
@@ -87,7 +87,8 @@ function renderFeature(feature: GraphFeature): string {
 function kitRules(graph: ProjectGraph): string[] {
   if (!graph.kitPaths.length) return []
   const foundationKit = graph.kitPaths.filter(path => graph.foundationFiles.includes(path))
-  const ownedKit = graph.kitPaths.filter(path => !graph.foundationFiles.includes(path))
+  // A kit file no task lists under Files to create (the astro kit README is never copied) is not an owned file.
+  const ownedKit = graph.kitPaths.filter(path => !graph.foundationFiles.includes(path) && (graph.presetId !== "astro-web" || path !== "README.md"))
   return [
     ...(foundationKit.length
       ? [`Before TASK-01, copy these kit files to the same path in the project root: ${foundationKit.join(", ")}. Keep every behavior kit/README.md lists and keep the kit tests passing.${graph.presetId === "astro-web" ? " Then run npm install once, so astro and vitest exist before any validation command. npm run test:a11y checks that every internal link resolves, so it passes only once every route exists and is run in the packaging task; a list page may link to a detail route that a later task builds." : ""}`]
