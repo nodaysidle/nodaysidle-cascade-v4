@@ -17,6 +17,8 @@ describe("packet determinism and verify", () => {
     const second = await compilePacket(blueprint, presetId)
     for (const name of DOCUMENT_NAMES) expect(second.documents[name]).toBe(first.documents[name])
     expect(second.kit).toEqual(first.kit)
+    // A missing lookup in a template renders as the word "undefined"; the documents never contain it.
+    expect(Object.values(first.documents).join("\n").replaceAll("one entry or undefined", "")).not.toContain("undefined")
   })
 
   it.each(fixtureCases)("$presetId / $blueprint.productName exports exactly packetForExport plus blueprint.json", async ({ presetId, blueprint }) => {

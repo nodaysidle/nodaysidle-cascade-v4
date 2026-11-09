@@ -1,5 +1,5 @@
 import { allocateStableIds, pascal, slug, type GraphContract, type GraphPhase, type NormalizedBlueprint } from "./compiler"
-import { clockInitial } from "./schema"
+import { clockInitial, type DataValueType } from "./schema"
 import { gtkKitFlags, rustKitHelpers } from "./kits"
 import type { PresetContract } from "./presets"
 
@@ -85,7 +85,7 @@ export function gtkSpecialize(preset: PresetContract, blueprint: NormalizedBluep
 const SAVE_TOAST = "Could not save the change. Try again."
 const REMOVE_TOAST = "Could not remove the item. Try again."
 
-const SQL_TYPES: Record<string, { rust: string; sql: string; note?: string }> = {
+const SQL_TYPES: Record<DataValueType, { rust: string; sql: string; note?: string }> = {
   text: { rust: "String", sql: "TEXT" },
   "long-text": { rust: "String", sql: "TEXT" },
   number: { rust: "f64", sql: "REAL" },
@@ -93,6 +93,7 @@ const SQL_TYPES: Record<string, { rust: string; sql: string; note?: string }> = 
   flag: { rust: "bool", sql: "INTEGER", note: "0 or 1" },
   date: { rust: "String", sql: "TEXT", note: "YYYY-MM-DD" },
   "date-time": { rust: "i64", sql: "INTEGER", note: "i64 epoch milliseconds, UTC" },
+  time: { rust: "String", sql: "TEXT", note: "HH:MM, 24-hour, zero-padded" },
   "text-list": { rust: "Vec of String", sql: "TEXT", note: "a JSON array" },
   reference: { rust: "i64", sql: "INTEGER" },
 }
@@ -103,7 +104,7 @@ const referenceKey = (name: string): string => name.normalize("NFKC").trim().rep
 // typed error, integer widths, and the table and column names, all derived from declared fields.
 export function gtkStoreInterface(item: NormalizedBlueprint["domainData"][number], operations: readonly string[], record: string, base: string): string {
   const column = (name: string) => name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "value"
-  const fields = item.fields.map(field => ({ name: column(field.name), ...SQL_TYPES[field.valueType]!, optional: field.optional }))
+  const fields = item.fields.map(field => ({ name: column(field.name), ...SQL_TYPES[field.valueType], optional: field.optional }))
   const rustFields = fields.map(field => `${field.name}: ${field.optional ? `Option of ${field.rust}` : field.rust}`).join(", ")
   const columns = ["id INTEGER PRIMARY KEY AUTOINCREMENT", ...fields.map(field => `${field.name} ${field.sql}${field.optional ? "" : " NOT NULL"}${field.note ? ` (${field.note})` : ""}`)].join(", ")
   const signatures = [

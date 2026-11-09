@@ -125,3 +125,14 @@ describe("GTK dates, resets, and who builds the row controls", () => {
     expect(await tasksOf(blueprint)).toContain("depends on today's date or year")
   })
 })
+
+describe("GTK time fields", () => {
+  it("types a time field as TEXT HH:MM in the store contract, never undefined", async () => {
+    const blueprint = structuredClone(giftIdeasBlueprint)
+    blueprint.dataObjects[0]!.fields = [...blueprint.dataObjects[0]!.fields, { name: "Start", valueType: "time", optional: false }]
+    const packet = await compilePacket(blueprint, PRESET)
+    expect(packet.failures).toEqual([])
+    expect(Object.values(packet.documents).join("\n")).not.toContain("undefined")
+    expect(packet.documents["TRD.md"]).toContain("start TEXT NOT NULL (HH:MM, 24-hour, zero-padded)")
+  })
+})
