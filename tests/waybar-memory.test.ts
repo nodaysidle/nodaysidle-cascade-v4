@@ -37,7 +37,7 @@ describe("memory source wiring, one failure wording, and no inherited boilerplat
     const packet = await compilePacket(memory, ID)
     const kitModule = packet.kit.find(file => file.name === "kit/src/module.rs")!.content
     expect(kitModule).toContain("cache.output.class = String::from(CLASS_STALE)")
-    for (const name of ["TRD.md", "TASKS.md"]) expect(packet.documents[name]).toContain("cache.json is rewritten only to mark it stale, or rebuilt from the stored record when it is missing")
+    for (const name of ["TRD.md", "TASKS.md"] as const) expect(packet.documents[name]).toContain("cache.json is rewritten only to mark it stale, or rebuilt from the stored record when it is missing")
     expect(packet.documents["TRD.md"]).not.toContain("tokio")
     expect(packet.kit.map(file => file.name)).not.toContain("kit/src/platform/runtime.rs")
     expect(packet.kit.find(file => file.name === "kit/Cargo.toml")!.content).not.toContain("tokio")
@@ -57,6 +57,6 @@ describe("memory source wiring, one failure wording, and no inherited boilerplat
     const named = structuredClone(memory)
     named.features[1]!.acceptanceSignals = ["After a failed refresh cache.json is unchanged."]
     expect(rules(named)).toContain("capability.waybar-cache-file")
-    expect(PRESETS[ID].providerNotes.join(" ")).toContain("reads the stored record and, with no stored record, sends nothing")
+    expect(PRESETS[ID]!.providerNotes.join(" ")).toContain("reads the stored record and, with no stored record, sends nothing")
   })
 })
