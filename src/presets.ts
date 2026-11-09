@@ -1,5 +1,5 @@
 import { ANDROID_DEVICE_COMMANDS, ANDROID_DEVICE_GATE_RULE } from "./androidPlan"
-import { ANDROID_SDK } from "./androidKit"
+import { ANDROID_SDK, androidKitNeeds } from "./androidKit"
 import { ASTRO_BUDGET_TEXT, astroStaticContentSite } from "./astroWeb"
 import type { NormalizedBlueprint } from "./compiler"
 import type { FeatureSurface } from "./schema"
@@ -949,7 +949,8 @@ const androidCompose: PresetContract = {
     "When an input is only a time of day but the stored value is a date and time, declare the date field the user picks, or state in the behavior which date a bare time belongs to (for example today, or the day before when it is earlier than another entered time). Store a calendar day as a date field, not a date-time.",
     "A value the screen shows (a due date, an average, a count) is either a stored field or named in the list or view behavior as shown; an acceptance outcome may assert on screen only what that behavior shows. State the control for each action (for example an Add button that opens a form, a Mark button on each row), the case rule of any sort order, and how a computed average is rounded.",
     "An acceptance outcome may rely only on what its own feature or the features it builds on deliver; two features must not each need the other's result.",
-    "A reminder or notification sent on a schedule is sent at most once per local day; the app keeps the day it last sent or skipped in its own settings, so declare no data object only to remember that day, and declare no status screen unless a feature asks for one.",
+    "A reminder or notification sent on a schedule is sent at most once per local day; the app keeps the day it last sent or skipped in its own settings, so declare no data object only to remember that day, and declare no status screen unless a feature asks for one. A reminder at a time the user stores on each record (a per-item time of day) is a record field of valueType time and the feature's runsAtField; its notification body is a constant sentence quoted exactly in one acceptance signal, and its title is a text field of the record.",
+    "Name the visible label of every control and field the PRD asks the user to use (the button text, each field label, the submit button), so tests and screens share one wording; and when a text input is required, say that it is trimmed and that a trimmed-empty value counts as empty.",
   ],
   integrationBoundary: "Use HttpsURLConnection or one typed HTTP client inside a coroutine-backed service or repository owner, map JSON into locked Kotlin data classes before returning, close streams in finally blocks, and expose only privacy-safe typed failures to ViewModels.",
   recoveryRules: ["Model loading, success, empty, denied, failed, and cancelled states explicitly in immutable UI state.", "Use structured coroutine cancellation, Room transactions, and cache-file cleanup; retries and provider changes always require an explicit user action; a declared automatic fallback and a declared schedule (runs every N seconds or daily at a time) are not retries."],
@@ -988,6 +989,19 @@ const androidCompose: PresetContract = {
     () => "./scripts/gradle.sh assembleDebug",
   ],
   packagingRules: ["Use Gradle Kotlin DSL and a version catalog.", "Build an Android-only APK with the locked applicationId.", "Declare only required permissions and test denied paths.", "When an adb device is attached, install the debug APK on it for launch smoke; otherwise report PARTIAL."],
+  specialize: (preset, blueprint) => {
+    const needs = androidKitNeeds(blueprint)
+    const clean = (rule: string) => rule
+      .replace("a command with nothing to act on is disabled until it has a target; ", "")
+      .replace("an empty list shows one centered message saying how to fill it;", "an empty list shows one centered message, which is the owning feature's own empty-state text when its behavior gives one and otherwise says how to fill the list;")
+      .replace("settings are grouped rows with the label on the left and the control on the right, a switch or checkbox on the same line as its label, and a short note under each group; ", needs.settingsData ? "settings are grouped rows with the label on the left and the control on the right, a switch or checkbox on the same line as its label, and a short note under each group; " : "")
+      .replace("it restores every setting it changed to its previous value and removes", needs.settingsData ? "it restores every setting it changed to its previous value and removes" : "it removes")
+    return {
+      wiringRules: preset.wiringRules.map(clean),
+      ...(needs.schedule ? {} : { lifecycleRules: preset.lifecycleRules.map(rule => rule.replace("repositories or WorkManager rather", "repositories rather")) }),
+      ...(needs.settings ? {} : { persistence: { ...preset.persistence, enabledDecision: "Persistence: enabled with Room for record collections behind repository boundaries." } }),
+    }
+  },
   wiringRules: [
     "AppContainer.kt (built in the Application class) is the composition root and provides the concrete repositories, services, and platform adapters named in the contracts; App.kt only reads them from it. Fakes and in-memory stores exist only under app/src/test and app/src/androidTest.",
     "The packaging focused test constructs the production composition root and asserts that every provided dependency is the concrete production type, not a fake.",

@@ -3,7 +3,9 @@ import { ANDROID_SDK } from "../src/androidKit"
 import { compilePacket } from "../src/compiler"
 import { PRESETS, resolvePresetOptions } from "../src/presets"
 import { fixtureCases } from "./fixtures/blueprints"
+import { medicineBlueprint } from "./fixtures/medicine"
 import { pantryBlueprint } from "./fixtures/pantry"
+import { auditSemanticIntake } from "../src/schema"
 
 const habit = fixtureCases.find(item => item.presetId === "android-kotlin-compose")!.blueprint
 
@@ -48,8 +50,8 @@ describe("Android scheduled work", () => {
   it("requires an injected clock where acceptance compares stored dates with now, and nowhere else", async () => {
     const { task } = await pantry()
     expect(task("TASK-05-EXPIRING-SOON").prompt).toContain("Clock.fixed")
-    expect(task("TASK-06-MARK-ITEM-USED").prompt).toContain("Clock.fixed")
-    expect(task("TASK-04-ADD-GROCERY-ITEM").prompt).not.toContain("Clock.fixed")
+    expect(task("TASK-06-MARK-ITEM-USED").prompt).toContain("Time rule")
+    expect(task("TASK-04-ADD-GROCERY-ITEM").prompt).not.toContain("Time rule")
   })
 
   it("specifies one notification permission flow and says a schedule is not a retry", async () => {
@@ -189,16 +191,118 @@ describe("Android audit fixes", () => {
 
   it("requires the injected clock where a feature updates a stored date", async () => {
     const { task } = await pantry()
-    expect(task("TASK-06-MARK-ITEM-USED").prompt).toContain("Clock.fixed")
+    expect(task("TASK-06-MARK-ITEM-USED").prompt).toContain("Time rule")
   })
 
   it("tells the first main-surface task to show every stored field the PRD says a list shows", async () => {
     const { tasks } = await pantry()
-    expect(tasks).toContain("every stored field the PRD says that list or view shows")
+    expect(tasks).toContain("every stored field the PRD says that list shows")
   })
 
   it("gives the provider the Android content rules that cannot be checked mechanically", () => {
     const notes = PRESETS["android-kotlin-compose"].providerNotes!.join("\n")
     for (const phrase of ["initial option always has a selected value", "which date a bare time belongs to", "at most once per local day", "builds on deliver"]) expect(notes).toContain(phrase)
+  })
+})
+
+describe("Android per-record reminders and tailored slots", () => {
+  const medicine = async () => {
+    const packet = await compilePacket(medicineBlueprint, "android-kotlin-compose")
+    const task = (id: string) => packet.graph.phases.flatMap(phase => phase.tasks).find(item => item.id.startsWith(id))!
+    const kit = (path: string) => packet.kit.find(file => file.name === `kit/app/src/${path}`)?.content
+    return { packet, task, kit, trd: packet.documents["TRD.md"], tasks: packet.documents["TASKS.md"] }
+  }
+
+  it("states a tick rule and a (record, day) log for a reminder whose time is a stored field", async () => {
+    const { packet, kit, trd } = await medicine()
+    expect(packet.failures).toEqual([])
+    expect(packet.exportable).toBe(true)
+    expect(trd).toContain("PeriodicWorkRequest.Builder(DoseReminderWorker::class.java, 15, TimeUnit.MINUTES) with no initial delay")
+    expect(trd).toContain("No lifecycle-scoped coroutine, in-app timer, or exact alarm repeats this check")
+    expect(trd).toContain("holds one row per (Medicines id, local epoch day)")
+    expect(trd).toContain('the record\'s Name value and its text is exactly "Time to take your medicine"')
+    expect(trd).toContain("DoseReminderScheduler.enqueue(container.workManager) right after")
+    expect(trd).toContain("start(container) does not enqueue it")
+    expect(trd).not.toContain("Run state: the epoch day")
+    expect(trd).not.toContain("24, TimeUnit.HOURS")
+    expect(kit("main/java/com/medicine/time/platform/reminders/ReminderLog.kt")).toContain('primaryKeys = ["recordId", "epochDay"]')
+    expect(kit("main/java/com/medicine/time/platform/reminders/DueReminders.kt")).toContain("fun due(")
+    expect(kit("test/java/com/medicine/time/platform/reminders/DueRemindersTest.kt")).toContain("theFirstTickEverSendsNothing")
+    expect(kit("main/java/com/medicine/time/AppContainer.kt")).toContain("val reminderLog")
+    expect(kit("main/java/com/medicine/time/data/SettingsRepository.kt")).toContain("fun lastTickEpochMs")
+    expect(kit("main/java/com/medicine/time/data/SettingsRepository.kt")).not.toContain("lastRunEpochDay")
+    expect(trd).toContain("a time of day is a String HH:MM")
+    expect(trd).toContain("observeAll returns the rows ordered by id ascending")
+  })
+
+  it("ships the reminder log only when runsAtField is declared", async () => {
+    const pantryPacket = await compilePacket(pantryBlueprint, "android-kotlin-compose")
+    expect(pantryPacket.kit.some(file => file.name.includes("/platform/reminders/"))).toBe(false)
+    expect(pantryPacket.kit.find(file => file.name.endsWith("/AppContainer.kt"))!.content).not.toContain("reminderLog")
+    expect(pantryPacket.documents["TRD.md"]).toContain("Run state: the epoch day")
+  })
+
+  it("exposes only the slots the declared operations need, and names the slot or none per task", async () => {
+    const { task, tasks } = await medicine()
+    const first = task("TASK-04").prompt
+    expect(first).toContain("a per-row action area on every list row")
+    expect(first).not.toMatch(/detail view|Edit button/)
+    expect(task("TASK-05-MARK-TAKEN").prompt).toContain("(the per-row action area)")
+    expect(task("TASK-05-MARK-TAKEN").prompt).not.toContain("Reuse the form fields")
+    expect(task("TASK-08").prompt).toContain("mounts into no slot")
+    expect(tasks).not.toMatch(/holds an Edit button/)
+  })
+
+  it("keeps the detail view only when a feature declares an item page", async () => {
+    const withPage = { ...medicineBlueprint, features: medicineBlueprint.features.map(feature => feature.name === "Mark taken" ? { ...feature, surface: "item-page" as const } : feature) }
+    const packet = await compilePacket(withPage, "android-kotlin-compose")
+    expect(packet.graph.phases.flatMap(phase => phase.tasks).find(item => item.prompt.includes("first main-surface task"))!.prompt).toContain("a detail view for the selected record")
+  })
+
+  it("stamps written times instead of asking for a before/on/after boundary", async () => {
+    const { task } = await medicine()
+    expect(task("TASK-04").prompt).toContain("Stamp rule")
+    expect(task("TASK-04").prompt).not.toContain("Time rule")
+    expect(task("TASK-06-MEDICINE-LIST").prompt).toContain("recomputed from the clock on every resume")
+  })
+
+  it("rejects a reminder declaration the compiler cannot build from", () => {
+    const at = medicineBlueprint.features.find(feature => feature.runsAtField)!
+    const bad = (patch: Partial<NonNullable<typeof at.runsAtField>>, extra: Record<string, unknown> = {}) =>
+      auditSemanticIntake({ ...medicineBlueprint, features: medicineBlueprint.features.map(feature => feature === at ? { ...feature, ...extra, runsAtField: { ...at.runsAtField!, ...patch } } : feature) }).map(issue => issue.rule)
+    expect(auditSemanticIntake(medicineBlueprint)).toEqual([])
+    expect(bad({ timeField: "Name" })).toContain("semantic.run-at-time-field")
+    expect(bad({ titleField: "Taken date" })).toContain("semantic.run-at-title-field")
+    expect(bad({ notificationBody: "Take it now" })).toContain("semantic.run-at-body")
+    expect(bad({ data: "Nothing" })).toContain("semantic.run-at-data")
+    expect(bad({}, { runsEverySeconds: 60 })).toContain("semantic.two-schedules")
+    expect(bad({}, { dataOperations: [] })).toContain("semantic.run-at-read")
+  })
+
+  it("drops settings, WorkManager, and backup leftovers when nothing needs them", async () => {
+    const trail = fixtureCases.find(item => item.blueprint.productName === "Trail Ready")!
+    const packet = await compilePacket(trail.blueprint, "android-kotlin-compose")
+    const kit = (name: string) => packet.kit.find(file => file.name === `kit/${name}`)!.content
+    expect(kit("app/src/main/AndroidManifest.xml")).toContain('android:allowBackup="false"')
+    expect(kit("gradle/libs.versions.toml")).not.toMatch(/work|datastore/i)
+    expect(kit("app/src/main/java/com/trail/ready/TrailReadyApplication.kt")).not.toContain("WorkManager")
+    expect(packet.graph.lockedStack).not.toContain("DataStore")
+    const trd = packet.documents["TRD.md"]
+    expect(trd).not.toContain("settings are grouped rows")
+    expect(trd).not.toContain("restores every setting")
+    expect(trd).not.toContain("a command with nothing to act on")
+    expect(trd).not.toContain("or WorkManager rather")
+    expect(packet.documents["TASKS.md"]).toContain("ContractTest asserts that app/build.gradle.kts declares com.trail.ready as the namespace and applicationId")
+    expect(packet.documents["TASKS.md"]).not.toContain("The implementation marker is")
+    expect(packet.documents["TASKS.md"]).toContain("Packaging API: Packaging.kt defines `fun assertProductionWiring(container: AppContainer)`")
+    expect(packet.documents["TASKS.md"]).toContain("LifecycleCoordinator API")
+  })
+})
+
+describe("Android wording kept from the provider", () => {
+  it("keeps the grammar of a condition that said either", async () => {
+    const edited = { ...medicineBlueprint, features: medicineBlueprint.features.map(feature => feature.name === "Add medicine" ? { ...feature, behavior: "Add a medicine with a name and a time. If either field is empty, the form is not submitted." } : feature) }
+    const packet = await compilePacket(edited, "android-kotlin-compose")
+    expect(packet.documents["PRD.md"]).toContain("If any field is empty, the form is not submitted.")
   })
 })

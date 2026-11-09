@@ -5,6 +5,7 @@ import { dirname, join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { compilePacket, type CompiledPacket } from "../src/compiler"
 import { bareGtkBlueprint, bareWaybarBlueprint, fixtureCases, tidePageBlueprint, tideTickBlueprint } from "./fixtures/blueprints"
+import { medicineBlueprint } from "./fixtures/medicine"
 import { pantryBlueprint } from "./fixtures/pantry"
 import { airQualityBlueprint, allSourcesBlueprint, netSpeedBlueprint } from "./fixtures/waybarSources"
 
@@ -160,9 +161,9 @@ describeBuild("v4 starter kits compile and pass their own tests", () => {
 
   it("Android kit", async () => {
     const fixture = fixtureCases.find(item => item.presetId === "android-kotlin-compose")!
-    // One kit with notifications only, one with a schedule and a setting, and one with neither; both must build and pass the JVM unit tests without a device.
+    // One kit with notifications only, one with a schedule and a setting, one with a per-record reminder log, and one with neither; both must build and pass the JVM unit tests without a device.
     const bare = fixtureCases.find(item => item.blueprint.productName === "Trail Ready")!.blueprint
-    for (const blueprint of [fixture.blueprint, pantryBlueprint, bare]) {
+    for (const blueprint of [fixture.blueprint, pantryBlueprint, medicineBlueprint, bare]) {
       const root = materialize(await compilePacket(blueprint, fixture.presetId))
       try {
         run("./scripts/gradle.sh", ["assembleDebug", "testDebugUnitTest"], root, { ANDROID_HOME: process.env.ANDROID_HOME ?? join(homedir(), "Android/Sdk") })

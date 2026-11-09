@@ -20,6 +20,7 @@ const feature = (name: string, behavior: string, acceptance: string, uses: Parti
   runsEverySeconds: null,
   runsDailyAt: null,
   systemSource: "none",
+  runsAtField: null,
   ...uses,
 })
 

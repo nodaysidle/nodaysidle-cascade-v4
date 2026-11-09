@@ -16,6 +16,7 @@ const base = (name: string, behavior: string, extra: Partial<SemanticBlueprint["
   invokedBy: "user-control",
   runsEverySeconds: null,
   runsDailyAt: null,
+  runsAtField: null,
   ...extra,
 })
 
@@ -33,6 +34,7 @@ export const pantryBlueprint: SemanticBlueprint = {
       dataOperations: ops("Grocery items", "read"),
       usesPlatformNeeds: ["notifications", "background-execution"],
       runsDailyAt: "09:00",
+      runsAtField: null,
       usesData: ["Grocery items", "Reminder preferences"],
     }),
   ],

@@ -48,6 +48,7 @@ function feature(name: string, userOutcome: string, behavior: string, acceptance
     runsEverySeconds: uses.runsEvery ?? null,
     runsDailyAt: null,
     systemSource: uses.system ?? "none",
+    runsAtField: null,
   }
 }
 
