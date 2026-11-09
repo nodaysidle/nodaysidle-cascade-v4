@@ -3,6 +3,8 @@ import { astroKit } from "./astroKit"
 import { tauriKitFiles, tauriKitReadme, tauriKitUses } from "./tauriKit"
 import type { NormalizedBlueprint } from "./compiler"
 import type { PresetId, ProjectIdentity } from "./presets"
+import { WAYBAR_FAILURE_RULE, waybarSources } from "./waybarContracts"
+import { waybarSystemKit } from "./waybarKit"
 
 export interface KitFile {
   readonly path: string
@@ -621,8 +623,10 @@ export function waybarLaunchers(blueprint: NormalizedBlueprint): { readonly page
 }
 
 export interface WaybarRoles {
-  // The first feature that declares a schedule, else the first that needs background execution.
+  // The scheduled feature that measures, fetches, or writes data (else the first scheduled one, else the first that needs background execution).
   readonly refreshOwner?: string
+  // Features that only read what the refresh owner stores: each owns the pure label function the refresh owner calls.
+  readonly labelOwners: readonly string[]
   // The first unscheduled feature that only reads declared data: the module's click action.
   readonly clickOwner?: string
   // Service refresh seconds: the smallest declared runsEverySeconds, or the kit default when none is declared.
@@ -636,13 +640,19 @@ export function waybarRoles(blueprint: NormalizedBlueprint): WaybarRoles {
   const features = blueprint.features
   const intervals = features.flatMap(feature => feature.runsEverySeconds === null ? [] : [feature.runsEverySeconds])
   const unscheduled = (feature: (typeof features)[number]) => feature.runsEverySeconds === null && feature.runsDailyAt === null
-  const refreshOwner = features.find(feature => !unscheduled(feature))
+  const works = (feature: (typeof features)[number]) => feature.resourceIds.some(id => id.startsWith("service:")) || feature.systemSource !== "none"
+    || Object.values(feature.operationsByData).some(operations => operations.some(operation => operation === "create" || operation === "update"))
+  const refreshOwner = features.find(feature => !unscheduled(feature) && works(feature))
+    ?? features.find(feature => !unscheduled(feature))
     ?? features.find(feature => feature.resourceIds.includes("permission:background-execution"))
   const clickOwner = features.find(feature => feature.invokedBy === "click")
+  const written = new Set(refreshOwner === undefined ? [] : Object.entries(refreshOwner.operationsByData).filter(([, operations]) => operations.some(operation => operation === "create" || operation === "update")).map(([key]) => key))
+  const labelOwners = features.filter(feature => feature !== refreshOwner && feature !== clickOwner && Object.entries(feature.operationsByData).some(([key, operations]) => written.has(key) && operations.includes("read"))).map(feature => feature.name)
   const settingKeys = [...new Set(blueprint.domainData.filter(item => item.storage === "settings")
     .flatMap(item => item.fields.length ? item.fields.map(field => snakeKey(field.name)) : [snakeKey(item.name)]))]
   return {
     refreshOwner: refreshOwner?.name,
+    labelOwners,
     clickOwner: clickOwner?.name,
     intervalSeconds: intervals.length ? Math.min(...intervals) : WAYBAR_DEFAULT_SERVICE_SECONDS,
     scheduled: intervals.length > 0,
@@ -656,13 +666,23 @@ export function waybarTaskNotes(blueprint: NormalizedBlueprint, featureNames: re
   const roles = waybarRoles(blueprint)
   const notes: string[] = []
   if (roles.refreshOwner !== undefined && featureNames.includes(roles.refreshOwner)) {
-    notes.push(`You are the refresh-loop owner: replace the body of fetch_output in src/module.rs so the --service loop calls this feature's code and returns the final label as a ModuleOutput; keep run_service, render_with, refresh, STALE_SUFFIX, and the loop interval (settings.refresh_seconds) unchanged, and keep cache.json a derived render of that label. Set ModuleOutput.value to the numeric reading when the label shows one; only when this feature's acceptance criteria state warning or critical thresholds (amber is warning, red is critical), set WARNING_ABOVE and CRITICAL_ABOVE in src/module.rs to them and compare the raw value, otherwise leave both None so the class is normal. Take every external read (service call, file, command) behind an injected trait or closure so the failure test substitutes one that fails. If its acceptance criteria name wording for the state before the first successful refresh, set that as the default of Settings.text in src/config.rs.`)
+    notes.push(`You are the refresh-loop owner and the only owner of fetch_output: replace its body in src/module.rs. It stays the composition root of the refresh path: it builds the production dependencies (the real store, and the integration or the SystemReader named in the contracts) and calls one testable function in this feature's own file that takes the store, the reader or integration, the clock (now in milliseconds; fetch_output receives seconds, so a stored moment is now_unix * 1000), and the interval as parameters, so the focused test calls it at fixed times (for example t=0 and t=5000 ms) with injected readers instead of sleeping. ${WAYBAR_FAILURE_RULE} Keep run_service, render_with, refresh, STALE_SUFFIX, and the loop interval (settings.refresh_seconds) unchanged, and keep cache.json a derived render of the label.`)
+    if (roles.labelOwners.length) {
+      notes.push(`The label is built by the pure function exported by ${roles.labelOwners.join(", ")} (stored record and saved settings in, ModuleOutput out); those tasks come first, so call that function instead of formatting the label yourself.`)
+    }
+    for (const service of blueprint.externalServices.filter(item => item.requestValueFrom !== "")) {
+      notes.push(`The stored record carries the value of the saved setting '${service.requestValueFrom}' it was fetched for; write it with every successful fetch.`)
+    }
+    notes.push("Set ModuleOutput.value to the numeric reading when the label shows one; only when the acceptance criteria state warning or critical thresholds (amber is warning, red is critical), set WARNING_ABOVE and CRITICAL_ABOVE in src/module.rs to them and compare the raw value, otherwise leave both None so the class is normal. Set ModuleOutput.tooltip to the label text unless the acceptance criteria state tooltip wording. If the acceptance criteria name wording for the state before the first successful refresh, set exactly that wording as the default of Settings.text in src/config.rs (for example '--').")
+  }
+  if (roles.labelOwners.some(name => featureNames.includes(name))) {
+    notes.push("You own the pure label function for the stored reading: export a function that takes the stored record and the saved settings and returns the ModuleOutput (text, tooltip, class). It never reads cache.json, fetches, measures, or schedules; the refresh-loop owner calls it from fetch_output. When the record's saved-setting value (the field named after the setting the service request uses) differs from the current saved setting, it returns the empty state, never another place's value.")
   }
   if (roles.clickOwner !== undefined && featureNames.includes(roles.clickOwner)) {
-    notes.push("You are the click-action owner: replace the body of click in src/module.rs; the Waybar fragment (already bound to --action click) needs no change, and no other --action name is added unless a feature declares one.")
+    notes.push("You are the click-action owner: replace the body of click in src/module.rs and change its signature to click(settings: &Settings, launcher: &dyn Launcher), updating run_action to pass &SystemLauncher (click is the composition root of the click path); the Waybar fragment (already bound to --action click) needs no change, and no other --action name is added unless a feature declares one. A failed click returns Err (exit 2, message on stderr) and writes neither the store nor the cache.")
     const launchers = waybarLaunchers(blueprint)
     for (const page of launchers.pages) {
-      notes.push(`Open ${page} with open_url from src/platform/launcher.rs (xdg-open through std::process::Command) and take the launcher as an injected &dyn Launcher, so the focused test passes a recording launcher and a failing launcher; a launcher error makes click return Err.`)
+      notes.push(`Open ${page.includes("{value}") ? `the address the integration owner's page_url function builds from the saved setting (template ${page})` : page} with open_url from src/platform/launcher.rs (xdg-open through std::process::Command) and take the launcher as an injected &dyn Launcher, so the focused test passes a recording launcher and a failing launcher; a launcher error makes click return Err.`)
     }
     if (launchers.notifies) {
       notes.push("Send the notification with notify from src/platform/launcher.rs (notify-send through std::process::Command) from click only, through an injected &dyn Launcher, so the focused test asserts exactly one request and a failing launcher makes click return Err.")
@@ -679,7 +699,7 @@ export function waybarHookSummary(blueprint: NormalizedBlueprint, taskIdForFeatu
   const roles = waybarRoles(blueprint)
   const refreshTask = roles.refreshOwner === undefined ? undefined : taskIdForFeature(roles.refreshOwner)
   const clickTask = roles.clickOwner === undefined ? undefined : taskIdForFeature(roles.clickOwner)
-  return ` src/module.rs ships two hooks: fetch_output (the refresh loop body) is replaced by ${refreshTask ?? "no task, because no feature declares a schedule or background work; it stays the empty-state base"}, and click (the --action click body) is replaced by ${clickTask ?? "no task, because no feature declares invokedBy click; it stays a no-op and the fragment binds no on-click"}.`
+  return ` src/module.rs ships two hooks: fetch_output (the refresh loop body) is replaced by ${refreshTask ?? "no task, because no feature declares a schedule or background work; it stays the empty-state base"}, and click (the --action click body) is replaced by ${clickTask ?? "no task, because no feature declares invokedBy click; it stays a no-op and the fragment binds no on-click"}. The service loop (module::serve_until and run_service, SIGTERM handling) belongs to OWN-LIFECYCLE-COORDINATOR; no other task edits it.`
 }
 
 function waybarKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, options: Readonly<Record<string, string | boolean | readonly string[]>> = {}): KitFile[] {
@@ -693,7 +713,9 @@ function waybarKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, op
   const settingKeys = roles.settingKeys.map(key => JSON.stringify(key)).join(", ")
   const launchers = waybarLaunchers(blueprint)
   const launches = launchers.pages.length > 0 || launchers.notifies
-  const helperNames = [...(records ? ["sqlite.rs"] : []), ...(secrets ? ["credentials.rs"] : []), ...(http ? ["http.rs"] : []), ...(launches ? ["launcher.rs"] : [])]
+  const systemFiles = waybarSystemKit(waybarSources(blueprint), crate)
+  const platformMods = systemFiles.filter(item => item.name.startsWith("src/platform/")).map(item => item.name.slice("src/platform/".length, -3))
+  const helperNames = [...(records ? ["sqlite.rs"] : []), ...platformMods.map(name => `${name}.rs`), ...(secrets ? ["credentials.rs"] : []), ...(http ? ["http.rs"] : []), ...(launches ? ["launcher.rs"] : [])]
   const packageDepends = [...(secrets ? ["dbus"] : []), ...(launchers.pages.length ? ["xdg-utils"] : []), ...(launchers.notifies ? ["libnotify"] : [])].map(name => `'${name}'`).join(" ")
   return [
     file("README.md", String.raw`
@@ -710,9 +732,10 @@ Shipped helpers:
   or key exits 2 with a message on stderr; --once always exits 0.
 - src/module.rs: render_with prints exactly one Waybar JSON object read from the cache (or the empty state when
   there is no cache, or the stale state when the cached reading is older than twice the service interval).
-  run_service loops on settings.refresh_seconds and calls refresh, which calls fetch_output. fetch_output (the
-  refresh loop body) and click (the --action click body) are the two hooks that feature tasks replace;
-  everything else stays.
+  run_service registers SIGTERM and SIGINT and runs serve_until, which loops on settings.refresh_seconds and calls
+  refresh, which calls fetch_output; a failed fetch_output returns Err and refresh then marks the cache stale.
+  fetch_output (the refresh loop body) and click (the --action click body) are the two hooks that feature tasks
+  replace; the lifecycle task alone adds shutdown cleanup after serve_until; everything else stays.${platformMods.includes("units") ? "\n- src/platform/units.rs: the one decimal SI convention for sizes and rates (1 kB = 1000 B; bits per second = bytes x 8 / seconds); do not format sizes or rates anywhere else." : ""}${platformMods.includes("system_source") ? "\n- src/platform/system_source.rs: the SystemReader trait and one reader per declared system source; a failed read is a failed refresh." : ""}
 - src/config.rs, src/paths.rs: atomic JSON settings under XDG config. refresh_seconds is the service refresh
   interval (default ${roles.intervalSeconds} seconds${roles.scheduled ? ", the declared runsEverySeconds" : ", because no feature declares a schedule"}); the Waybar fragment interval is a different value (how often Waybar re-reads the cache).
 - src/platform/atomic_file.rs${helperNames.map(name => ", " + name).join("")}: only the platform boundaries this blueprint declares.
@@ -775,6 +798,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ${optionalDeps}
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+signal-hook = "0.3"
 dirs = "7"
 thiserror = "2"
 tempfile = "3"
@@ -826,6 +850,7 @@ fn main() -> ExitCode {
     let arguments = Arguments::parse();
     if arguments.service {
         module::run_service();
+        return ExitCode::SUCCESS;
     }
     if let Some(pair) = arguments.set.as_deref() {
         return report(config::set_pair(pair));
@@ -840,6 +865,8 @@ fn main() -> ExitCode {
 `),
     file("src/module.rs", String.raw`
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -970,8 +997,10 @@ pub fn render() -> String {
     )
 }
 
-/// HOOK: the refresh-loop owner task replaces this body with the feature's real fetch and returns
-/// the final label. The base returns the empty state so the module runs before any feature exists.
+/// HOOK: the refresh-loop owner task replaces this body with the feature's real measurement or fetch and
+/// returns the final label. A failed measurement or fetch returns Err (never Ok with the last value):
+/// refresh then keeps the last cache marked stale. The base returns the empty state so the module runs
+/// before any feature exists.
 pub fn fetch_output(settings: &Settings, _now_unix: u64) -> Result<ModuleOutput, String> {
     Ok(empty_state(settings))
 }
@@ -1007,15 +1036,35 @@ pub fn run_action(action: &str) -> Result<(), String> {
     }
 }
 
-/// The systemd --service loop: refresh, then sleep the configured interval.
-pub fn run_service() -> ! {
-    loop {
+/// The service loop body: run one pass, wait the seconds the pass returns (in one-second slices), and
+/// stop after the pass during which the shutdown flag was set. Time and the pass are parameters so tests never sleep.
+pub fn serve_until(shutdown: &AtomicBool, mut pass: impl FnMut() -> u64) {
+    while !shutdown.load(Ordering::SeqCst) {
+        let wait = pass();
+        let mut waited = 0;
+        while waited < wait && !shutdown.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_secs(1));
+            waited += 1;
+        }
+    }
+}
+
+/// The systemd --service loop: SIGTERM and SIGINT set the shutdown flag, refresh runs once per interval
+/// until it is set, then the function returns so the caller can clean up (the lifecycle owner adds that).
+pub fn run_service() {
+    let shutdown = Arc::new(AtomicBool::new(false));
+    for signal in [signal_hook::consts::SIGTERM, signal_hook::consts::SIGINT] {
+        if let Err(error) = signal_hook::flag::register(signal, Arc::clone(&shutdown)) {
+            eprintln!("cannot register signal {signal}: {error}");
+        }
+    }
+    serve_until(&shutdown, || {
         let settings = config::load();
         if let Err(error) = refresh(&paths::cache_path(), &settings, now_unix()) {
             eprintln!("refresh failed: {error}");
         }
-        std::thread::sleep(Duration::from_secs(interval_seconds(&settings)));
-    }
+        interval_seconds(&settings)
+    });
 }
 `),
     file("src/config.rs", String.raw`
@@ -1141,7 +1190,7 @@ ${records ? `pub fn database_path() -> PathBuf {
 `),
     file("src/platform/mod.rs", String.raw`
 pub mod atomic_file;
-${[...(secrets ? ["pub mod credentials;"] : []), ...(http ? ["pub mod http;"] : []), ...(launches ? ["pub mod launcher;"] : []), "pub mod runtime;", ...(records ? ["pub mod sqlite;"] : [])].join("\n")}
+${[...(secrets ? ["pub mod credentials;"] : []), ...(http ? ["pub mod http;"] : []), ...(launches ? ["pub mod launcher;"] : []), "pub mod runtime;", ...(records ? ["pub mod sqlite;"] : []), ...platformMods.map(name => `pub mod ${name};`)].join("\n")}
 `),
     file("src/platform/atomic_file.rs", String.raw`
 use std::fs;
@@ -1410,6 +1459,8 @@ fn set_accepts_declared_keys_only() {
 }
 `),
     file("tests/module_output_tests.rs", String.raw`
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use ${crate}::config::Settings;
 use ${crate}::module::{self, Cache, ModuleOutput, STALE_SUFFIX};
 
@@ -1500,6 +1551,18 @@ fn refresh_writes_the_cache_with_the_injected_clock() {
 fn unknown_action_is_rejected_and_the_vocabulary_is_fixed() {
     assert_eq!(module::ACTIONS, &["click", "refresh"]);
     assert!(module::run_action("toggle").is_err());
+}
+
+#[test]
+fn service_loop_stops_after_the_pass_that_sees_the_shutdown_flag() {
+    let shutdown = AtomicBool::new(false);
+    let mut passes = 0;
+    module::serve_until(&shutdown, || {
+        passes += 1;
+        shutdown.store(true, Ordering::SeqCst);
+        5
+    });
+    assert_eq!(passes, 1);
 }
 `),
     file("resources/waybar/config.jsonc", String.raw`
@@ -1619,6 +1682,7 @@ echo "Installed ${slug} Waybar module under $HOME/.local and started ${slug}.ser
 echo "Add include = [\"$HOME/.config/waybar/${slug}.jsonc\"] and \"custom/${slug}\" to modules-right in ~/.config/waybar/config.jsonc"
 echo "Add @import \"$HOME/.config/waybar/${slug}.css\"; to ~/.config/waybar/style.css"
 `),
+    ...systemFiles.map(item => file(item.name, item.content)),
   ]
 }
 

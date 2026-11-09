@@ -1,0 +1,297 @@
+import type { SystemSource } from "./compiler"
+
+export interface WaybarKitSource {
+  readonly name: string
+  readonly content: string
+}
+
+// The Rust helpers for the declared system sources and the one place the unit convention lives.
+export function waybarSystemKit(sources: readonly SystemSource[], crate: string): WaybarKitSource[] {
+  if (sources.length === 0) return []
+  const has = (source: SystemSource) => sources.includes(source)
+  const net = has("network-received") || has("network-sent")
+  const sizes = net || has("memory")
+  const parts: string[] = [`/// Operating-system sources, each read through SystemReader so tests inject their own reader.
+pub trait SystemReader {
+    type Reading;
+    fn read(&self) -> Result<Self::Reading, String>;
+}
+
+fn read_text(path: &str) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|error| format!("cannot read {path}: {error}"))
+}
+`]
+  const tests: string[] = []
+  if (net) {
+    parts.push(`/// A counter that went backwards (reset or interface change) is a change of 0 for that sample.
+pub fn counter_change(previous: u64, current: u64) -> u64 {
+    current.saturating_sub(previous)
+}
+
+pub const NET_DEV_PATH: &str = "/proc/net/dev";
+
+/// Sum one /proc/net/dev column (0 = rx_bytes, 8 = tx_bytes) over every interface except lo.
+fn net_column(text: &str, column: usize) -> Result<u64, String> {
+    let mut total: u64 = 0;
+    let mut seen = false;
+    for line in text.lines().skip(2) {
+        let Some((name, rest)) = line.split_once(':') else {
+            continue;
+        };
+        let name = name.trim();
+        if name == "lo" {
+            continue;
+        }
+        let value: u64 = rest
+            .split_whitespace()
+            .nth(column)
+            .ok_or_else(|| format!("short line for {name}"))?
+            .parse()
+            .map_err(|_| format!("bad counter for {name}"))?;
+        total = total.saturating_add(value);
+        seen = true;
+    }
+    if seen {
+        Ok(total)
+    } else {
+        Err(String::from("no network interface besides lo"))
+    }
+}
+`)
+    tests.push(`const NET_DEV: &str = "Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo: 900 9 0 0 0 0 0 0 900 9 0 0 0 0 0 0
+  eth0: 1000 10 0 0 0 0 0 0 400 4 0 0 0 0 0 0
+ wlan0: 2000 20 0 0 0 0 0 0 600 6 0 0 0 0 0 0
+";
+
+#[test]
+fn counters_sum_every_interface_except_lo_and_a_decrease_is_zero() {
+${has("network-received") ? "    assert_eq!(parse_net_received(NET_DEV), Ok(3000));\n" : ""}${has("network-sent") ? "    assert_eq!(parse_net_sent(NET_DEV), Ok(1000));\n" : ""}    assert_eq!(counter_change(3000, 4000), 1000);
+    assert_eq!(counter_change(4000, 100), 0);
+}
+
+#[test]
+fn counters_without_a_real_interface_are_an_error() {
+    let only_lo = "h1\\nh2\\n    lo: 1 1 0 0 0 0 0 0 1 1 0 0 0 0 0 0\\n";
+    assert!(${has("network-received") ? "parse_net_received" : "parse_net_sent"}(only_lo).is_err());
+}
+`)
+    if (has("network-received")) {
+      parts.push(`pub fn parse_net_received(text: &str) -> Result<u64, String> {
+    net_column(text, 0)
+}
+
+pub struct NetReceivedReader;
+
+impl SystemReader for NetReceivedReader {
+    type Reading = u64;
+    fn read(&self) -> Result<u64, String> {
+        parse_net_received(&read_text(NET_DEV_PATH)?)
+    }
+}
+`)
+    }
+    if (has("network-sent")) {
+      parts.push(`pub fn parse_net_sent(text: &str) -> Result<u64, String> {
+    net_column(text, 8)
+}
+
+pub struct NetSentReader;
+
+impl SystemReader for NetSentReader {
+    type Reading = u64;
+    fn read(&self) -> Result<u64, String> {
+        parse_net_sent(&read_text(NET_DEV_PATH)?)
+    }
+}
+`)
+    }
+  }
+  if (has("load-average")) {
+    parts.push(`pub fn parse_load_average(text: &str) -> Result<f64, String> {
+    text.split_whitespace()
+        .next()
+        .ok_or_else(|| String::from("empty loadavg"))?
+        .parse()
+        .map_err(|_| String::from("bad loadavg"))
+}
+
+pub struct LoadAverageReader;
+
+impl SystemReader for LoadAverageReader {
+    type Reading = f64;
+    fn read(&self) -> Result<f64, String> {
+        parse_load_average(&read_text("/proc/loadavg")?)
+    }
+}
+`)
+    tests.push(`#[test]
+fn load_average_is_the_first_field() {
+    assert_eq!(parse_load_average("0.52 0.40 0.30 1/200 999\\n"), Ok(0.52));
+    assert!(parse_load_average("").is_err());
+}
+`)
+  }
+  if (has("memory")) {
+    parts.push(`#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MemoryUse {
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+}
+
+fn meminfo_bytes(text: &str, key: &str) -> Result<u64, String> {
+    let line = text
+        .lines()
+        .find(|line| line.starts_with(key))
+        .ok_or_else(|| format!("missing {key}"))?;
+    let kilobytes: u64 = line
+        .split_whitespace()
+        .nth(1)
+        .ok_or_else(|| format!("short {key} line"))?
+        .parse()
+        .map_err(|_| format!("bad {key} value"))?;
+    Ok(kilobytes.saturating_mul(1024))
+}
+
+/// used = MemTotal - MemAvailable; the meminfo kB lines are multiplied by 1024 to bytes.
+pub fn parse_meminfo(text: &str) -> Result<MemoryUse, String> {
+    let total_bytes = meminfo_bytes(text, "MemTotal:")?;
+    let available = meminfo_bytes(text, "MemAvailable:")?;
+    Ok(MemoryUse {
+        total_bytes,
+        used_bytes: total_bytes.saturating_sub(available),
+    })
+}
+
+pub struct MemoryReader;
+
+impl SystemReader for MemoryReader {
+    type Reading = MemoryUse;
+    fn read(&self) -> Result<MemoryUse, String> {
+        parse_meminfo(&read_text("/proc/meminfo")?)
+    }
+}
+`)
+    tests.push(`#[test]
+fn meminfo_gives_used_bytes() {
+    let text = "MemTotal:       1000 kB\\nMemFree: 100 kB\\nMemAvailable:    250 kB\\n";
+    let used = parse_meminfo(text).expect("meminfo");
+    assert_eq!(used.total_bytes, 1_024_000);
+    assert_eq!(used.used_bytes, 768_000);
+    assert!(parse_meminfo("MemTotal: 1 kB\\n").is_err());
+}
+`)
+  }
+  if (has("battery")) {
+    parts.push(`pub fn parse_capacity(text: &str) -> Result<u8, String> {
+    let value: u8 = text
+        .trim()
+        .parse()
+        .map_err(|_| String::from("bad battery capacity"))?;
+    if value > 100 {
+        return Err(String::from("battery capacity above 100"));
+    }
+    Ok(value)
+}
+
+pub struct BatteryReader;
+
+impl SystemReader for BatteryReader {
+    type Reading = u8;
+    /// The charge percentage of the first BAT* supply, in name order.
+    fn read(&self) -> Result<u8, String> {
+        let mut supplies: Vec<String> = std::fs::read_dir("/sys/class/power_supply")
+            .map_err(|error| format!("cannot list power supplies: {error}"))?
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with("BAT"))
+            .collect();
+        supplies.sort();
+        let name = supplies
+            .first()
+            .ok_or_else(|| String::from("no battery found"))?;
+        parse_capacity(&read_text(&format!(
+            "/sys/class/power_supply/{name}/capacity"
+        ))?)
+    }
+}
+`)
+    tests.push(`#[test]
+fn battery_capacity_is_a_percentage() {
+    assert_eq!(parse_capacity("87\\n"), Ok(87));
+    assert!(parse_capacity("101").is_err());
+    assert!(parse_capacity("full").is_err());
+}
+`)
+  }
+  const files: WaybarKitSource[] = [
+    { name: "src/platform/system_source.rs", content: parts.join("\n") },
+    { name: "tests/system_source_tests.rs", content: `use ${crate}::platform::system_source::*;\n\n${tests.join("\n")}` },
+  ]
+  if (sizes) {
+    files.push({ name: "src/platform/units.rs", content: `/// Decimal SI units, fixed for every size and rate this module shows: 1 kB = 1000 B, 1 Mb = 1,000,000 bits.
+const SIZE_UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
+const RATE_UNITS: [&str; 4] = ["b/s", "kb/s", "Mb/s", "Gb/s"];
+
+fn scale(mut value: f64, units: &[&'static str]) -> (f64, &'static str) {
+    let mut index = 0;
+    while value >= 1000.0 && index + 1 < units.len() {
+        value /= 1000.0;
+        index += 1;
+    }
+    (value, units[index])
+}
+
+/// B below 1000, then kB, MB, GB, TB with the given number of decimals.
+pub fn format_size(bytes: u64, decimals: usize) -> String {
+    let (value, unit) = scale(bytes as f64, &SIZE_UNITS);
+    if unit == "B" {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.decimals$} {unit}")
+    }
+}
+
+/// Bits per second from a byte change over whole seconds: bytes x 8 / seconds (0 for 0 seconds).
+pub fn bits_per_second(bytes: u64, seconds: u64) -> f64 {
+    if seconds == 0 {
+        0.0
+    } else {
+        bytes as f64 * 8.0 / seconds as f64
+    }
+}
+
+/// b/s, kb/s, Mb/s, Gb/s with the given number of decimals.
+pub fn format_bit_rate(bits_per_second: f64, decimals: usize) -> String {
+    let (value, unit) = scale(bits_per_second, &RATE_UNITS);
+    format!("{value:.decimals$} {unit}")
+}
+` })
+    files.push({ name: "tests/units_tests.rs", content: `use ${crate}::platform::units::*;
+
+#[test]
+fn rates_are_bytes_times_eight_over_seconds_in_decimal_units() {
+    // 6,250,000 bytes in 5 seconds is 10,000,000 bits per second.
+    assert_eq!(
+        format_bit_rate(bits_per_second(6_250_000, 5), 1),
+        "10.0 Mb/s"
+    );
+    assert_eq!(
+        format_bit_rate(bits_per_second(3_125_000, 5), 1),
+        "5.0 Mb/s"
+    );
+    assert_eq!(format_bit_rate(bits_per_second(100, 0), 1), "0.0 b/s");
+}
+
+#[test]
+fn sizes_use_a_1000_base_and_label_the_largest_unit() {
+    assert_eq!(format_size(3_670_016_000, 2), "3.67 GB");
+    assert_eq!(format_size(999, 2), "999 B");
+    assert_eq!(format_size(1000, 2), "1.00 kB");
+    assert_eq!(format_size(1_500_000, 1), "1.5 MB");
+}
+` })
+  }
+  return files
+}

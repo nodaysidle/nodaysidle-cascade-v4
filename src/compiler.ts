@@ -6,7 +6,8 @@ import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeatur
 import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { gtkStoreInterface, refineGtkContracts, refineGtkPhases } from "./gtkContracts"
-import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarTaskNotes } from "./kits"
+import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarRoles, waybarTaskNotes } from "./kits"
+import { waybarLifecycleNote, waybarPageDetail, waybarRequestDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarSourceDetail } from "./waybarContracts"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
 import { TAURI_WIRE_FORMAT, tauriDocumentInterface, tauriFeatureOps, tauriStoreInterface, tauriTaskPrompt, type TauriData, type TauriFeatureUse } from "./tauriContracts"
@@ -15,6 +16,7 @@ export const DOCUMENT_NAMES = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS
 export type DocumentName = (typeof DOCUMENT_NAMES)[number]
 export type ContractKind = "interface" | "data" | "integration" | "lifecycle" | "persistence" | "credential" | "permission" | "recovery" | "security" | "packaging"
 
+export type SystemSource = "none" | "network-received" | "network-sent" | "load-average" | "memory" | "battery"
 export type InvokedBy = "user-control" | "click" | "schedule" | "launch" | "shortcut"
 export type DataOperation = "create" | "read" | "update" | "delete"
 export interface DataField {
@@ -51,6 +53,7 @@ export interface NormalizedBlueprint {
     readonly invokedBy: InvokedBy
     readonly runsEverySeconds: number | null
     readonly runsDailyAt: string | null
+    readonly systemSource: SystemSource
     readonly resourceIds: readonly string[]
     readonly choices: readonly string[]
     readonly surface: FeatureSurface
@@ -63,6 +66,7 @@ export interface NormalizedBlueprint {
     readonly credentialRequirement: "none" | "api-key"
     readonly endpoint: string
     readonly webPage: string
+    readonly requestValueFrom: string
     readonly responseFields: readonly DataField[]
     readonly failureBehavior: string
     readonly recovery: string
@@ -75,6 +79,7 @@ export interface NormalizedBlueprint {
     readonly storage: DataStorage
     readonly writeMode: DataWriteMode
     readonly fields: readonly DataField[]
+    readonly singleRecord: boolean
   }[]
   readonly privacySecurityRequirements: readonly string[]
   readonly permissionNeeds: readonly {
@@ -134,6 +139,7 @@ export interface GraphFeature {
   readonly invokedBy: InvokedBy
   readonly runsEverySeconds: number | null
   readonly runsDailyAt: string | null
+  readonly systemSource: SystemSource
   readonly resourceIds: readonly string[]
   readonly requiredOwnerIds: readonly string[]
   readonly choices: readonly string[]
@@ -526,6 +532,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       invokedBy: feature.invokedBy,
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,
+      systemSource: feature.systemSource,
       resourceIds: [],
       usesPlatformNeeds: unique(feature.usesPlatformNeeds),
       usesData: unique(featureDataUses(source, feature).map(name => dataNameByKey.get(referenceKey(name))!)),
@@ -548,6 +555,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       storage: item.storage,
       writeMode: item.writeMode,
       fields: item.fields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional })).filter(field => field.name),
+      singleRecord: item.singleRecord,
     }
   }).filter(item => item.name && item.purpose && item.retentionIntent))
   const externalServices = uniqueByName(source.externalServices.map(item => {
@@ -559,6 +567,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
       credentialRequirement: item.credentialRequired ? "api-key" as const : "none" as const,
       endpoint: item.endpoint.trim(),
       webPage: item.webPage.trim(),
+      requestValueFrom: cleanMeaning(item.requestValueFrom),
       responseFields: item.responseFields.map(field => ({ name: cleanMeaning(field.name), valueType: field.valueType, optional: field.optional })).filter(field => field.name),
       failureBehavior: "Return a privacy-safe authentication, rate, transport, timeout, filtered, or provider failure without raw response content.",
       recovery: "Preserve recoverable local input and allow only an explicit retry or explicit service change.",
@@ -676,7 +685,7 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
     })),
     features,
     externalServices,
-    domainData: dataObjects.map(item => ({ name: item.name, meaning: item.purpose, retention: item.retentionIntent, sensitivity: item.sensitivity, storage: item.storage, writeMode: item.writeMode, fields: item.fields })),
+    domainData: dataObjects.map(item => ({ name: item.name, meaning: item.purpose, retention: item.retentionIntent, sensitivity: item.sensitivity, storage: item.storage, writeMode: item.writeMode, fields: item.fields, singleRecord: item.singleRecord })),
     privacySecurityRequirements,
     permissionNeeds,
     persistenceNeeds,
@@ -950,12 +959,14 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
     return [`Interface: OWN-DATA-STORE adds one typed Preferences DataStore key per value of ${item.name} to data/SettingsRepository.kt${item.fields.length ? ` (${item.fields.map(field => field.name).join(", ")})` : ""}, each with a Flow reader and a suspend writer; no Room entity or DAO exists for it.`]
   }
   if (!item.fields.length) return []
+  if (presetId === "linux-hyprland-waybar-module" && item.storage === "settings") return [waybarSettingsInterface(item, operations)]
   const lines = [
     `Stored fields (one record each, plus ${presetId === "astro-web" ? "its entry id, the file name without extension" : "a stable generated id"}): ${item.fields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`,
   ]
   if (operations.length) {
     lines.push(`Store operations, exactly these and no others: ${operations.map(operation => `${operation} (${users.filter(feature => operationsOf(feature).includes(operation)).map(feature => feature.id).join(", ")})`).join("; ")}.`)
     lines.push(storeInterfaceDetail(presetId, item, operations))
+    if (presetId === "linux-hyprland-waybar-module") lines.push(...waybarSingleRecordDetail(item))
   } else if (presetId === "astro-web") {
     lines.push(storeInterfaceDetail(presetId, item, operations))
   }
@@ -1172,7 +1183,7 @@ function buildOwnersAndContracts(
   const contracts: GraphContract[] = []
   for (const feature of features) {
     const key = feature.id.replace(/^FEAT-/, "")
-    const interfaceDetails = [`Inputs: ${feature.inputs.join("; ")}`, `Outputs: ${feature.outputs.join("; ")}`, ...feature.choices.map(choice => `Choices: ${choice}`), ...(feature.runsEverySeconds !== null ? [`Schedule: runs by itself every ${feature.runsEverySeconds} seconds; this exact value is the default that code and tests use.`] : []), ...(feature.runsDailyAt !== null ? [`Schedule: runs by itself every day at ${feature.runsDailyAt} local time.`] : [])]
+    const interfaceDetails = [`Inputs: ${feature.inputs.join("; ")}`, `Outputs: ${feature.outputs.join("; ")}`, ...feature.choices.map(choice => `Choices: ${choice}`), ...(feature.runsEverySeconds !== null ? [`Schedule: runs by itself every ${feature.runsEverySeconds} seconds; this exact value is the default that code and tests use.`] : []), ...(feature.runsDailyAt !== null ? [`Schedule: runs by itself every day at ${feature.runsDailyAt} local time.`] : []), ...waybarSourceDetail(feature.systemSource)]
     contracts.push(contract(
       `CON-${key}-INTERFACE`,
       "interface",
@@ -1246,7 +1257,7 @@ function buildOwnersAndContracts(
       integrationFeatureIds(service, features),
       ownerId,
       `${service.purpose} ${preset.integrationBoundary}`,
-      [...(service.endpoint ? [`Endpoint: ${service.endpoint}`] : []), ...(service.webPage ? [`Web page opened for the user: ${service.webPage}`] : []), ...(service.responseFields.length ? [`Response values read (anything else is ignored): ${service.responseFields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`] : []), `Data sent: ${service.dataSent.join("; ") || "No product data beyond the explicit request."}`, `Credential requirement: ${service.credentialRequirement}`, `Preset boundary: ${preset.platform}`, `Framework boundary: ${preset.integrationBoundary}`],
+      [...(service.endpoint ? [`Endpoint: ${service.endpoint}`] : []), ...(service.webPage ? [`Web page opened for the user: ${service.webPage}`] : []), ...(preset.id === "linux-hyprland-waybar-module" ? [...waybarRequestDetail(service), ...waybarPageDetail(service)] : []), ...(service.responseFields.length ? [`Response values read (anything else is ignored): ${service.responseFields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`] : []), `Data sent: ${service.dataSent.join("; ") || "No product data beyond the explicit request."}`, `Credential requirement: ${service.credentialRequirement}`, `Preset boundary: ${preset.platform}`, `Framework boundary: ${preset.integrationBoundary}`],
       service.failureBehavior,
       [service.recovery],
     ))
@@ -1481,6 +1492,16 @@ function buildOwnersAndContracts(
       if (adder) addDependency(editor.ownerId, adder.ownerId)
     }
   }
+  // The refresh owner calls the label function of the features that show what it stores, so they build first (unless that would form a cycle).
+  if (preset.id === "linux-hyprland-waybar-module") {
+    const roles = waybarRoles(blueprint)
+    const refreshOwnerId = features.find(feature => feature.name === roles.refreshOwner)?.ownerId
+    const reaches = (from: string, target: string, seen = new Set<string>()): boolean => from === target || (!seen.has(from) && (seen.add(from), [...(dependencyIds.get(from) ?? [])].some(next => reaches(next, target, seen))))
+    for (const name of roles.labelOwners) {
+      const labelOwnerId = features.find(feature => feature.name === name)?.ownerId
+      if (refreshOwnerId && labelOwnerId && !reaches(labelOwnerId, refreshOwnerId)) addDependency(refreshOwnerId, labelOwnerId)
+    }
+  }
   for (const integration of contracts.filter(item => item.kind === "integration")) {
     const supportingOwners = contracts
       .filter(item => (item.kind === "credential" || item.kind === "permission") && item.featureIds.some(featureId => integration.featureIds.includes(featureId)))
@@ -1677,7 +1698,7 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(features)}` : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(ownedFeatures)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${ownedFeatures.some(feature => opsOnAny(feature).includes("update")) && features.some(feature => opsOnAny(feature).includes("create")) ? " If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them; a single mark or toggle action needs no form." : ""}` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? " Content entry files under src/content/ are also yours: create one file per entry the idea names and delete that collection's sample-entry.md; keep the sample entry when the idea names none (see Content Seed Requirements)." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(features)}` : ""}${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(ownedFeatures)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${ownedFeatures.some(feature => opsOnAny(feature).includes("update")) && features.some(feature => opsOnAny(feature).includes("create")) ? " If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them; a single mark or toggle action needs no form." : ""}` : ""}${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}${draft.kind === "data" && preset.id === "astro-web" && astroPlan?.usesContentCollections ? " Content entry files under src/content/ are also yours: create one file per entry the idea names and delete that collection's sample-entry.md; keep the sample entry when the idea names none (see Content Seed Requirements)." : ""}${preset.id === "linux-wayland-gtk4-desktop" && blueprint && ownedFeatures.some(feature => gtkClockFeatureIds(blueprint, features).has(feature.id)) ? " Time rule: take the current time only from the Clock trait in src/platform/clock.rs (the kit ships it and SystemClock), passed in as a parameter and constructed once in src/app.rs with SystemClock; stored date-time values are i64 epoch milliseconds. Tests define their own Clock in tests/ that returns a fixed time or advances on every call, so two saves in a row never share a timestamp." : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "feature" && blueprint ? waybarTaskNotes(blueprint, ownedFeatures.map(feature => feature.name)) : ""}${preset.id === "linux-hyprland-waybar-module" && draft.kind === "lifecycle" && blueprint ? waybarLifecycleNote(blueprint) : ""}${androidExtras?.note ? ` ${androidExtras.note}` : ""}`,
       // An Astro page or packaging test asserts on the HTML that a production build emits into dist/, so the build runs first.
       validationCommands: unique([
         ...(preset.id === "astro-web" && (draft.kind === "feature" || draft.kind === "packaging") ? ["npm run build"] : []),
@@ -1802,6 +1823,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       invokedBy: feature.invokedBy,
       runsEverySeconds: feature.runsEverySeconds,
       runsDailyAt: feature.runsDailyAt,
+      systemSource: feature.systemSource,
       resourceIds: feature.resourceIds,
       requiredOwnerIds: [],
       choices: feature.choices,

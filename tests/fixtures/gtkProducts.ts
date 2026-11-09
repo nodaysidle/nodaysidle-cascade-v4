@@ -24,7 +24,7 @@ export const wineCellarBlueprint: SemanticBlueprint = {
     feature("Search bottles", "A search field narrows the list to bottles whose name contains the text; a no-match message shows when nothing matches.", "Searching shows the matching rows.", { usesData: ["Bottles"], dataOperations: ops("Bottles", "read"), buildsOn: ["Bottle list"] }),
   ],
   dataObjects: [
-    { name: "Bottles", purpose: "One record per bottle.", sensitivity: "personal", retentionIntent: "Keep until the user removes it.", storage: "records", writeMode: "direct", fields: [
+    { name: "Bottles", purpose: "One record per bottle.", sensitivity: "personal", retentionIntent: "Keep until the user removes it.", storage: "records", writeMode: "direct", singleRecord: false, fields: [
       { name: "Name", valueType: "text", optional: false },
       { name: "Vintage year", valueType: "whole-number", optional: false },
       { name: "Bottle count", valueType: "whole-number", optional: false },
@@ -45,7 +45,7 @@ export const giftIdeasBlueprint: SemanticBlueprint = {
     feature("Mark idea bought", "A Mark bought button on each row sets the bought flag.", "A bought idea leaves the list.", { usesData: ["Gift ideas"], dataOperations: ops("Gift ideas", "update"), buildsOn: ["Unbought idea list"] }),
   ],
   dataObjects: [
-    { name: "Gift ideas", purpose: "One record per idea.", sensitivity: "personal", retentionIntent: "Keep until the user removes it.", storage: "records", writeMode: "direct", fields: [
+    { name: "Gift ideas", purpose: "One record per idea.", sensitivity: "personal", retentionIntent: "Keep until the user removes it.", storage: "records", writeMode: "direct", singleRecord: false, fields: [
       { name: "Person name", valueType: "text", optional: false },
       { name: "Description", valueType: "text", optional: false },
       { name: "Bought", valueType: "flag", optional: false },

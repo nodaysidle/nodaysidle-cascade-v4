@@ -19,6 +19,7 @@ const feature = (name: string, behavior: string, acceptance: string, uses: Parti
   invokedBy: "user-control",
   runsEverySeconds: null,
   runsDailyAt: null,
+  systemSource: "none",
   ...uses,
 })
 
@@ -45,11 +46,11 @@ export const habitStreakBlueprint: SemanticBlueprint = {
     feature("Mark done today", "Mark a habit done for today's local calendar day; a second mark the same day changes nothing.", "A habit marked twice on one day has one completion.", { usesData: ["Habit completions"], dataOperations: ops("Habit completions", "read", "create"), buildsOn: ["Habit list"] }),
   ],
   dataObjects: [
-    { name: "Habits", purpose: "One record per habit.", sensitivity: "personal", retentionIntent: "Keep until the user changes it.", storage: "records", writeMode: "direct", fields: [
+    { name: "Habits", purpose: "One record per habit.", sensitivity: "personal", retentionIntent: "Keep until the user changes it.", storage: "records", writeMode: "direct", singleRecord: false, fields: [
       { name: "Name", valueType: "text", optional: false },
       { name: "Created at", valueType: "date-time", optional: false },
     ] },
-    { name: "Habit completions", purpose: "One record per habit and day done.", sensitivity: "personal", retentionIntent: "Keep until the user changes it.", storage: "records", writeMode: "direct", fields: [
+    { name: "Habit completions", purpose: "One record per habit and day done.", sensitivity: "personal", retentionIntent: "Keep until the user changes it.", storage: "records", writeMode: "direct", singleRecord: false, fields: [
       { name: "Habit", valueType: "reference", optional: false },
       { name: "Completed on", valueType: "date", optional: false },
     ] },
@@ -70,11 +71,11 @@ export const quickNotesBlueprint: SemanticBlueprint = {
     feature("Export notes as Markdown", "Write every note into one Markdown file at a path the user chooses.", "The chosen file contains every note text.", { usesData: ["Notes", "Notes export"], dataOperations: [{ data: "Notes", operations: ["read"] }, { data: "Notes export", operations: ["create"] }], userFileAccess: "saves", buildsOn: ["Note list"] }),
   ],
   dataObjects: [
-    { name: "Notes", purpose: "One record per note.", sensitivity: "personal", retentionIntent: "Keep until the user changes it.", storage: "records", writeMode: "direct", fields: [
+    { name: "Notes", purpose: "One record per note.", sensitivity: "personal", retentionIntent: "Keep until the user changes it.", storage: "records", writeMode: "direct", singleRecord: false, fields: [
       { name: "Text", valueType: "long-text", optional: false },
       { name: "Last edited at", valueType: "date-time", optional: false },
     ] },
-    { name: "Notes export", purpose: "The Markdown file the user chooses.", sensitivity: "personal", retentionIntent: "Owned by the user after it is written.", storage: "document", writeMode: "atomic-replace", fields: [] },
+    { name: "Notes export", purpose: "The Markdown file the user chooses.", sensitivity: "personal", retentionIntent: "Owned by the user after it is written.", storage: "document", writeMode: "atomic-replace", singleRecord: false, fields: [] },
   ],
   ideaCoverage: [{ sentence: 1, features: ["Note list", "Add note", "Edit note", "Export notes as Markdown"], outsideFeatures: "none" }],
 }

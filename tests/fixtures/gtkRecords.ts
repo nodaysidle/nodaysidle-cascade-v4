@@ -25,6 +25,7 @@ export function feature(name: string, behavior: string, acceptance: string, uses
     dataOperations: [],
     runsEverySeconds: null,
     runsDailyAt: null,
+    systemSource: "none",
     ...uses,
   }
 }
@@ -45,7 +46,7 @@ export const snippetLibraryBlueprint: SemanticBlueprint = {
     feature("Delete snippet", "Delete a snippet from its detail view.", "A deleted snippet leaves the list.", { usesData: ["Snippets"], dataOperations: ops("Snippets", "delete"), buildsOn: ["Snippet list"] }),
   ],
   dataObjects: [
-    { name: "Snippets", purpose: "One record per snippet.", sensitivity: "personal", retentionIntent: "Keep until the user deletes it.", storage: "records", writeMode: "direct", fields: [
+    { name: "Snippets", purpose: "One record per snippet.", sensitivity: "personal", retentionIntent: "Keep until the user deletes it.", storage: "records", writeMode: "direct", singleRecord: false, fields: [
       { name: "Title", valueType: "text", optional: false },
       { name: "Code", valueType: "long-text", optional: false },
       { name: "Updated at", valueType: "date-time", optional: false },

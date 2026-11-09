@@ -19,6 +19,7 @@ interface FeatureUses {
   readonly choices?: Feature["choiceLists"]
   readonly runsEvery?: number
   readonly invoked?: Feature["invokedBy"]
+  readonly system?: Feature["systemSource"]
   readonly buildsOn?: readonly string[]
   readonly operations?: readonly ("create" | "read" | "update" | "delete")[]
 }
@@ -46,6 +47,7 @@ function feature(name: string, userOutcome: string, behavior: string, acceptance
     invokedBy: uses.invoked ?? (uses.runsEvery ? "schedule" : "user-control"),
     runsEverySeconds: uses.runsEvery ?? null,
     runsDailyAt: null,
+    systemSource: uses.system ?? "none",
   }
 }
 
@@ -56,8 +58,8 @@ interface FixtureSeed {
   readonly goals: readonly string[]
   readonly nonGoals: readonly string[]
   readonly features: readonly Feature[]
-  readonly dataObjects?: ReadonlyArray<Omit<SemanticBlueprint["dataObjects"][number], "fields"> & { readonly fields?: SemanticBlueprint["dataObjects"][number]["fields"] }>
-  readonly externalServices?: ReadonlyArray<Omit<SemanticBlueprint["externalServices"][number], "endpoint" | "responseFields" | "webPage"> & Partial<Pick<SemanticBlueprint["externalServices"][number], "endpoint" | "responseFields" | "webPage">>>
+  readonly dataObjects?: ReadonlyArray<Omit<SemanticBlueprint["dataObjects"][number], "fields" | "singleRecord"> & { readonly fields?: SemanticBlueprint["dataObjects"][number]["fields"]; readonly singleRecord?: boolean }>
+  readonly externalServices?: ReadonlyArray<Omit<SemanticBlueprint["externalServices"][number], "endpoint" | "responseFields" | "webPage" | "requestValueFrom"> & Partial<Pick<SemanticBlueprint["externalServices"][number], "endpoint" | "responseFields" | "webPage" | "requestValueFrom">>>
   readonly platformNeeds?: SemanticBlueprint["platformNeeds"]
   readonly qualityRequirements?: readonly string[]
   readonly productConstraints?: readonly string[]
@@ -76,9 +78,10 @@ function blueprint(seed: FixtureSeed): SemanticBlueprint {
     // Stored records and documents declare a minimal shape unless the fixture names one.
     dataObjects: (seed.dataObjects ?? []).map(item => ({
       ...item,
+      singleRecord: item.singleRecord ?? false,
       fields: item.fields ?? (item.storage === "records" || item.storage === "document" ? [{ name: "Title", valueType: "text" as const, optional: false }] : []),
     })),
-    externalServices: (seed.externalServices ?? []).map(item => ({ endpoint: "https://api.open-meteo.com/v1/forecast", webPage: "", responseFields: [{ name: "Value", valueType: "text" as const, optional: false }], ...item })),
+    externalServices: (seed.externalServices ?? []).map(item => ({ endpoint: "https://api.open-meteo.com/v1/forecast", webPage: "", requestValueFrom: "", responseFields: [{ name: "Value", valueType: "text" as const, optional: false }], ...item })),
     platformNeeds: [...(seed.platformNeeds ?? [])],
     qualityRequirements: [...(seed.qualityRequirements ?? ["Keyboard-operable controls with visible status and accessible labels."])],
     productConstraints: [...(seed.productConstraints ?? ["Preserve the last valid state across every recoverable failure."])],
@@ -232,9 +235,9 @@ export const lanternBooksBlueprint = blueprint({
     feature("About page", "Know when the shop is open", "Show the opening hours for each weekday.", "Every weekday shows its hours.", { data: ["Opening hours"], surface: "about-page", operations: ["read"] }),
   ],
   dataObjects: [
-    { name: "Featured book", purpose: "A book the shop recommends.", sensitivity: "public", retentionIntent: "Published until removed.", storage: "records", writeMode: "direct", fields: [{ name: "Title", valueType: "text", optional: false }, { name: "Author", valueType: "text", optional: false }, { name: "Short note", valueType: "long-text", optional: false }] },
-    { name: "Reading event", purpose: "A reading held at the shop.", sensitivity: "public", retentionIntent: "Published until the event passes.", storage: "records", writeMode: "direct", fields: [{ name: "Event title", valueType: "text", optional: false }, { name: "Starts at", valueType: "date-time", optional: false }, { name: "Presenter", valueType: "text", optional: true }] },
-    { name: "Opening hours", purpose: "When the shop is open each weekday.", sensitivity: "public", retentionIntent: "Published until changed.", storage: "records", writeMode: "direct", fields: [{ name: "Weekday", valueType: "text", optional: false }, { name: "Hours", valueType: "text", optional: false }] },
+    { name: "Featured book", purpose: "A book the shop recommends.", sensitivity: "public", retentionIntent: "Published until removed.", storage: "records", writeMode: "direct", singleRecord: false, fields: [{ name: "Title", valueType: "text", optional: false }, { name: "Author", valueType: "text", optional: false }, { name: "Short note", valueType: "long-text", optional: false }] },
+    { name: "Reading event", purpose: "A reading held at the shop.", sensitivity: "public", retentionIntent: "Published until the event passes.", storage: "records", writeMode: "direct", singleRecord: false, fields: [{ name: "Event title", valueType: "text", optional: false }, { name: "Starts at", valueType: "date-time", optional: false }, { name: "Presenter", valueType: "text", optional: true }] },
+    { name: "Opening hours", purpose: "When the shop is open each weekday.", sensitivity: "public", retentionIntent: "Published until changed.", storage: "records", writeMode: "direct", singleRecord: false, fields: [{ name: "Weekday", valueType: "text", optional: false }, { name: "Hours", valueType: "text", optional: false }] },
   ],
   platformNeeds: [],
   productConstraints: ["Collect no visitor data and no forms."],
@@ -312,8 +315,8 @@ export const tideTickBlueprint = blueprint({
     feature("Tide table link", "Open the harbor's tide table", "Clicking the module opens the saved harbor's tide table page in the browser.", "Clicking the module opens one browser page for the saved harbor.", { data: ["Saved harbor"], operations: ["read"], invoked: "click" }),
   ],
   dataObjects: [
-    { name: "Saved harbor", purpose: "The one harbor the user chose.", sensitivity: "internal", retentionIntent: "Keep until the user changes it.", storage: "settings", writeMode: "atomic-replace", fields: [{ name: "Harbor name", valueType: "text", optional: false }] },
-    { name: "Last tide reading", purpose: "The last good next-high-tide time fetched from the service.", sensitivity: "internal", retentionIntent: "Keep until replaced by a newer good reading.", storage: "records", writeMode: "direct", fields: [{ name: "High tide time", valueType: "text", optional: false }] },
+    { name: "Saved harbor", purpose: "The one harbor the user chose.", sensitivity: "internal", retentionIntent: "Keep until the user changes it.", storage: "settings", writeMode: "atomic-replace", singleRecord: false, fields: [{ name: "Harbor name", valueType: "text", optional: false }] },
+    { name: "Last tide reading", purpose: "The last good next-high-tide time fetched from the service.", sensitivity: "internal", retentionIntent: "Keep until replaced by a newer good reading.", storage: "records", writeMode: "direct", singleRecord: false, fields: [{ name: "High tide time", valueType: "text", optional: false }] },
   ],
   externalServices: [
     { name: "Tide service", purpose: "Provide tide times for a harbor.", dataSent: ["Harbor name"], credentialRequired: false },
@@ -366,7 +369,7 @@ export function tauriEverythingBlueprint(): SemanticBlueprint {
   everything.features[0]!.usesPlatformNeeds = [...everything.features[0]!.usesPlatformNeeds, ...extra]
   everything.features[2]!.userFileAccess = "opens"
   everything.features[2]!.usesData = [...everything.features[2]!.usesData, "Glance preferences"]
-  everything.dataObjects = [...everything.dataObjects, { name: "Glance preferences", purpose: "The unit system and the selected place.", sensitivity: "internal", retentionIntent: "Keep until the user changes it.", storage: "settings", writeMode: "atomic-replace", fields: [] }]
+  everything.dataObjects = [...everything.dataObjects, { name: "Glance preferences", purpose: "The unit system and the selected place.", sensitivity: "internal", retentionIntent: "Keep until the user changes it.", storage: "settings", writeMode: "atomic-replace", singleRecord: false, fields: [] }]
   return everything
 }
 

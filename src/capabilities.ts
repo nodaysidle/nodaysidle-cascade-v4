@@ -1,5 +1,6 @@
 import type { PresetContract } from "./presets"
 import type { SemanticBlueprint, SemanticIssue } from "./schema"
+import { waybarCapabilityIssues } from "./waybarContracts"
 
 // The preset declares what the platform can express. The blueprint declares what the product
 // needs. This is the gate that stops a Wayland packet from promising macOS-only automation.
@@ -14,6 +15,7 @@ export function auditCapabilities(blueprint: SemanticBlueprint, preset: PresetCo
     })
   }
   if (preset.id === "linux-hyprland-waybar-module") {
+    issues.push(...waybarCapabilityIssues(blueprint))
     blueprint.dataObjects.forEach((item, index) => {
       if (item.storage === "session" || item.storage === "temporary") {
         issues.push({ path: `dataObjects[${index}].storage`, rule: "capability.waybar-process-memory", message: `Data object '${item.name}' is ${item.storage}, but each Waybar module run is a separate process; use records or settings for anything kept between runs.` })
@@ -23,6 +25,9 @@ export function auditCapabilities(blueprint: SemanticBlueprint, preset: PresetCo
   const supportedSurfaces = new Set(preset.capabilities.surfaces)
   blueprint.features.forEach((feature, index) => {
     const path = `features[${index}]`
+    if (feature.systemSource !== "none" && preset.id !== "linux-hyprland-waybar-module") {
+      issues.push({ path: `${path}.systemSource`, rule: "capability.system-source", message: `Feature '${feature.name}' reads an operating-system source, which ${preset.label} does not provide; set systemSource to none.` })
+    }
     if (feature.usesTray && !preset.capabilities.tray) {
       issues.push({ path: `${path}.usesTray`, rule: "capability.tray", message: `Feature '${feature.name}' needs a tray, but ${preset.label} has no tray surface.` })
     }
