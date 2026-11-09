@@ -58,6 +58,12 @@ export function auditCapabilities(blueprint: SemanticBlueprint, preset: PresetCo
     if (preset.id === "android-kotlin-compose" && feature.runsAtField === null && feature.usesPlatformNeeds.includes("notifications") && (feature.runsDailyAt !== null || feature.runsEverySeconds !== null) && !feature.scheduledNotification) {
       issues.push({ path: `${path}.scheduledNotification`, rule: "capability.android-notification-text", message: `Feature '${feature.name}' posts a scheduled notification; declare scheduledNotification with the literal titleText (quoted exactly in one acceptanceSignal) and the notificationBody (what its text says, including any literal used when there is nothing to list).` })
     }
+    if (preset.id === "android-kotlin-compose" && feature.runsAtField === null && (feature.runsDailyAt !== null || feature.runsEverySeconds !== null)) {
+      const remembers = blueprint.dataObjects.find(item => item.storage === "settings" && feature.usesData.some(name => name.trim().toLowerCase() === item.name.trim().toLowerCase()) && item.fields.some(field => field.valueType === "date" || field.valueType === "date-time"))
+      if (remembers) {
+        issues.push({ path: `${path}.usesData`, rule: "capability.android-run-state", message: `Feature '${feature.name}' runs on a schedule, and the app already keeps the day it last ran in its own settings; remove the settings data object '${remembers.name}' (it only remembers which day was sent) from dataObjects and from the feature's usesData.` })
+      }
+    }
     if (feature.usesPlatformNeeds.includes("background-execution") && !preset.capabilities.background) {
       issues.push({ path: `${path}.usesPlatformNeeds`, rule: "capability.background", message: `Feature '${feature.name}' needs background execution, which ${preset.label} does not provide.` })
     }

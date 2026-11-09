@@ -6,6 +6,7 @@ import { fixtureCases } from "./fixtures/blueprints"
 import { medicineBlueprint } from "./fixtures/medicine"
 import { pantryBlueprint } from "./fixtures/pantry"
 import { auditSemanticIntake } from "../src/schema"
+import { auditCapabilities } from "../src/capabilities"
 
 const habit = fixtureCases.find(item => item.presetId === "android-kotlin-compose")!.blueprint
 
@@ -308,5 +309,44 @@ describe("Android wording kept from the provider", () => {
     const edited = { ...medicineBlueprint, features: medicineBlueprint.features.map(feature => feature.name === "Add medicine" ? { ...feature, behavior: "Add a medicine with a name and a time. If either field is empty, the form is not submitted." } : feature) }
     const packet = await compilePacket(edited, "android-kotlin-compose")
     expect(packet.documents["PRD.md"]).toContain("If any field is empty, the form is not submitted.")
+  })
+})
+
+describe("Android round-4 audit fixes", () => {
+  it("names the scheduler test class once, without a doubled package", async () => {
+    const { task } = await pantry()
+    const commands = task("TASK-08-DAILY-REMINDER").validationCommands.join("\n")
+    expect(commands).toContain('--tests "com.pantry.pal.feature.dailyreminderfeature.DailyReminderSchedulerTest"')
+    expect(commands).not.toContain("com.pantry.pal.com.pantry.pal")
+  })
+
+  it("exposes the area above the list for a later read feature that also marks rows, and the filter state owner", async () => {
+    const { task } = await pantry()
+    const first = task("TASK-04-ADD-GROCERY-ITEM").prompt
+    expect(first).toContain("one area above the list")
+    expect(first).toContain("the shared view state holds the selected filter")
+    expect(first).toContain("the inline add form shell on the main screen")
+  })
+
+  it("makes the owner of a shared selection rule export one pure function the scheduled feature calls", async () => {
+    const built = await compilePacket({ ...pantryBlueprint, features: pantryBlueprint.features.map(feature => feature.name === "Daily reminder" ? { ...feature, buildsOn: ["Expiring soon"] } : feature) }, "android-kotlin-compose")
+    const packet = built
+    const prompts = packet.graph.phases.flatMap(phase => phase.tasks).map(item => item.prompt)
+    expect(prompts.some(prompt => prompt.includes("Shared selection function: export from"))).toBe(true)
+    expect(packet.documents["TRD.md"]).toContain("Feature file:")
+  })
+
+  it("rejects a settings object that only remembers the last run day of a scheduled feature", () => {
+    const withRun = {
+      ...pantryBlueprint,
+      dataObjects: pantryBlueprint.dataObjects.map(item => item.storage === "settings" ? { ...item, fields: [{ name: "Last reminder date", valueType: "date" as const, optional: true }] } : item),
+    }
+    expect(auditCapabilities(withRun, PRESETS["android-kotlin-compose"]).map(issue => issue.rule)).toContain("capability.android-run-state")
+    expect(auditCapabilities(pantryBlueprint, PRESETS["android-kotlin-compose"]).map(issue => issue.rule)).not.toContain("capability.android-run-state")
+  })
+
+  it("keeps the Time rule conditional on a real comparison", async () => {
+    const { task } = await pantry()
+    expect(task("TASK-06-MARK-ITEM-USED").prompt).toContain("applies only to a comparison")
   })
 })

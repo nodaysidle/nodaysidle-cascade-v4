@@ -1005,6 +1005,10 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
     return [`File operations (OWN-DATA-STORE owns them; feature tasks add no other file access): ${names.join(", ")}. A file is copied into the app folder before its record is inserted, and a failed insert removes the copy.`]
   }
   if (presetId === "android-kotlin-compose" && item.storage === "settings") {
+    const runState = users.filter(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null)
+    if (runState.length && item.fields.some(field => field.valueType === "date" || field.valueType === "date-time")) {
+      return [`Interface: the date ${item.name} keeps is the kit's schedule run state, SettingsRepository.lastRunEpochDay("${slug(runState[0]!.name)}") and recordRun("${slug(runState[0]!.name)}", epochDay), already provided and tested; OWN-DATA-STORE adds no key, no writer, and no file for it and only tests that reading it returns what the schedule recorded.`]
+    }
     return [`Interface: OWN-DATA-STORE adds one typed Preferences DataStore key per value of ${item.name} to data/SettingsRepository.kt${item.fields.length ? ` (${item.fields.map(field => field.name).join(", ")})` : ""}, each with a Flow reader and a suspend writer; no Room entity or DAO exists for it.`]
   }
   if (!item.fields.length) return []
@@ -1209,10 +1213,10 @@ function sharedScreenView(features: readonly GraphFeature[], presetId: PresetId)
 function mainSlotsSentence(features: readonly GraphFeature[], detailView = true, filterSlot = true, rowOpensEditor = false, android = false): string {
   const ops = new Set(features.flatMap(feature => feature.dataOperations))
   const slots = [
-    android ? "a status area that carries only the empty-list message and the form errors" : "a status area shared by every message the main screen shows (empty state, no match, errors)",
-    ...(ops.has("create") ? ["an add-entry control that opens the entry form shell (the add task builds the form fields and validation; an edit task reuses them)"] : []),
+    android ? "a status area that carries only the empty-list message (the exact text an acceptance signal quotes, else a short plain sentence) and the form errors" : "a status area shared by every message the main screen shows (empty state, no match, errors)",
+    ...(ops.has("create") ? [android && !detailView ? "the inline add form shell on the main screen above the list (the add task builds the form fields and validation; an edit task reuses them)" : "an add-entry control that opens the entry form shell (the add task builds the form fields and validation; an edit task reuses them)"] : []),
     ...(ops.has("update") || ops.has("delete") ? [android ? "a per-row action area on every row of the main list (rows a later feature shows in the area above the list get none)" : "a per-row action area on every list row", ...(detailView ? [`a detail view for the selected record that shows every stored field${mainDetailControls(features)}, ${rowOpensEditor && features.some(feature => feature.editsRecords) ? "it is always built because the packet has an edit feature: every list row is selectable (activating the row selects the record, marks it aria-selected, and shows this detail view), which is how the user reaches the editor; a single mark or toggle action belongs in the per-row action area and never uses the Edit button" : "built only if an acceptance criterion of a later task opens a record to edit or delete it"}`] : [])] : []),
-    ...(filterSlot ? [android ? "one area above the list for the read-only features that filter, sort, total, or summarise it (each mounts its one control or section there)" : "a filter area above the list for read-only features that narrow or reorder it"] : []),
+    ...(filterSlot ? [android ? "one area above the list for the features that filter, sort, total, or summarise it, including a feature that also marks rows (each mounts its one control or section there; the shared view state holds the selected filter and the list applies it, and a total or summary is built from a display-free function its owner exports)" : "a filter area above the list for read-only features that narrow or reorder it"] : []),
   ]
   return `Expose exactly these named slots in the shared files, no others: ${slots.join("; ")}. Later feature tasks build their controls in their own files and mount them into these slots, editing only the shared registration files; build no control that no later task names.`
 }
@@ -1777,7 +1781,7 @@ function buildPhases(
     const routeExtras = placement?.kind === "page" && placement.pageFile !== files.implementationFile ? [placement.pageFile] : []
     // Android exposes a detail view (and an edit that reuses the add form) only when a feature declares the item-page surface.
     // A filter slot is exposed only when a feature other than the first main-surface one narrows or reorders the list (reads only, user-started).
-    const filterSlot = features.some(feature => feature.ownerId !== firstMainOwnerId && feature.surface === "main" && feature.invokedBy === "user-control" && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read"))
+    const filterSlot = features.some(feature => feature.ownerId !== firstMainOwnerId && feature.surface === "main" && feature.invokedBy === "user-control" && feature.dataOperations.length > 0 && (feature.dataOperations.every(operation => operation === "read") || (preset.id === "android-kotlin-compose" && feature.dataOperations.includes("read") && !feature.dataOperations.includes("create") && !feature.dataOperations.includes("delete"))))
     const detailView = preset.id === "android-kotlin-compose" || preset.id === "linux-wayland-gtk4-desktop" ? features.some(feature => feature.surface === "item-page") : preset.id === "tauri2-rust-typescript-desktop" ? features.some(feature => feature.editsRecords) : features.some(feature => feature.editsRecords || feature.dataOperations.includes("delete"))
     const androidExtras = preset.id === "android-kotlin-compose" && blueprint
       ? androidTaskExtras({
@@ -1794,6 +1798,7 @@ function buildPhases(
           focusedTestFile: files.focusedTestFile,
           firstMain: draft.id === firstMainOwnerId,
           detailView,
+          selectionFor: androidScheduledFeatures(preset, identity, features, blueprint.domainData).filter(item => item.at === null && item.selectionFiles.includes(files.implementationFile)).map(item => item.name),
         })
       : undefined
     const filesToCreate = unique([
@@ -1842,7 +1847,7 @@ ${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId 
       validationCommands: unique([
         ...(preset.id === "astro-web" && (draft.kind === "feature" || draft.kind === "packaging") ? ["npm run build"] : []),
         files.focusedTestCommand,
-        ...(androidExtras?.create.filter(file => file.endsWith("SchedulerTest.kt")).map(file => `./scripts/gradle.sh testDebugUnitTest --tests "${identity.packageName}.${file.replace(/^app\/src\/test\/java\//, "").replace(/\.kt$/, "").replaceAll("/", ".")}"`) ?? []),
+        ...(androidExtras?.create.filter(file => file.endsWith("SchedulerTest.kt")).map(file => `./scripts/gradle.sh testDebugUnitTest --tests "${file.replace(/^app\/src\/test\/java\//, "").replace(/\.kt$/, "").replaceAll("/", ".")}"`) ?? []),
         ...preset.validationCommands.slice(0, draft.kind === "packaging" ? undefined : 2).map(command => command(identity)),
       ]),
     }
