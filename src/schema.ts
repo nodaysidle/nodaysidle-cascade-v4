@@ -180,9 +180,20 @@ interface ClosedJsonSchema {
   readonly [key: string]: unknown
 }
 
-export const providerJsonSchema = z.toJSONSchema(SemanticBlueprintSchema, {
-  target: "draft-7",
-}) as ClosedJsonSchema
+// The provider's strict JSON mode requires every property of an object to be listed as required, so an
+// optional zod field is still sent as required; its value is always valid (an empty list, "", false, null).
+function requireEveryProperty(node: unknown): void {
+  if (!node || typeof node !== "object") return
+  const record = node as { type?: string; properties?: Record<string, unknown>; required?: string[] }
+  if (record.type === "object" && record.properties) record.required = Object.keys(record.properties)
+  for (const value of Object.values(node)) requireEveryProperty(value)
+}
+
+export const providerJsonSchema = (() => {
+  const schema = z.toJSONSchema(SemanticBlueprintSchema, { target: "draft-7" }) as ClosedJsonSchema
+  requireEveryProperty(schema)
+  return schema
+})()
 
 export interface SemanticIssue {
   readonly path: string

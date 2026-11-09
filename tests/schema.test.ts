@@ -44,6 +44,22 @@ describe("v4 provider schema and intake", () => {
     expect(buildBlueprintInstructions({ idea: "One sentence.", backgroundAvailable: true })).not.toContain("is not background execution")
   })
 
+  it("lists every property of every object as required, as the provider's strict mode demands", () => {
+    const bad: string[] = []
+    const walk = (node: unknown, path: string): void => {
+      if (!node || typeof node !== "object") return
+      const record = node as { type?: string; properties?: Record<string, unknown>; required?: string[] }
+      if (record.type === "object" && record.properties) {
+        const missing = Object.keys(record.properties).filter(key => !(record.required ?? []).includes(key))
+        if (missing.length) bad.push(`${path}: ${missing.join(", ")}`)
+      }
+      for (const [key, value] of Object.entries(node)) walk(value, `${path}.${key}`)
+    }
+    walk(providerJsonSchema, "$")
+    expect(bad).toEqual([])
+  })
+
+
   it("prompt is coverage-first and forbids settings as features", () => {
     const prompt = buildBlueprintInstructions({ idea: "One sentence." })
     expect(prompt).toContain("Coverage is checked structurally")
