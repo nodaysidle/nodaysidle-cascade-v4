@@ -609,6 +609,15 @@ function dataShapeIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
       issues.push({ path: `dataObjects[${index}].fields[${position}]`, rule: "semantic.bound-order", message: `Field '${field.name}' has min above max.` })
     }
   }))
+  // A choice list of consecutive whole numbers (a mood from 1 to 5) is a range: a whole-number field the feature uses must declare it as min and max.
+  blueprint.features.forEach((feature, index) => feature.choiceLists.forEach((list, position) => {
+    const numbers = list.options.map(Number)
+    if (!numbers.every((value, at) => Number.isInteger(value) && (at === 0 || value === numbers[at - 1]! + 1))) return
+    const fields = blueprint.dataObjects.filter(item => feature.usesData.some(name => referenceKey(name) === referenceKey(item.name))).flatMap(item => item.fields).filter(field => field.valueType === "whole-number")
+    if (fields.length && !fields.some(field => field.min === numbers[0] && field.max === numbers[numbers.length - 1])) {
+      issues.push({ path: `features[${index}].choiceLists[${position}]`, rule: "semantic.choice-range-bounds", message: `Choice list '${list.name}' of '${feature.name}' is the whole numbers ${numbers[0]} to ${numbers[numbers.length - 1]}; set min ${numbers[0]} and max ${numbers[numbers.length - 1]} on the whole-number field it picks.` })
+    }
+  }))
   blueprint.externalServices.forEach((item, index) => {
     if (!/^https:\/\/\S+$/.test(item.endpoint)) {
       issues.push({ path: `externalServices[${index}].endpoint`, rule: "semantic.missing-service-endpoint", message: `Service '${item.name}' must declare the documented HTTPS endpoint the app calls.` })
@@ -764,7 +773,7 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "For every external service, set endpoint to the real, documented HTTPS URL of a public API that fits the purpose, and list the response values the app reads in responseFields. Use only an API you are confident exists; the app never needs an API key unless credentialRequired is true, so name only an endpoint that works with no registration unless you set credentialRequired true. When the endpoint or webPage needs a value the user saved (a city, station, or account identifier), write {value} in it and set requestValueFrom to the name of the settings field holding it; the records that keep the fetched result must then include a field with that same name.",
     "Do not create a feature for restoring data after a restart or for loading data when the app starts: persistence and restoring belong to the feature that shows or uses the data. Write failure outcomes and acceptance signals as conditions the finished app can show or a test can assert; never describe an error message for something the stack cannot produce at run time.",
     ...(input.presetNotes ?? []),
-    "Set min and max on a number or whole-number field only when the idea states the range (a mood from one to five: min 1, max 5; an amount that cannot be negative: min 0); otherwise leave them null. Never invent a bound the idea does not state.",
+    "Set min and max on a number or whole-number field only when the idea states the range (a mood from one to five: min 1, max 5; an amount that cannot be negative: min 0); otherwise leave them null. A choice list of consecutive whole numbers (1 to 5) needs the same min and max on the whole-number field it picks. Never invent a bound the idea does not state.",
     "When the order of a list depends on when something changed, declare a date-time field for that moment (for example updated at); the compiler orders by it. Without such a field the list is ordered by newest created first.",
     "Coverage is checked structurally. Before finalizing, map every numbered idea sentence in ideaCoverage, then define only the features those mappings name. If a feature is listed by no sentence, remove it. If a sentence asks for behavior, map at least one feature to it. Never add a feature to make the design feel complete.",
     "For web surfaces: main is the home page, so anything the idea says the home page shows (including a list of featured entries) is main; use collection-index only for a separate page that lists all entries, tag-page for a tag or category page, search-page for a search results page, and page for any other page of its own that the idea names (an events page, a services page, an opening hours page). Use each value only when the idea asks for that page.",

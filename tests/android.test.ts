@@ -27,7 +27,7 @@ describe("Android scheduled work", () => {
       expect(reminder.filesToCreate.some(path => path.endsWith(`/${name}`)), name).toBe(true)
     }
     expect(reminder.filesToModify.some(path => path.endsWith("PantryPalApplication.kt"))).toBe(true)
-    expect(reminder.filesToModify.some(path => path.endsWith("AppContainer.kt"))).toBe(true)
+    expect(reminder.filesToModify.some(path => path.endsWith("AppContainer.kt"))).toBe(false)
     expect(reminder.contractIds).toContain("CON-DAILY-REMINDER-SCHEDULE")
     expect(trd).toContain("CON-DAILY-REMINDER-SCHEDULE")
     expect(trd).toContain("NotificationChannel with id \"daily-reminder\"")
@@ -86,11 +86,11 @@ describe("Android storage, files, and build ownership", () => {
     expect(packet.graph.persistence.decision).toBe("Persistence: Preferences DataStore behind SettingsRepository; Room entity and DAO behind a repository.")
   })
 
-  it("lets the data and feature tasks edit the container and ships the build settings in the kit", async () => {
+  it("lets the data task, not the feature tasks, edit the container and ships the build settings in the kit", async () => {
     const { task, kit } = await pantry()
     expect(task("TASK-02-DATA-STORE").filesToModify.some(path => path.endsWith("/AppContainer.kt"))).toBe(true)
     expect(task("TASK-02-DATA-STORE").filesToModify.some(path => path.endsWith("/data/SettingsRepository.kt"))).toBe(true)
-    expect(task("TASK-04-ADD-GROCERY-ITEM").filesToModify.some(path => path.endsWith("/AppContainer.kt"))).toBe(true)
+    expect(task("TASK-04-ADD-GROCERY-ITEM").filesToModify.some(path => path.endsWith("/AppContainer.kt"))).toBe(false)
     const gradle = kit("app/build.gradle.kts")!
     expect(gradle).toContain("room.schemaLocation")
     for (const dependency of ["kotlinx.coroutines.test", "androidx.work.testing", "libs.robolectric"]) expect(gradle).toContain(dependency)
@@ -295,7 +295,7 @@ describe("Android per-record reminders and tailored slots", () => {
     expect(trd).not.toContain("or WorkManager rather")
     expect(trd).not.toContain("DataStore, filesDir, cacheDir")
     expect(trd).not.toContain("provider changes")
-    expect(packet.documents["ARD.md"]).toContain("OWN-DATA-STORE is Room only: add no Jetpack DataStore")
+    expect(packet.documents["ARD.md"]).toContain("OWN-DATA-STORE is Room only: it adds no Jetpack DataStore key of its own")
     expect(packet.documents["TASKS.md"]).toContain("ContractTest reads build.gradle.kts relative to the test working directory")
     expect(packet.documents["TASKS.md"]).toContain("declares com.trail.ready as the namespace and applicationId")
     expect(packet.documents["TASKS.md"]).not.toContain("The implementation marker is")
@@ -325,7 +325,7 @@ describe("Android round-4 audit fixes", () => {
     const first = task("TASK-04-ADD-GROCERY-ITEM").prompt
     expect(first).toContain("one area above the list")
     expect(first).toContain("the shared view state holds the selected filter")
-    expect(first).toContain("the inline add form shell on the main screen")
+    expect(first).toContain("the add-entry area on the main screen above the list: the Add button")
   })
 
   it("makes the owner of a shared selection rule export one pure function the scheduled feature calls", async () => {
@@ -334,6 +334,8 @@ describe("Android round-4 audit fixes", () => {
     const prompts = packet.graph.phases.flatMap(phase => phase.tasks).map(item => item.prompt)
     expect(prompts.some(prompt => prompt.includes("Shared selection function: export from"))).toBe(true)
     expect(packet.documents["TRD.md"]).toContain("Feature file:")
+    expect(prompts.some(prompt => prompt.includes("dailyReminderValues(records, today: LocalDate)"))).toBe(true)
+    expect(packet.documents["TRD.md"]).toContain("named dailyReminderValues(records, today)")
   })
 
   it("rejects a settings object that only remembers the last run day of a scheduled feature", () => {
