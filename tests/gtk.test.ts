@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { compilePacket } from "../src/compiler"
-import type { SemanticBlueprint } from "../src/schema"
-import { giftIdeasBlueprint, wineCellarBlueprint } from "./fixtures/gtkProducts"
+import { auditSemanticIntake, type SemanticBlueprint } from "../src/schema"
+import { choreChartBlueprint, giftIdeasBlueprint, wineCellarBlueprint } from "./fixtures/gtkProducts"
 import { ops, snippetLibraryBlueprint } from "./fixtures/gtkRecords"
 
 const PRESET = "linux-wayland-gtk4-desktop"
@@ -122,7 +122,7 @@ describe("GTK packet precision for search, forms, store interface and lifecycle"
     const list = task(documents["TASKS.md"], "TASK-04-BOTTLE-LIST")
     expect(list).toContain("an empty AdwDialog shell")
     expect(list).toContain("the status area is one label or AdwStatusPage")
-    expect(list).toContain("the filter area is a GtkSearchEntry")
+    expect(list).toContain("the filter area above the list holds a GtkSearchEntry")
     expect(list).not.toContain("activating a row pushes the detail page")
     expect(list).toContain("Empty state: you own the empty-list message")
     expect(list).toContain("names the Add button")
@@ -130,7 +130,7 @@ describe("GTK packet precision for search, forms, store interface and lifecycle"
     const edit = task(documents["TASKS.md"], "TASK-06-EDIT-BOTTLE")
     expect(edit).toContain("reuse the form fields and validation that the add task exports")
     expect(edit).toMatch(/Dependencies: [^\n]*TASK-05-ADD-BOTTLE/)
-    expect(task(documents["TASKS.md"], "TASK-08-SEARCH-BOTTLES")).toContain("no-match message in the shared status area")
+    expect(task(documents["TASKS.md"], "TASK-08-SEARCH-BOTTLES")).toContain("show it in the shared status area")
   })
 
   it("derives the store signatures, typed error, integer widths and column names from declared fields", async () => {
@@ -181,11 +181,11 @@ describe("GTK packet precision for search, forms, store interface and lifecycle"
     const documents = await compile(giftIdeasBlueprint)
     const list = task(documents["TASKS.md"], "TASK-04-UNBOUGHT-IDEA-LIST")
     expect(list).not.toMatch(/filter area|GtkSearchEntry|no match/)
-    expect(list).toContain("(empty state, errors)")
+    expect(list).toContain("(empty state)")
     expect(list).toContain("the status area is one label or AdwStatusPage above the list")
     const wine = task((await compile(wineCellarBlueprint))["TASKS.md"], "TASK-04-BOTTLE-LIST")
-    expect(wine).toContain("the filter area is a GtkSearchEntry above the list")
-    expect(wine).toContain("(empty state, no match, errors)")
+    expect(wine).toContain("the filter area above the list holds a GtkSearchEntry")
+    expect(wine).toContain("(empty state, no match)")
   })
 
   it("states the validate signature, a GtkEntry for numbers and the search-task status wiring", async () => {
@@ -194,7 +194,11 @@ describe("GTK packet precision for search, forms, store interface and lifecycle"
     expect(add).toContain("validate_bottles(name: &str, vintage_year: &str, bottle_count: &str) returning Ok with NewBottles or Err(ValidationError)")
     expect(add).toContain("never set through a GtkSpinButton range")
     expect(add).toContain("a fixed range written as literals stays a constant")
-    expect(task(documents["TASKS.md"], "TASK-08-SEARCH-BOTTLES")).toContain("clear-search button sits in the status area beside the no-match text")
+    const search = task(documents["TASKS.md"], "TASK-08-SEARCH-BOTTLES")
+    expect(search).toContain("add no separate clear-search button")
+    expect(search).toContain(".to_lowercase() contains the typed text .to_lowercase(), with no trimming")
+    expect(search).toContain("show it in the shared status area")
+    expect(search).not.toContain("load-error")
   })
 
   it("keeps store-failure wording, delete leftovers and the kit composition function consistent across the docs", async () => {
@@ -224,5 +228,53 @@ describe("GTK packet precision for search, forms, store interface and lifecycle"
     blueprint.summary = "Password Hints stores short reminders about what a password is for, never the password itself."
     const packet = await compilePacket(blueprint, PRESET)
     expect(kitFile(packet, "resources/com.snippet.library.metainfo.xml")).toContain("<summary>Password Hints stores short reminders about what a password is for</summary>")
+  })
+
+  it("gives a flag filter a toggle, no search or clear wording, and one owner of the load error", async () => {
+    const documents = await compile(choreChartBlueprint)
+    const list = task(documents["TASKS.md"], "TASK-04-CHORE-LIST")
+    const toggle = task(documents["TASKS.md"], "TASK-08-SHOW-ONLY-NOT-DONE-CHORES")
+    expect(list).toContain("the filter area above the list holds a GtkToggleButton (or AdwSwitchRow)")
+    expect(list).not.toMatch(/GtkSearchEntry|clear-search/)
+    expect(list).toContain("Load error: the store's list returns a Result")
+    expect(list).toContain("no error message, and the status area then shows no separate error")
+    expect(toggle).toContain("off initially")
+    expect(toggle).toContain("otherwise show no no-match message")
+    expect(toggle).not.toMatch(/GtkSearchEntry|clear-search|load-error|Err as/)
+    expect(documents["TASKS.md"].match(/Load error:/g)).toHaveLength(1)
+  })
+
+  it("splits row state display from the row controls and keeps list tests off the add form", async () => {
+    const documents = await compile(choreChartBlueprint)
+    expect(task(documents["TASKS.md"], "TASK-04-CHORE-LIST")).toContain("including a state such as done as the row subtitle or a label")
+    expect(task(documents["TASKS.md"], "TASK-04-CHORE-LIST")).toContain("insert records through the store trait, never through the add form")
+    expect(task(documents["TASKS.md"], "TASK-06-MARK-CHORE-DONE")).toContain("a GtkCheckButton or GtkToggleButton")
+    expect(task(documents["TASKS.md"], "TASK-06-MARK-CHORE-DONE")).toContain("Add no second state indicator")
+    const wine = await compile(wineCellarBlueprint)
+    expect(task(wine["TASKS.md"], "TASK-06-EDIT-BOTTLE")).toContain("the list task builds no edit control")
+  })
+
+  it("leaves a user-set-only flag out of the validate signature and names the confirmation dialog once", async () => {
+    const documents = await compile(choreChartBlueprint)
+    const add = task(documents["TASKS.md"], "TASK-05-ADD-CHORE")
+    expect(add).toContain("validate_chores(name: &str, person: &str) returning")
+    expect(add).toContain("sets done to false itself inside validate")
+    expect(add).not.toContain("an edit task calls the same function")
+    const remove = task(documents["TASKS.md"], "TASK-07-REMOVE-CHORE")
+    expect(remove).toContain("custom AdwDialog, not an AdwAlertDialog")
+    expect(documents["TASKS.md"].match(/custom AdwDialog, not an AdwAlertDialog/g)).toHaveLength(1)
+  })
+
+  it("names temporary files, streams and the Arc handle only where the product has them", async () => {
+    const documents = await compile(choreChartBlueprint)
+    expect(documents["TRD.md"]).not.toMatch(/remove temporary files|release streams/)
+    expect(task(documents["TASKS.md"], "TASK-02-DATA-STORE")).toContain("Services holds the store as a std::sync::Arc around DataStore")
+  })
+
+  it("rejects narrowsListBy on a feature that writes", () => {
+    const bad = structuredClone(wineCellarBlueprint)
+    bad.features[1]!.narrowsListBy = "text"
+    expect(auditSemanticIntake(bad).some(issue => issue.rule === "semantic.narrow-not-read-only")).toBe(true)
+    expect(auditSemanticIntake(wineCellarBlueprint).some(issue => issue.rule === "semantic.narrow-not-read-only")).toBe(false)
   })
 })
