@@ -698,7 +698,7 @@ const tauriDesktop: PresetContract = {
   label: "Tauri 2 Rust + TypeScript Desktop",
   platform: "macOS, Windows, and Linux (Wayland verified)",
   implementationMarker: "tauri::Builder",
-  allowedTechnologies: ["Tauri 2", "Rust", "TypeScript", "Vite", "DOM-driven frontend", "platform-safe Tauri commands and capabilities", "reqwest", "tokio-tungstenite when streaming is required", "Vitest", "Cargo test"],
+  allowedTechnologies: ["Tauri 2", "Rust", "TypeScript", "Vite", "DOM-driven frontend", "platform-safe Tauri commands and capabilities", "time (RFC3339 date-time parsing)", "reqwest", "tokio-tungstenite when streaming is required", "Vitest", "Cargo test"],
   forbiddenTechnologies: ["Electron", "Flutter", "SwiftUI application architecture"],
   testFramework: "Vitest for frontend behavior and Cargo test for Rust boundaries",
   sourceLayout: () => [

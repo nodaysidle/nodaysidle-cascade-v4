@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { compilePacket } from "../src/compiler"
-import { habitStreakBlueprint, quickNotesBlueprint } from "./fixtures/tauriNotes"
+import { bugNotesBlueprint, habitStreakBlueprint, quickNotesBlueprint, timeZonesBlueprint } from "./fixtures/tauriNotes"
 
 const PRESET = "tauri2-rust-typescript-desktop"
 const linux = { linuxPackaging: "appimage", wayland: true } as const
@@ -122,5 +122,59 @@ describe("Tauri notes app with an editor and a Markdown export", () => {
     const tasks = (await compilePacket(quickNotesBlueprint, PRESET, linux)).documents["TASKS.md"]
     expect(task(tasks, "TASK-02-DATA-STORE")).toContain("leaves that file's bytes identical")
     expect(task(tasks, "TASK-07-PERMISSION-COORDINATOR")).toContain("existing_file(path) and save_target(path)")
+  })
+})
+
+describe("Tauri audit round 3", () => {
+  it("keeps edit-form text out of a mark task and flag inputs out of the add form", async () => {
+    const { documents } = await compilePacket(bugNotesBlueprint, PRESET, linux)
+    const tasks = documents["TASKS.md"]
+    const mark = task(tasks, "TASK-07-MARK-REPORT-FIXED")
+    expect(mark).not.toMatch(/Edit button|prefilled|entry form/)
+    expect(mark).toContain("replaces every field")
+    expect(mark).not.toContain("the shared view state, now")
+    expect(mark).not.toContain("injected clock")
+    const add = task(tasks, "TASK-05-ADD-REPORT")
+    expect(add).toContain("(title (text), steps (long-text)) and no others")
+    expect(add).toContain("fixed (flag) is no input")
+    expect(add).not.toContain("fixed (flag),")
+    expect(task(tasks, "TASK-06-EDIT-REPORT")).toContain("Connect the detail view's Edit button")
+    expect(task(tasks, "TASK-06-EDIT-REPORT")).toContain("fixed (flag) is no input")
+  })
+
+  it("names the row-to-editor path and ships the time crate for date-time fields", async () => {
+    const packet = await compilePacket(bugNotesBlueprint, PRESET, linux)
+    const list = task(packet.documents["TASKS.md"], "TASK-04-REPORT-LIST")
+    expect(list).toContain("every list row is selectable")
+    expect(list).toContain("it is always built because the packet has an edit feature")
+    expect(task(packet.documents["TASKS.md"], "TASK-07-MARK-REPORT-FIXED")).not.toContain("edit stored fields in a form")
+    expect(list).not.toContain("built only if")
+    expect(kitFile(packet, "src-tauri/Cargo.toml")).toContain(`\ntime = { version = "0.3"`)
+    expect(kitFile(packet, "README.md")).toContain("time crate")
+    expect(packet.documents["TRD.md"]).toContain("time::OffsetDateTime::parse(value, &Rfc3339)")
+    expect(packet.documents["AGENTS.md"]).toContain("time (RFC3339")
+    // No date-time field: no crate, no wording.
+    const plain = await compilePacket(timeZonesBlueprint, PRESET, linux)
+    expect(kitFile(plain, "src-tauri/Cargo.toml")).not.toContain("\ntime =")
+    expect(plain.documents["TRD.md"]).not.toContain("RFC3339 UTC string (parsed")
+  })
+
+  it("injects a clock for a declared current-time display and lets PRD strings win over the kit", async () => {
+    const packet = await compilePacket(timeZonesBlueprint, PRESET, linux)
+    expect(packet.failures).toEqual([])
+    const list = task(packet.documents["TASKS.md"], "TASK-04-CITY-LIST")
+    expect(list).toContain("the shared view state, now")
+    expect(list).toContain("re-render every 60 seconds")
+    expect(list).toContain("never through errors.report()")
+    expect(list).not.toContain("get_cities(id)")
+    expect(list).toContain("No detail view is built for this packet")
+    expect(task(packet.documents["TASKS.md"], "TASK-05-ADD-CITY")).not.toContain("edit task")
+    expect(kitFile(packet, "README.md")).toContain("PRD string wins")
+    expect(kitFile(packet, "README.md")).not.toContain("the frontend shows it through errors.report()")
+  })
+
+  it("mentions temporary files only when a data object is temporary", async () => {
+    const tasks = (await compilePacket(timeZonesBlueprint, PRESET, linux)).documents["TASKS.md"]
+    expect(tasks).not.toMatch(/temporary files/)
   })
 })

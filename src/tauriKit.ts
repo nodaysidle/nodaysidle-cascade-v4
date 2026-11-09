@@ -61,6 +61,8 @@ export interface TauriKitUses {
   // The Wayland option: the installed desktop entry launches with GDK_BACKEND=wayland.
   readonly wayland: boolean
   readonly shortcut: boolean
+  // Some records object stores a date-time field: Rust parses its RFC3339 string with the time crate.
+  readonly timestamps: boolean
   readonly plugins: readonly TauriPlugin[]
   readonly usageDescriptions: ReadonlyArray<readonly [string, string]>
 }
@@ -80,6 +82,7 @@ export function tauriKitUses(blueprint: NormalizedBlueprint, usageDescriptions: 
     linuxOnly: typeof options.linuxPackaging === "string" && options.linuxPackaging.length > 0,
     wayland: options.wayland === true,
     shortcut: needs.has("global-hotkey"),
+    timestamps: blueprint.domainData.some(item => item.storage === "records" && item.fields.some(field => field.valueType === "date-time")),
     plugins: [
       ...(needs.has("clipboard") ? [PLUGINS.clipboard] : []),
       ...(needs.has("global-hotkey") ? [PLUGINS.shortcut] : []),
@@ -139,11 +142,12 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     "- src-tauri/src/lib.rs: app_builder registers every plugin and command and nothing else; run() owns the only setup closure, because Builder::setup replaces any earlier one. Add each new command to generate_handler! and each new store to manage_state.",
     "- manage_state(app, folder) opens every store in one folder: run() passes app_data_dir(), tests pass a temporary folder, so tests never touch real app data.",
     "- src-tauri/tests/kit_tests.rs builds app_builder(mock_builder()) with the app's own context() and calls commands through get_ipc_response from the devUrl origin (http://localhost:1420); a request from any other origin is refused. Keep this test passing as commands are added.",
-    "- Every command returns Result<T, AppError>; AppError carries a message written for the user, and the frontend shows it through errors.report(). errors.show() is for messages the frontend writes itself. Never show a raw runtime error.",
+    "- Every command returns Result<T, AppError>; AppError carries a fallback message written for the user, which errors.report() shows when no feature string applies. Every user-visible string the PRD states (a failure message, a label, an empty state) comes from the PRD and is shown with errors.show(), never errors.report(); the PRD string wins over any AppError message this kit or a command produces. Never show a raw runtime error.",
     "- src-tauri/capabilities/default.json lists only core:default and the permissions of the plugins lib.rs initializes. Add a permission only with the plugin feature that needs it.",
     "- Its windows array starts as [\"main\"]. When a feature opens another window, give it a fixed label and add that label there, or Tauri refuses every command the window calls. Create that window fresh each time it opens (close it, never just hide it), so it always loads current data.",
     ...(uses.settings ? ["- settings.rs replaces settings.json whole: a temporary file in the same folder, synced, then renamed."] : []),
     ...(uses.records ? ["- database.rs applies MIGRATIONS in order and records the schema version in PRAGMA user_version; append new migrations, never edit a shipped one."] : []),
+    ...(uses.timestamps ? ["- src-tauri/Cargo.toml already has the time crate (parsing, formatting) for the RFC3339 date-time fields: validate with time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339) and require a UTC offset; write no parser of your own."] : []),
     ...(uses.services ? ["- src-tauri/Cargo.toml already has reqwest (json) for the declared services; integration owners use one reqwest::Client and add no HTTP crate of their own."] : []),
     ...(uses.secrets ? ["- vault.rs is the only place secrets are stored: generic passwords in the login keychain under the bundle ID's credentials service. Tests use MemoryStore, never the keychain."] : []),
     ...(uses.tray ? ["- The tray keeps the app running: closing the main window hides it, Show brings it back, and Quit (or quitting from outside) exits. RunEvent::ExitRequested with no exit code is prevented; an explicit exit code is not. Only the main window hides: every other window closes for real, so it is created fresh and loads current data each time it opens instead of showing a stale list."] : []),
@@ -769,6 +773,8 @@ serde_json = "1"
 ${[
     ...(uses.records ? [`rusqlite = { version = "=0.37.0", features = ["bundled"] }`] : []),
     ...(uses.secrets ? [`keyring = "=4.2.0"`] : []),
+    // RFC3339 parsing for the date-time fields the data owner validates, so no task hand-rolls a parser or edits Cargo.toml.
+    ...(uses.timestamps ? [`time = { version = "0.3", features = ["parsing", "formatting"] }`] : []),
     // The HTTPS client for declared services, here so integration tasks never have to edit Cargo.toml.
     ...(uses.services ? [`reqwest = { version = "=0.12.28", features = ["json"] }`] : []),
     ...uses.plugins.map(plugin => `${plugin.crate} = "=${plugin.crateVersion}"`),
