@@ -1,4 +1,4 @@
-import type { GraphFeature, NormalizedBlueprint } from "./compiler"
+import type { DataField, NormalizedBlueprint } from "./compiler"
 import type { PresetRuntimeMode } from "./presets"
 import type { FeatureSurface } from "./schema"
 
@@ -6,42 +6,63 @@ export type AstroFeaturePlacement =
   | { readonly kind: "component"; readonly registrationFile: string }
   | { readonly kind: "page"; readonly pageFile: string; readonly registrationFile: string }
 
+// One content collection per stored data object with declared fields.
+export interface AstroCollection {
+  readonly name: string
+  readonly dataName: string
+  readonly fields: readonly DataField[]
+}
+
 export interface AstroRoutePlan {
   readonly usesContentCollections: boolean
+  readonly collections: readonly AstroCollection[]
+  // The collection behind the first item-page feature, else the first collection.
   readonly contentCollection: string
   readonly foundationExtras: readonly string[]
   readonly seedContentPaths: readonly string[]
   readonly featurePlacements: Readonly<Record<string, AstroFeaturePlacement>>
   readonly routeSummary: readonly string[]
   readonly browserPersistence: boolean
+  readonly dateNotes: readonly string[]
   readonly sharedDynamicRoute?: string
   readonly sharedDynamicRouteOwnerFeatureId?: string
 }
 
-type SurfaceFeature = { readonly surface: FeatureSurface }
-
-function hasSurface(features: readonly SurfaceFeature[], surface: FeatureSurface): boolean {
-  return features.some(feature => feature.surface === surface)
+// What placement needs from a feature; GraphFeature and NormalizedBlueprint features both satisfy it.
+export interface PlaceableFeature {
+  readonly id: string
+  readonly name: string
+  readonly surface: FeatureSurface
+  readonly resourceIds: readonly string[]
 }
 
-// The collection is named after the declared content data, never guessed from feature prose.
-export function contentCollectionName(blueprint: NormalizedBlueprint): string {
-  const source = blueprint.domainData.find(item => item.sensitivity === "public" || item.sensitivity === "internal") ?? blueprint.domainData[0]
-  const name = source?.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
-  return name || "entries"
+// The production budget the kit's tests/performance.test.ts enforces and the documents state.
+export const ASTRO_PERFORMANCE_BUDGET = { htmlBytes: 100_000, scriptBytes: 50_000, styleBytes: 50_000 } as const
+export const ASTRO_BUDGET_TEXT = `every built HTML page under ${ASTRO_PERFORMANCE_BUDGET.htmlBytes / 1000} KB, all client JavaScript together under ${ASTRO_PERFORMANCE_BUDGET.scriptBytes / 1000} KB, all CSS together under ${ASTRO_PERFORMANCE_BUDGET.styleBytes / 1000} KB`
+
+export function dataKey(name: string): string {
+  return name.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
 }
 
-function wantsDetailRoutes(blueprint: NormalizedBlueprint): boolean {
-  return blueprint.domainData.length > 0 || hasSurface(blueprint.features, "item-page")
+// Collections are named after the declared data objects, never guessed from feature prose.
+export function astroCollections(blueprint: NormalizedBlueprint): AstroCollection[] {
+  const stored = blueprint.domainData
+    .filter(item => item.storage === "records" && item.fields.length && (item.sensitivity === "public" || item.sensitivity === "internal"))
+    .map(item => ({ name: dataKey(item.name) || "entries", dataName: item.name, fields: item.fields }))
+  if (stored.length || !blueprint.features.some(feature => feature.surface === "item-page")) return stored
+  // An item-page feature that declares no stored object still gets one generic collection.
+  return [{ name: "entries", dataName: "", fields: [{ name: "Title", valueType: "text", optional: false }, { name: "Description", valueType: "long-text", optional: false }] }]
+}
+
+function collectionOf(feature: PlaceableFeature, collections: readonly AstroCollection[]): AstroCollection | undefined {
+  return collections.find(item => item.dataName && feature.resourceIds.includes(`data:${dataKey(item.dataName)}`)) ?? collections[0]
 }
 
 export function astroUsesContentCollections(
   blueprint: NormalizedBlueprint,
   runtimeMode: PresetRuntimeMode,
 ): boolean {
-  if (runtimeMode !== "static") return false
-  if (blueprint.domainData.some(item => item.sensitivity === "public" || item.sensitivity === "internal")) return true
-  return wantsDetailRoutes(blueprint)
+  return runtimeMode === "static" && astroCollections(blueprint).length > 0
 }
 
 export function astroBrowserPersistence(
@@ -59,7 +80,7 @@ export function pageRoute(featureName: string): string {
 }
 
 export function astroFeaturePlacement(
-  feature: GraphFeature,
+  feature: PlaceableFeature,
   collection: string,
 ): AstroFeaturePlacement {
   switch (feature.surface) {
@@ -90,63 +111,83 @@ export function astroFeaturePlacement(
   }
 }
 
+// Each page file belongs to the first feature that declares it; a later feature on the same file is a component of it.
+export function placeAstroFeatures(
+  features: readonly PlaceableFeature[],
+  collections: readonly AstroCollection[],
+): Record<string, AstroFeaturePlacement> {
+  const placements: Record<string, AstroFeaturePlacement> = {}
+  const pageOwners = new Set<string>()
+  for (const feature of features) {
+    const tentative = astroFeaturePlacement(feature, collectionOf(feature, collections)?.name ?? "entries")
+    if (tentative.kind === "page" && pageOwners.has(tentative.pageFile)) {
+      placements[feature.id] = { kind: "component", registrationFile: tentative.pageFile }
+      continue
+    }
+    if (tentative.kind === "page") pageOwners.add(tentative.pageFile)
+    placements[feature.id] = tentative
+  }
+  return placements
+}
+
+// Static routes the primary navigation links to; dynamic routes and the 404 page never appear in it.
+export function astroNavLinks(features: readonly PlaceableFeature[], placements: Readonly<Record<string, AstroFeaturePlacement>>): { href: string; label: string; file: string }[] {
+  return features.flatMap(feature => {
+    const placement = placements[feature.id]
+    if (placement?.kind !== "page" || placement.pageFile.includes("[") || placement.pageFile.endsWith("/404.astro")) return []
+    const href = `${placement.pageFile.replace("src/pages", "").replace(/(?:\/index)?\.astro$/, "")}/`
+    return [{ href, label: feature.name.replace(/\s+page$/i, ""), file: placement.pageFile }]
+  })
+}
+
+// A date-time field read by a feature is evaluated when the site is built, never when it is visited.
+export function astroDateNotes(features: readonly PlaceableFeature[], collections: readonly AstroCollection[]): string[] {
+  return collections.flatMap(item => {
+    const field = item.fields.find(candidate => candidate.valueType === "date-time")
+    const readers = features.filter(feature => item.dataName && feature.resourceIds.includes(`data:${dataKey(item.dataName)}`))
+    return field && readers.length
+      ? [`Dates: ${readers.map(feature => feature.name).join(", ")} read ${item.dataName} (${field.name}). Any filter or ordering by that date runs once at build time on a static site, so the published list is only as current as the last build; rebuild and redeploy (on a schedule or when content changes) to refresh it, and never claim live freshness on the page.`]
+      : []
+  })
+}
+
 export function planAstroWeb(
   blueprint: NormalizedBlueprint,
-  features: readonly GraphFeature[],
+  features: readonly PlaceableFeature[],
   runtimeMode: PresetRuntimeMode,
 ): AstroRoutePlan {
   const browserPersistence = astroBrowserPersistence(blueprint, runtimeMode)
   const usesContentCollections = astroUsesContentCollections(blueprint, runtimeMode)
-  const contentCollection = contentCollectionName(blueprint)
-  const featurePlacements: Record<string, AstroFeaturePlacement> = {}
-  let dynamicRouteFile: string | undefined
-  let dynamicRouteOwnerFeatureId: string | undefined
-  const pageOwners = new Map<string, string>()
+  const collections = usesContentCollections ? astroCollections(blueprint) : []
+  const featurePlacements = placeAstroFeatures(features, collections)
+  const itemFeature = features.find(feature => feature.surface === "item-page" && featurePlacements[feature.id]?.kind === "page")
+  const itemPlacement = itemFeature ? featurePlacements[itemFeature.id] : undefined
 
-  for (const feature of features) {
-    const tentative = astroFeaturePlacement(feature, contentCollection)
-    if (tentative.kind !== "page") {
-      featurePlacements[feature.id] = tentative
-      continue
-    }
-    const owner = pageOwners.get(tentative.pageFile)
-    if (owner) {
-      featurePlacements[feature.id] = { kind: "component", registrationFile: tentative.pageFile }
-      continue
-    }
-    pageOwners.set(tentative.pageFile, feature.id)
-    if (tentative.pageFile.includes("[slug]")) {
-      dynamicRouteFile = tentative.pageFile
-      dynamicRouteOwnerFeatureId = feature.id
-    }
-    featurePlacements[feature.id] = tentative
-  }
-
-  const foundationExtras: string[] = []
-  const seedContentPaths: string[] = []
   const routeSummary: string[] = ["/ — src/pages/index.astro"]
-
-  if (usesContentCollections) {
-    foundationExtras.push("src/content.config.ts")
-    seedContentPaths.push(`src/content/${contentCollection}/_seed.example.md`)
-    if (dynamicRouteFile) routeSummary.push(`/${contentCollection}/[slug] — ${dynamicRouteFile} (build-time content collection)`)
+  for (const feature of features) {
+    const placement = featurePlacements[feature.id]!
+    if (placement.kind !== "page") continue
+    const route = placement.pageFile.replace("src/pages", "").replace(/(?:\/index)?\.astro$/, "") || "/"
+    routeSummary.push(`${route} — ${placement.pageFile}${feature.surface === "item-page" ? " (build-time content collection)" : ""}`)
   }
-  for (const placement of Object.values(featurePlacements)) {
-    if (placement.kind === "page" && !routeSummary.some(line => line.includes(placement.pageFile))) {
-      routeSummary.push(`${placement.pageFile.replace("src/pages", "").replace(/\.astro$/, "").replace("/index", "/") || "/"} — ${placement.pageFile}`)
-    }
+
+  // The 404 page always exists: a not-found-page feature owns its text, otherwise the foundation kit file does.
+  if (!features.some(feature => featurePlacements[feature.id]?.kind === "page" && feature.surface === "not-found-page")) {
+    routeSummary.push("/404 — src/pages/404.astro (neutral kit text owned by the foundation; no task changes it)")
   }
 
   return {
     usesContentCollections,
-    contentCollection,
-    foundationExtras: unique(foundationExtras),
-    seedContentPaths,
+    collections,
+    contentCollection: (itemFeature ? collectionOf(itemFeature, collections) : collections[0])?.name ?? "entries",
+    foundationExtras: usesContentCollections ? ["src/content.config.ts"] : [],
+    seedContentPaths: collections.map(item => `src/content/${item.name}/_seed.example.md`),
     featurePlacements,
     routeSummary: unique(routeSummary),
     browserPersistence,
-    sharedDynamicRoute: dynamicRouteFile,
-    sharedDynamicRouteOwnerFeatureId: dynamicRouteOwnerFeatureId,
+    dateNotes: astroDateNotes(features, collections),
+    sharedDynamicRoute: itemPlacement?.kind === "page" ? itemPlacement.pageFile : undefined,
+    sharedDynamicRouteOwnerFeatureId: itemFeature?.id,
   }
 }
 
@@ -156,17 +197,17 @@ function unique(values: readonly string[]): string[] {
 
 export const ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS = [
   "check — astro check",
-  "test — vitest run",
-  "test:a11y — vitest run tests/accessibility.test.ts",
-  "build — astro build",
-  "audit:performance — run the locked production performance budget check against dist/",
+  "test — vitest run (excludes the two production-build checks below)",
+  "test:a11y — vitest run tests/accessibility.test.ts against dist/ (fails when dist/ is missing)",
+  `build — astro build`,
+  `audit:performance — vitest run tests/performance.test.ts against dist/ (fails when dist/ is missing): ${ASTRO_BUDGET_TEXT}`,
 ] as const
 
 export const ASTRO_CONTENT_COLLECTION_PERSISTENCE = {
   enabledDecision: "Persistence: enabled through Astro content collections compiled at build time; public catalog data lives in src/content/ as typed markdown or MDX with no browser IndexedDB for core content.",
   disabledDecision: "Persistence: disabled. No application data is retained between visits; static assets use ordinary HTTP caching only.",
   settingsPlacement: "Build-time content schema in src/content.config.ts; optional visitor preferences use minimal client islands only when semantics require them.",
-  recordsPlacement: "Public records are markdown or MDX files under src/content/{collection}/; pages load them with getCollection() or getEntry() at build time.",
+  recordsPlacement: "Public records are markdown or MDX files under {collection}; pages load them with getCollection() or getEntry() at build time.",
   temporaryPlacement: "Keep draft or preview values in memory inside client islands; do not mirror build-time catalog data into IndexedDB.",
 } as const
 

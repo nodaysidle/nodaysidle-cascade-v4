@@ -1,3 +1,4 @@
+import { ASTRO_BUDGET_TEXT } from "./astroWeb"
 import type { FeatureSurface } from "./schema"
 
 export const PRESET_IDS = [
@@ -751,7 +752,12 @@ const astroWeb: PresetContract = {
   signingDecision: () => "No application code signature applies; deploy the verified production artifact over HTTPS with immutable asset hashes.",
   outputArtifact: "dist/ static site or explicit server adapter output",
   artifactPath: () => "dist/",
-  completionEvidence: ["Type, content, unit, and production build checks pass.", "Accessibility has no critical findings.", "SEO metadata and internal links validate.", "The production performance budget passes."],
+  completionEvidence: [
+    "Type, content, unit, and production build checks pass.",
+    "Structural accessibility checks pass on every built page (tests/accessibility.test.ts: html lang, one h1, a title, alt text on every image); keyboard and contrast review is manual and outside the kit tests.",
+    "Every built page has a meta description and every internal link resolves to a built page (tests/accessibility.test.ts).",
+    `The production performance budget passes (tests/performance.test.ts): ${ASTRO_BUDGET_TEXT}.`,
+  ],
   options: [
     { id: "siteKind", label: "Site kind", type: "select", values: ["landing", "portfolio", "docs", "blog", "catalog"], default: "landing", description: "Recorded in the packet. v4.0 renders the landing route set; option-driven Astro route generation is next." },
     { id: "outputMode", label: "Output mode", type: "select", values: ["static", "server"], default: "static", description: "Recorded in the packet. v4.0 keeps static output unless a declared credential switches it; option-driven server output is next." },

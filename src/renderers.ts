@@ -43,22 +43,23 @@ function astroDesignSystemSection(graph: ProjectGraph): string[] {
 
 function astroRoutesSection(graph: ProjectGraph): string[] {
   if (graph.presetId !== "astro-web" || !graph.astroPlan) return []
+  const plan = graph.astroPlan
   return [section("Information Architecture and Routes", bullets([
-    ...graph.astroPlan.routeSummary,
-    graph.astroPlan.usesContentCollections
-      ? `Catalog data compiles from src/content/${graph.astroPlan.contentCollection}/ through src/content.config.ts; do not store catalog records in browser-side databases.`
+    ...plan.routeSummary,
+    plan.usesContentCollections
+      ? `Content collections, one per stored data object and all exported by src/content.config.ts: ${plan.collections.map(item => `${item.dataName || "entries"} in src/content/${item.name}/`).join("; ")}. Only a collection behind an item-page feature has [slug] detail routes; every other page reads its own collection with getCollection(). Do not store catalog records in browser-side databases.`
       : "No build-time content collection is required for this graph.",
+    ...plan.dateNotes,
   ]))]
 }
 
 function contentSeedSection(graph: ProjectGraph): string[] {
-  if (graph.presetId !== "astro-web" || !graph.astroPlan?.usesContentCollections || !graph.blueprint.domainData.length) return []
-  const collection = graph.astroPlan.contentCollection
-  const stored = graph.blueprint.domainData.filter(item => item.fields.length)
-  const seedLines = stored.map(item => `Create at least two ${collection} entries for ${item.name}: frontmatter holds exactly ${item.fields.map(field => field.name).join(", ")} (camelCase keys, matching src/content.config.ts) and the body holds the long text of the entry. ${item.meaning}`)
+  if (graph.presetId !== "astro-web" || !graph.astroPlan?.usesContentCollections || !graph.astroPlan.collections.length) return []
+  const meaning = new Map(graph.blueprint.domainData.map(item => [item.name, item.meaning]))
+  const seedLines = graph.astroPlan.collections.map(item => `Create one entry in src/content/${item.name}/ for every ${item.dataName || "entry"} the idea names: frontmatter holds exactly ${item.fields.map(field => `${field.name}${field.optional ? " (optional)" : ""}`).join(", ")} (camelCase keys, matching src/content.config.ts) and the body holds any longer text of the entry. ${meaning.get(item.dataName) ?? ""}`.trim())
   return [section("Content Seed Requirements", bullets([
     ...seedLines,
-    `Starter seed file: src/content/${collection}/_seed.example.md; replace it with real entries and delete it.`,
+    `Starter seed files, one per collection (the collection loader ignores files whose name starts with an underscore): ${graph.astroPlan.seedContentPaths.join(", ")}; replace each with real entries and delete it.`,
     "Use only content the idea names; invent no facts the idea does not state.",
   ]))]
 }

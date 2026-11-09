@@ -1,6 +1,6 @@
-import type { NormalizedBlueprint } from "./compiler"
-import type { PresetId, ProjectIdentity } from "./presets"
-import { contentCollectionName, pageRoute } from "./astroWeb"
+import type { DataField, NormalizedBlueprint } from "./compiler"
+import type { ProjectIdentity } from "./presets"
+import { ASTRO_BUDGET_TEXT, ASTRO_PERFORMANCE_BUDGET, astroCollections, astroDateNotes, astroNavLinks, placeAstroFeatures, type AstroCollection } from "./astroWeb"
 
 export interface AstroKitFile {
   readonly path: string
@@ -9,10 +9,6 @@ export interface AstroKitFile {
 
 function file(path: string, content: string): AstroKitFile {
   return { path, content: content.trimStart() }
-}
-
-function collectionFor(blueprint: NormalizedBlueprint): string {
-  return contentCollectionName(blueprint)
 }
 
 const ZOD_FOR: Record<string, string> = {
@@ -41,50 +37,182 @@ function fieldKey(name: string): string {
   return words.map((word, index) => index === 0 ? word : word[0]!.toUpperCase() + word.slice(1)).join("") || "value"
 }
 
-// The collection schema is the declared data object's fields, never a guess.
-function collectionFields(blueprint: NormalizedBlueprint): { schema: string; seed: string } {
-  const item = blueprint.domainData.find(candidate => candidate.fields.length && (candidate.sensitivity === "public" || candidate.sensitivity === "internal"))
-    ?? blueprint.domainData.find(candidate => candidate.fields.length)
-  if (!item) {
-    return { schema: "      title: z.string(),\n      description: z.string(),\n      published: z.boolean().default(true),", seed: "title: Sample entry\ndescription: Sample description\npublished: true" }
-  }
-  return {
-    schema: item.fields.map(field => `      ${fieldKey(field.name)}: ${ZOD_FOR[field.valueType]},`).join("\n"),
-    seed: item.fields.map(field => `${fieldKey(field.name)}: ${SEED_FOR[field.valueType]}`).join("\n"),
-  }
+// Text that lands in an .astro template: braces would start an expression, angle brackets a tag.
+function esc(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\{/g, "&#123;").replace(/\}/g, "&#125;").replace(/"/g, "&quot;")
 }
 
-// Keys the kit pages read: the first declared text field is the title; the first long text field is the description.
-function pageKeys(blueprint: NormalizedBlueprint): { title: string; description?: string } {
-  const item = blueprint.domainData.find(candidate => candidate.fields.length && (candidate.sensitivity === "public" || candidate.sensitivity === "internal"))
-    ?? blueprint.domainData.find(candidate => candidate.fields.length)
-  if (!item) return { title: "title", description: "description" }
-  const title = item.fields.find(field => field.valueType === "text") ?? item.fields[0]!
-  const description = item.fields.find(field => field.valueType === "long-text" || (field.valueType === "text" && field !== title))
+// Keys the detail page reads: the first declared text field is the title; the first long text (or second text) field is the description.
+function pageKeys(fields: readonly DataField[]): { title: string; description?: string } {
+  const title = fields.find(field => field.valueType === "text") ?? fields[0]!
+  const description = fields.find(field => field.valueType === "long-text" || (field.valueType === "text" && field !== title))
   return { title: fieldKey(title.name), ...(description ? { description: fieldKey(description.name) } : {}) }
 }
 
-function hasContent(blueprint: NormalizedBlueprint): boolean {
-  return blueprint.domainData.length > 0 || blueprint.features.some(feature => feature.surface === "item-page")
+function contentConfig(collections: readonly AstroCollection[]): string {
+  const entries = collections.map(item => `  ${JSON.stringify(item.name)}: defineCollection({
+    loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/${item.name}" }),
+    schema: z.object({
+${item.fields.map(field => `      ${fieldKey(field.name)}: ${ZOD_FOR[field.valueType]}${field.optional ? ".optional()" : ""},`).join("\n")}
+    }),
+  }),`)
+  return `import { defineCollection, z } from "astro:content"
+import { glob } from "astro/loaders"
+
+export const collections = {
+${entries.join("\n")}
+}
+`
 }
 
-function hasSurface(blueprint: NormalizedBlueprint, surface: string): boolean {
-  return blueprint.features.some(feature => feature.surface === surface)
+function detailPage(item: AstroCollection): string {
+  const keys = pageKeys(item.fields)
+  return `---
+import BaseLayout from "../../layouts/BaseLayout.astro"
+import { getCollection, render } from "astro:content"
+
+export async function getStaticPaths() {
+  const entries = await getCollection("${item.name}")
+  return entries.map(entry => ({ params: { slug: entry.id }, props: { entry } }))
 }
+
+const { entry } = Astro.props
+const { Content } = await render(entry)
+---
+<BaseLayout title={entry.data.${keys.title}} ${keys.description ? `description={entry.data.${keys.description}}` : ""}>
+  <article>
+    <h1>{entry.data.${keys.title}}</h1>
+    <Content />
+  </article>
+</BaseLayout>
+`
+}
+
+// A page shell makes no product claim: the layout and one heading, until the owning task fills it.
+function shellPage(depth: number, title: string, heading: string): string {
+  return `---
+import BaseLayout from "${"../".repeat(depth)}layouts/BaseLayout.astro"
+---
+<BaseLayout title="${title}">
+  <h1>${heading}</h1>
+</BaseLayout>
+`
+}
+
+const ACCESSIBILITY_TEST = `import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
+import { join } from "node:path"
+import { describe, expect, it } from "vitest"
+
+// These checks read the production build in dist/, so run npm run build first.
+function htmlFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap(name => {
+    const path = join(dir, name)
+    return statSync(path).isDirectory() ? htmlFiles(path) : path.endsWith(".html") ? [path] : []
+  })
+}
+
+function builtPages(): string[] {
+  expect(existsSync("dist"), "dist/ is missing: run npm run build first").toBe(true)
+  const pages = htmlFiles("dist")
+  expect(pages.length, "dist/ holds no HTML page").toBeGreaterThan(0)
+  return pages
+}
+
+describe("built pages", () => {
+  it("each has a language, one h1, a title, and alt text on every image", () => {
+    for (const path of builtPages()) {
+      const html = readFileSync(path, "utf8")
+      expect(html, path + ": html lang").toMatch(/<html[^>]*\\slang="[a-zA-Z-]+"/)
+      expect((html.match(/<h1[\\s>]/g) ?? []).length, path + ": exactly one h1").toBe(1)
+      expect(html, path + ": title").toMatch(/<title>[^<]+<\\/title>/)
+      for (const image of html.match(/<img\\b[^>]*>/g) ?? []) expect(image, path + ": img alt").toMatch(/\\salt=/)
+    }
+  })
+
+  it("each has a meta description, and every internal link resolves to a built page", () => {
+    for (const path of builtPages()) {
+      const html = readFileSync(path, "utf8")
+      expect(html, path + ": meta description").toMatch(/<meta name="description" content="[^"]+"/)
+      for (const match of html.matchAll(/<a\\b[^>]*\\shref="(\\/[^"#?]*)/g)) {
+        const href = match[1]!
+        if (href.startsWith("//")) continue
+        const target = join("dist", href)
+        const found = existsSync(target) && (statSync(target).isFile() || existsSync(join(target, "index.html")))
+        expect(found, path + ": link " + href + " has no built page").toBe(true)
+      }
+    }
+  })
+})
+`
+
+const PERFORMANCE_TEST = `import { existsSync, readdirSync, statSync } from "node:fs"
+import { join } from "node:path"
+import { describe, expect, it } from "vitest"
+
+// Budget: ${ASTRO_BUDGET_TEXT}. It reads the production build in dist/, so run npm run build first.
+const budget = { html: ${ASTRO_PERFORMANCE_BUDGET.htmlBytes}, script: ${ASTRO_PERFORMANCE_BUDGET.scriptBytes}, style: ${ASTRO_PERFORMANCE_BUDGET.styleBytes} }
+
+function files(dir: string): string[] {
+  return readdirSync(dir).flatMap(name => {
+    const path = join(dir, name)
+    return statSync(path).isDirectory() ? files(path) : [path]
+  })
+}
+
+function built(): string[] {
+  expect(existsSync("dist"), "dist/ is missing: run npm run build first").toBe(true)
+  return files("dist")
+}
+
+const total = (paths: string[]) => paths.reduce((sum, path) => sum + statSync(path).size, 0)
+
+describe("production budget", () => {
+  it("keeps every built HTML page under " + budget.html + " bytes", () => {
+    for (const path of built().filter(item => item.endsWith(".html"))) expect(statSync(path).size, path).toBeLessThan(budget.html)
+  })
+
+  it("keeps all client JavaScript under " + budget.script + " bytes", () => {
+    expect(total(built().filter(item => /\\.m?js$/.test(item)))).toBeLessThan(budget.script)
+  })
+
+  it("keeps all CSS under " + budget.style + " bytes", () => {
+    expect(total(built().filter(item => item.endsWith(".css")))).toBeLessThan(budget.style)
+  })
+})
+`
 
 export function astroKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, options: Readonly<Record<string, string | boolean | readonly string[]>> = {}): AstroKitFile[] {
-  const collection = collectionFor(blueprint)
-  const content = hasContent(blueprint)
-  const fields = collectionFields(blueprint)
-  const keys = pageKeys(blueprint)
-  const navLinks = [
-    ...blueprint.features.filter(feature => feature.surface === "page").map(feature => ({ href: `/${pageRoute(feature.name)}/`, label: feature.name.replace(/\s+page$/i, "") })),
-    ...(blueprint.features.some(feature => feature.surface === "collection-index") ? [{ href: `/${collection}/`, label: "All" }] : []),
-  ]
-  const about = hasSurface(blueprint, "about-page")
-  const item = content
-  const features = Array.isArray(options.features) ? options.features : ["sitemap"]
-  const sitemap = features.includes("sitemap")
+  const collections = astroCollections(blueprint)
+  const features = blueprint.features.map(feature => ({ ...feature, id: feature.name }))
+  const placements = placeAstroFeatures(features, collections)
+  const nav = astroNavLinks(features, placements)
+  const project = esc(blueprint.projectName)
+  const siteFeatures = Array.isArray(options.features) ? options.features : ["sitemap"]
+  const sitemap = siteFeatures.includes("sitemap")
+
+  // One shell per declared static page; an item page reads its collection, so only a stored object behind it gets one.
+  const shells = features.flatMap(feature => {
+    const placement = placements[feature.id]
+    if (placement?.kind !== "page" || placement.pageFile.includes("[") || placement.pageFile.endsWith("/404.astro")) return []
+    const label = esc(feature.name.replace(/\s+page$/i, ""))
+    return [file(placement.pageFile, shellPage(placement.pageFile.split("/").length - 2, `${label} — ${project}`, label))]
+  })
+  const detailPages = features.flatMap(feature => {
+    const placement = placements[feature.id]
+    const item = collections.find(candidate => placement?.kind === "page" && placement.pageFile === `src/pages/${candidate.name}/[slug].astro`)
+    return feature.surface === "item-page" && item ? [file(`src/pages/${item.name}/[slug].astro`, detailPage(item))] : []
+  })
+  const content = collections.length ? [
+    file("src/content.config.ts", contentConfig(collections)),
+    ...collections.map(item => file(`src/content/${item.name}/_seed.example.md`, `---
+${item.fields.map(field => `${fieldKey(field.name)}: ${SEED_FOR[field.valueType]}`).join("\n")}
+---
+
+Sample entry body. The content task replaces this file with the product's real entries.
+`)),
+  ] : []
+  const pageFiles = ["src/pages/index.astro", "src/pages/404.astro", ...shells.map(item => item.path)]
+
   const files: AstroKitFile[] = [
     file("package.json", JSON.stringify({
       name: identity.slug,
@@ -96,7 +224,8 @@ export function astroKit(identity: ProjectIdentity, blueprint: NormalizedBluepri
         check: "astro check",
         build: "astro build",
         preview: "astro preview",
-        test: "vitest run",
+        // The two production-build checks read dist/, so they run after npm run build, not in npm test.
+        test: "vitest run --exclude tests/accessibility.test.ts --exclude tests/performance.test.ts",
         "test:a11y": "vitest run tests/accessibility.test.ts",
         "audit:performance": "vitest run tests/performance.test.ts",
       },
@@ -148,15 +277,11 @@ main { padding: 3rem 0; max-width: var(--measure); }
 h1 { font-size: clamp(2.2rem, 6vw, 4.2rem); line-height: 1.05; letter-spacing: -.03em; margin: 0 0 1rem; }
 h2 { margin-top: 2.5rem; }
 .lede { color: var(--muted); font-size: 1.15rem; }
-.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); margin: 2rem 0; }
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.15rem; }
-.card h3 { margin: 0 0 .4rem; }
-.list { display: grid; gap: .65rem; padding: 0; list-style: none; }
-.list a { display: block; background: var(--surface); border: 1px solid var(--border); border-radius: .8rem; padding: .85rem 1rem; }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
 `),
     file("src/layouts/BaseLayout.astro", `---
-const { title, description } = Astro.props
+import "../styles/global.css"
+const { title, description = title } = Astro.props
 const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site) : Astro.url
 ---
 <!doctype html>
@@ -172,141 +297,73 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site) : Astro.u
     <a class="skip" href="#main">Skip to content</a>
     <div class="shell">
       <header class="site">
-        <a href="/">${blueprint.projectName}</a>
+        <a href="/">${project}</a>
         <nav aria-label="Primary">
           <a href="/">Home</a>
-          ${navLinks.map(link => `<a href="${link.href}">${link.label}</a>`).join("\n          ")}
-          ${about ? '<a href="/about/">About</a>' : ""}
+          ${nav.map(link => `<a href="${link.href}">${esc(link.label)}</a>`).join("\n          ")}
         </nav>
       </header>
       <main id="main">
         <slot />
       </main>
-      <footer><p class="lede">${blueprint.projectName}</p></footer>
+      <footer><p class="lede">${project}</p></footer>
     </div>
   </body>
 </html>
 `),
     file("src/pages/index.astro", `---
 import BaseLayout from "../layouts/BaseLayout.astro"
-${content ? `import { getCollection } from "astro:content"\nconst entries = await getCollection("${collection}")` : ""}
 ---
-<BaseLayout title="${blueprint.projectName}" description="${blueprint.productDefinition.slice(0, 150)}">
-  <h1>${blueprint.projectName}</h1>
-  <p class="lede">${blueprint.productDefinition}</p>
-  <div class="grid">
-    ${blueprint.features.map(feature => `<article class="card"><h3>${feature.name}</h3><p>${feature.outputs[0] ?? feature.behavior}</p></article>`).join("\n    ")}
-  </div>
-  ${content ? `<h2>Entries</h2><ul class="list">{entries.map(entry => <li><a href={\`/${collection}/\${entry.id}/\`}>{entry.data.${keys.title}}</a></li>)}</ul>` : ""}
+<BaseLayout title="${project}">
+  <h1>${project}</h1>
+  {/* The main-surface feature component renders here. */}
 </BaseLayout>
 `),
     file("src/pages/404.astro", `---
 import BaseLayout from "../layouts/BaseLayout.astro"
 ---
-<BaseLayout title="Not found — ${blueprint.projectName}" description="The page does not exist.">
+<BaseLayout title="Not found — ${project}">
   <h1>Not found</h1>
   <p class="lede">That page does not exist. <a href="/">Return home</a>.</p>
 </BaseLayout>
 `),
-    file("tests/contract.test.ts", `import { existsSync } from "node:fs"
+    ...shells,
+    ...content,
+    ...detailPages,
+    file("tests/contract.test.ts", `import { existsSync, readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 
 describe("contract", () => {
   it("has the required pages", () => {
-    expect(existsSync("src/pages/index.astro")).toBe(true)
-    expect(existsSync("src/pages/404.astro")).toBe(true)
+    for (const page of ${JSON.stringify(pageFiles)}) expect(existsSync(page), page).toBe(true)
   })
-})
-`),
-    file("tests/accessibility.test.ts", `import { readFileSync } from "node:fs"
-import { describe, expect, it } from "vitest"
 
-describe("accessibility source contract", () => {
-  it("has a language, a main landmark, and a skip link", () => {
+  it("loads the global stylesheet and links every declared page route", () => {
     const layout = readFileSync("src/layouts/BaseLayout.astro", "utf8")
-    expect(layout).toContain('lang="en"')
-    expect(layout).toContain("<main")
-    expect(layout).toContain("Skip to content")
+    expect(layout).toContain('import "../styles/global.css"')
+    for (const href of ${JSON.stringify(["/", ...nav.map(link => link.href)])}) expect(layout).toContain('href="' + href + '"')
   })
 })
 `),
-    file("tests/performance.test.ts", `import { existsSync, readFileSync } from "node:fs"
-import { describe, expect, it } from "vitest"
-
-describe("performance contract", () => {
-  it("ships a small static document", () => {
-    if (!existsSync("dist/index.html")) return
-    const html = readFileSync("dist/index.html", "utf8")
-    expect(html.length).toBeLessThan(200_000)
-    expect(html).not.toContain("data-astro-cid-")
-  })
-})
-`),
+    file("tests/accessibility.test.ts", ACCESSIBILITY_TEST),
+    file("tests/performance.test.ts", PERFORMANCE_TEST),
   ]
-  if (about) {
-    files.push(file("src/pages/about.astro", `---
-import BaseLayout from "../layouts/BaseLayout.astro"
----
-<BaseLayout title="About — ${blueprint.projectName}" description="${blueprint.productDefinition.slice(0, 150)}">
-  <h1>About</h1>
-  <p class="lede">${blueprint.productDefinition}</p>
-</BaseLayout>
+  files.push(file("README.md", `# ${blueprint.projectName} starter kit
+
+Tested starting code for the static Astro site in TRD.md. Before TASK-01, copy every file below from kit/ to the same path in the project root. The task that owns a file starts from this content and extends it; keep every behavior listed here.
+
+${files.map(item => `- ${item.path}`).join("\n")}
+
+## Behavior to keep
+
+- Routes shell: src/pages/index.astro is one h1 with the product name and a place for the main-surface feature component. It carries no product copy; the feature tasks fill it. ${nav.length ? `Declared page routes (each a shell with one h1): ${nav.map(link => link.href).join(", ")}.` : "No other static page route is declared."}
+- src/pages/404.astro is the not-found page: neutral text and a link home, unless a not-found-page feature declares it, in which case that feature's task owns its text.
+- src/layouts/BaseLayout.astro imports ../styles/global.css, links every declared page route in the primary nav (add a link when a task adds a static route), and gives every page a title and meta description. Every page has exactly one h1; a feature component never adds a second.
+${collections.length ? `- src/content.config.ts exports one collection per stored data object (${collections.map(item => item.name).join(", ")}), each with a schema of that object's declared fields. Seed files start with an underscore, so the collection loader ignores them; replace each with real entries and delete it.
+- Only a collection behind an item-page feature has a [slug] route; every other page reads its own collection with getCollection().` : "- The site declares no stored content collection."}
+${astroDateNotes(features, collections).map(note => `- ${note}\n`).join("")}- Scripts: npm run check (astro check), npm test (vitest, without the two production-build checks), npm run build, npm run test:a11y and npm run audit:performance. The last two read dist/ and fail when it is missing, so run npm run build first.
+- tests/accessibility.test.ts checks every built page for html lang, one h1, a title, a meta description, alt text on every image, and resolving internal links. It is structural; keyboard and contrast review stay manual.
+- tests/performance.test.ts enforces the budget: ${ASTRO_BUDGET_TEXT}.
 `))
-  }
-  if (content) {
-    files.push(
-      file("src/content.config.ts", `import { defineCollection, z } from "astro:content"
-import { glob } from "astro/loaders"
-
-export const collections = {
-  ${JSON.stringify(collection)}: defineCollection({
-    loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/${collection}" }),
-    schema: z.object({
-${fields.schema}
-    }),
-  }),
-}
-`),
-      file(`src/content/${collection}/_seed.example.md`, `---
-${fields.seed}
----
-
-Sample entry body. The content task replaces this file with the product's real entries.
-`),
-      file(`src/pages/${collection}/index.astro`, `---
-import BaseLayout from "../../layouts/BaseLayout.astro"
-import { getCollection } from "astro:content"
-const entries = await getCollection("${collection}")
----
-<BaseLayout title="${blueprint.projectName}" description="${blueprint.productDefinition.slice(0, 150)}">
-  <h1>${blueprint.projectName}</h1>
-  <ul class="list">
-    {entries.map(entry => <li><a href={\`/${collection}/\${entry.id}/\`}>{entry.data.${keys.title}}</a></li>)}
-  </ul>
-</BaseLayout>
-`),
-    )
-    if (item) {
-      files.push(file(`src/pages/${collection}/[slug].astro`, `---
-import BaseLayout from "../../layouts/BaseLayout.astro"
-import { getCollection, render } from "astro:content"
-
-export async function getStaticPaths() {
-  const entries = await getCollection("${collection}")
-  return entries.map(entry => ({ params: { slug: entry.id }, props: { entry } }))
-}
-
-const { entry } = Astro.props
-const { Content } = await render(entry)
----
-<BaseLayout title={entry.data.${keys.title}} ${keys.description ? `description={entry.data.${keys.description}}` : ""}>
-  <article>
-    <h1>{entry.data.${keys.title}}</h1>
-    <Content />
-  </article>
-</BaseLayout>
-`))
-    }
-  }
   return files
 }
