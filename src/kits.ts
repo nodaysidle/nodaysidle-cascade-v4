@@ -38,6 +38,7 @@ function gtkKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint): KitF
   const crate = crateName(slug)
   const { records, secrets, http, optionalDeps } = rustKitHelpers(blueprint)
   const { settings, background: needsBackground, clock, dbus } = gtkKitFlags(blueprint)
+  const dates = blueprint.domainData.some(item => item.fields.some(field => field.valueType === "date"))
   return [
     file("README.md", String.raw`
 # Starter kit
@@ -51,7 +52,7 @@ Shipped helpers:
 - src/lib.rs, src/main.rs, src/app.rs: adw::Application entry and one window.
 - src/state.rs: AppState.
 ${settings ? "- src/config.rs, src/paths.rs: atomic JSON settings under XDG config.\n" : "- src/paths.rs: XDG data and runtime paths. This product declares no settings, so there is no settings file or settings type.\n"}- src/platform/atomic_file.rs: same-directory temporary file and rename.
-${clock ? "- src/platform/clock.rs: the Clock trait and SystemClock; owners take time only through a Clock they are given.\n" : ""}${records ? "- src/platform/sqlite.rs: SQLite with PRAGMA user_version.\n" : ""}${secrets ? "- src/platform/credentials.rs: Secret Service through the keyring crate.\n" : ""}${http ? "- src/platform/http.rs: one reqwest client.\n" : ""}- src/platform/runtime.rs: one shared tokio runtime for async work.
+${clock ? `- src/platform/clock.rs: the Clock trait and SystemClock${dates ? ", today_string (the local YYYY-MM-DD day of a Clock) and is_calendar_date" : ""}; owners take time only through a Clock they are given.\n` : ""}${records ? "- src/platform/sqlite.rs: SQLite with PRAGMA user_version.\n" : ""}${secrets ? "- src/platform/credentials.rs: Secret Service through the keyring crate.\n" : ""}${http ? "- src/platform/http.rs: one reqwest client.\n" : ""}- src/platform/runtime.rs: one shared tokio runtime for async work.
 - tests/contract_tests.rs: atomic write${settings ? ", settings" : ""}${records ? ", SQLite" : ""}${clock ? ", clock" : ""} and path tests.
 
 The task that owns a platform owner adds its module to src/platform/mod.rs; a feature owner adds
@@ -378,7 +379,42 @@ impl Clock for SystemClock {
             .unwrap_or(0)
     }
 }
-`)] : []),
+${dates ? `
+// The one conversion from the Clock to the local calendar day, as YYYY-MM-DD; it uses glib, no extra crate.
+// A failed conversion returns an empty string, which every required-date rule rejects.
+pub fn today_string(clock: &dyn Clock) -> String {
+    gtk::glib::DateTime::from_unix_local(clock.now_millis().div_euclid(1000))
+        .and_then(|moment| moment.format("%Y-%m-%d"))
+        .map(|text| text.to_string())
+        .unwrap_or_default()
+}
+
+// True only for a real calendar date written as four-digit year, two-digit month and day (2024-02-30 is false).
+pub fn is_calendar_date(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let shaped = bytes.len() == 10
+        && bytes.iter().enumerate().all(|(index, byte)| {
+            if index == 4 || index == 7 {
+                *byte == b'-'
+            } else {
+                byte.is_ascii_digit()
+            }
+        });
+    if !shaped {
+        return false;
+    }
+    match (
+        text[0..4].parse::<i32>(),
+        text[5..7].parse::<i32>(),
+        text[8..10].parse::<i32>(),
+    ) {
+        (Ok(year), Ok(month), Ok(day)) => {
+            year >= 1 && gtk::glib::DateTime::from_local(year, month, day, 0, 0, 0.0).is_ok()
+        }
+        _ => false,
+    }
+}
+` : ""}`)] : []),
     file("src/platform/runtime.rs", String.raw`
 use std::sync::OnceLock;
 
@@ -403,7 +439,7 @@ pub fn runtime() -> &'static Runtime {
 ${settings ? `use ${crate}::config::Settings;
 ` : ""}use ${crate}::paths;
 use ${crate}::platform::atomic_file;
-${clock ? `use ${crate}::platform::clock::{Clock, SystemClock};
+${clock ? `use ${crate}::platform::clock::{Clock, SystemClock${dates ? ", is_calendar_date, today_string" : ""}};
 ` : ""}${records ? `use ${crate}::platform::sqlite::Database;
 ` : ""}
 #[test]
@@ -453,7 +489,42 @@ fn sqlite_sets_user_version() {
 fn system_clock_reports_epoch_milliseconds() {
     assert!(SystemClock.now_millis() > 1_700_000_000_000);
 }
-` : ""}`),
+${dates ? `
+struct FixedClock(i64);
+
+impl Clock for FixedClock {
+    fn now_millis(&self) -> i64 {
+        self.0
+    }
+}
+
+#[test]
+fn today_string_is_a_local_calendar_day() {
+    // 2023-11-14T22:13:20Z is the 14th or the 15th depending on the local zone.
+    let today = today_string(&FixedClock(1_700_000_000_000));
+    assert!(today == "2023-11-14" || today == "2023-11-15", "{today}");
+    assert!(is_calendar_date(&today_string(&SystemClock)));
+}
+
+#[test]
+fn calendar_dates_are_real_days_in_one_shape() {
+    assert!(is_calendar_date("2024-02-29"));
+    for text in [
+        "",
+        "2024-02-30",
+        "2023-02-29",
+        "2024-13-01",
+        "2024-00-10",
+        "24-02-10",
+        "2024-2-10",
+        "2024/02/10",
+        "2024-02-1x",
+        "é024-02-10",
+    ] {
+        assert!(!is_calendar_date(text), "{text}");
+    }
+}
+` : ""}` : ""}`),
     file(`resources/${identity.bundleId}.desktop`, String.raw`
 [Desktop Entry]
 Name=${identity.projectName}

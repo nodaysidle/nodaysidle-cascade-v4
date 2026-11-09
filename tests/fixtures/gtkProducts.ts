@@ -26,7 +26,7 @@ export const wineCellarBlueprint: SemanticBlueprint = {
   dataObjects: [
     { name: "Bottles", purpose: "One record per bottle.", sensitivity: "personal", retentionIntent: "Keep until the user removes it.", storage: "records", writeMode: "direct", singleRecord: false, fields: [
       { name: "Name", valueType: "text", optional: false },
-      { name: "Vintage year", valueType: "whole-number", optional: false },
+      { name: "Vintage year", valueType: "whole-number", optional: false, min: 1000, max: 9999 },
       { name: "Bottle count", valueType: "whole-number", optional: false },
     ] },
   ],

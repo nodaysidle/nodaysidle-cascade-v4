@@ -286,7 +286,7 @@ describe("GTK round-5 compiler-owned facts", () => {
     const add = task(tasks, "TASK-05-ADD-CHORE")
     expect(add).toContain('Save slot button is labelled "Add"')
     expect(add).toContain("form_state(values) -> {save_enabled, errors}")
-    expect(add).toContain("reset to empty after a successful save and every time the dialog opens")
+    expect(add).toContain("a text or number input resets to empty; this happens after a successful save and every time the add dialog opens")
     expect(add).not.toContain("an edit task reuses them")
     expect(add).not.toMatch(/, \.|,\s*,/)
     const list = task(tasks, "TASK-04-CHORE-LIST")
