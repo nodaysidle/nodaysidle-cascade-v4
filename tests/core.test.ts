@@ -376,7 +376,7 @@ describe("v4 deterministic core", () => {
     expect(rules(clean)).not.toEqual(expect.arrayContaining(["agent-ready.shared-files"]))
     const noSharedLines = { ...clean, "AGENTS.md": clean["AGENTS.md"]!.replace(/^- Shared file .*\n/gm, "") }
     expect(rules(noSharedLines)).toContain("agent-ready.shared-files")
-    const twoSettings = { ...clean, "TRD.md": `${clean["TRD.md"]}\n- Settings: $XDG_CONFIG_HOME/${packet.graph.identity.bundleId}/other.json.` }
+    const twoSettings = { ...clean, "TRD.md": `${clean["TRD.md"]}\n- Settings: $XDG_CONFIG_HOME/${packet.graph.identity.bundleId}/settings.json and $XDG_CONFIG_HOME/${packet.graph.identity.bundleId}/other.json.` }
     expect(rules(twoSettings)).toContain("agent-ready.settings-name")
     const wrongDesktop = { ...clean, "TRD.md": `${clean["TRD.md"]}\n- File: resources/${packet.projectSlug}.desktop` }
     expect(rules(wrongDesktop)).toContain("agent-ready.desktop-id")

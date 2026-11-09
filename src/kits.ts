@@ -32,7 +32,7 @@ function gtkKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint): KitF
   const slug = identity.slug
   const crate = crateName(slug)
   const { records, secrets, http, optionalDeps } = rustKitHelpers(blueprint)
-  const needsBackground = blueprint.platformNeeds.includes("background-execution") || blueprint.platformNeeds.includes("launch-at-login")
+  const { settings, background: needsBackground, clock, dbus } = gtkKitFlags(blueprint)
   return [
     file("README.md", String.raw`
 # Starter kit
@@ -45,10 +45,9 @@ helpers, or the error path with a test double.
 Shipped helpers:
 - src/lib.rs, src/main.rs, src/app.rs: AdwApplication entry and one window.
 - src/state.rs: AppState.
-- src/config.rs, src/paths.rs: atomic JSON settings under XDG config.
-- src/platform/atomic_file.rs: same-directory temporary file and rename.
-${records ? "- src/platform/sqlite.rs: SQLite with PRAGMA user_version.\n" : ""}${secrets ? "- src/platform/credentials.rs: Secret Service through the keyring crate.\n" : ""}${http ? "- src/platform/http.rs: one reqwest client.\n" : ""}- src/platform/runtime.rs: one shared tokio runtime for async work.
-- tests/contract_tests.rs: storage, path, and SQLite tests.
+${settings ? "- src/config.rs, src/paths.rs: atomic JSON settings under XDG config.\n" : "- src/paths.rs: XDG data and runtime paths. This product declares no settings, so there is no settings file or settings type.\n"}- src/platform/atomic_file.rs: same-directory temporary file and rename.
+${clock ? "- src/platform/clock.rs: the Clock trait and SystemClock; owners take time only through a Clock they are given.\n" : ""}${records ? "- src/platform/sqlite.rs: SQLite with PRAGMA user_version.\n" : ""}${secrets ? "- src/platform/credentials.rs: Secret Service through the keyring crate.\n" : ""}${http ? "- src/platform/http.rs: one reqwest client.\n" : ""}- src/platform/runtime.rs: one shared tokio runtime for async work.
+- tests/contract_tests.rs: atomic write${settings ? ", settings" : ""}${records ? ", SQLite" : ""}${clock ? ", clock" : ""} and path tests.
 
 The task that owns a platform owner adds its module to src/platform/mod.rs; a feature owner adds
 its module to src/features/mod.rs and constructs it in src/app.rs.
@@ -101,8 +100,7 @@ tempfile = "3"
 `),
     file("src/lib.rs", String.raw`
 pub mod app;
-pub mod config;
-pub mod features;
+${settings ? "pub mod config;\n" : ""}pub mod features;
 pub mod paths;
 pub mod platform;
 pub mod state;
@@ -170,7 +168,7 @@ impl Default for AppState {
     }
 }
 `),
-    file("src/config.rs", String.raw`
+    ...(settings ? [file("src/config.rs", String.raw`
 use serde::{Deserialize, Serialize};
 
 use crate::paths;
@@ -202,17 +200,17 @@ pub fn save(settings: &Settings) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(settings).map_err(|error| error.to_string())?;
     atomic_file::write_atomic(&paths::settings_path(), &bytes).map_err(|error| error.to_string())
 }
-`),
+`)] : []),
     file("src/paths.rs", String.raw`
 use std::path::PathBuf;
 
-pub fn config_dir() -> PathBuf {
+${settings ? `pub fn config_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from(".config"))
         .join("${identity.bundleId}")
 }
 
-pub fn data_dir() -> PathBuf {
+` : ""}pub fn data_dir() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from(".local/share"))
         .join("${identity.bundleId}")
@@ -224,11 +222,11 @@ pub fn runtime_dir() -> PathBuf {
         .join("${identity.bundleId}")
 }
 
-pub fn settings_path() -> PathBuf {
+${settings ? `pub fn settings_path() -> PathBuf {
     config_dir().join("settings.json")
 }
 
-${records ? `pub fn database_path() -> PathBuf {
+` : ""}${records ? `pub fn database_path() -> PathBuf {
     data_dir().join("records.sqlite3")
 }
 
@@ -238,7 +236,7 @@ ${records ? `pub fn database_path() -> PathBuf {
 `),
     file("src/platform/mod.rs", String.raw`
 pub mod atomic_file;
-${[...(secrets ? ["pub mod credentials;"] : []), ...(http ? ["pub mod http;"] : []), "pub mod runtime;", ...(records ? ["pub mod sqlite;"] : [])].join("\n")}
+${[...(clock ? ["pub mod clock;"] : []), ...(secrets ? ["pub mod credentials;"] : []), ...(http ? ["pub mod http;"] : []), "pub mod runtime;", ...(records ? ["pub mod sqlite;"] : [])].join("\n")}
 `),
     file("src/platform/atomic_file.rs", String.raw`
 use std::fs;
@@ -348,6 +346,25 @@ pub fn client() -> reqwest::Client {
         .expect("HTTP client construction is infallible for the default configuration")
 }
 `)] : []),
+    ...(clock ? [file("src/platform/clock.rs", String.raw`
+use std::time::{SystemTime, UNIX_EPOCH};
+
+// The one source of time: owners take a Clock as a parameter; tests pass their own stepping or fixed clock.
+pub trait Clock {
+    fn now_millis(&self) -> i64;
+}
+
+pub struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now_millis(&self) -> i64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_millis() as i64)
+            .unwrap_or(0)
+    }
+}
+`)] : []),
     file("src/platform/runtime.rs", String.raw`
 use std::sync::OnceLock;
 
@@ -369,11 +386,26 @@ pub fn runtime() -> &'static Runtime {
 // depends only on the platform traits in this crate.
 `),
     file("tests/contract_tests.rs", String.raw`
-use ${crate}::config::Settings;
-use ${crate}::paths;
+${settings ? `use ${crate}::config::Settings;
+` : ""}use ${crate}::paths;
 use ${crate}::platform::atomic_file;
-${records ? `use ${crate}::platform::sqlite::Database;
+${clock ? `use ${crate}::platform::clock::{Clock, SystemClock};
+` : ""}${records ? `use ${crate}::platform::sqlite::Database;
 ` : ""}
+#[test]
+fn atomic_write_replaces_existing_content() {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let path = directory.path().join("value.json");
+    atomic_file::write_atomic(&path, b"first").expect("first write");
+    atomic_file::write_atomic(&path, b"second").expect("second write");
+    assert_eq!(std::fs::read(&path).expect("read"), b"second");
+}
+
+#[test]
+fn data_dir_is_named_after_the_application_id() {
+    assert!(paths::data_dir().ends_with("${identity.bundleId}"));
+}
+${settings ? `
 #[test]
 fn settings_round_trip_is_atomic() {
     let directory = tempfile::tempdir().expect("temporary directory");
@@ -384,7 +416,13 @@ fn settings_round_trip_is_atomic() {
     assert_eq!(read, bytes);
 }
 
-${records ? `#[test]
+#[test]
+fn settings_default_is_stable() {
+    assert_eq!(Settings::default().theme, "system");
+    assert!(paths::settings_path().ends_with("settings.json"));
+}
+` : ""}${records ? `
+#[test]
 fn sqlite_sets_user_version() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let path = directory.path().join("records.sqlite3");
@@ -396,13 +434,12 @@ fn sqlite_sets_user_version() {
     assert!(version >= 1);
     drop(database);
 }
-
-` : ""}#[test]
-fn settings_default_is_stable() {
-    assert_eq!(Settings::default().theme, "system");
-    assert!(paths::settings_path().ends_with("settings.json"));
+` : ""}${clock ? `
+#[test]
+fn system_clock_reports_epoch_milliseconds() {
+    assert!(SystemClock.now_millis() > 1_700_000_000_000);
 }
-`),
+` : ""}`),
     file(`resources/${identity.bundleId}.desktop`, String.raw`
 [Desktop Entry]
 Name=${identity.projectName}
@@ -463,7 +500,7 @@ pkgdesc="${identity.projectName}"
 arch=('x86_64' 'aarch64')
 url="https://github.com/nodaysidle"
 license=('MIT')
-depends=('gtk4' 'libadwaita' 'dbus')
+depends=('gtk4' 'libadwaita'${dbus ? " 'dbus'" : ""})
 makedepends=('cargo')
 source=()
 
@@ -520,13 +557,13 @@ install -m644 "resources/${identity.bundleId}.desktop" "$install_dir/share/appli
 install -m644 "resources/${identity.bundleId}.metainfo.xml" "$install_dir/share/metainfo/${identity.bundleId}.metainfo.xml"
 install -m644 "resources/icons/hicolor/scalable/apps/${slug}.svg" "$install_dir/share/icons/hicolor/scalable/apps/${slug}.svg"
 
-if [ -f "resources/${slug}.service" ]; then
+${needsBackground ? `if [ -f "resources/${slug}.service" ]; then
   mkdir -p "$HOME/.config/systemd/user"
   install -m644 "resources/${slug}.service" "$HOME/.config/systemd/user/${slug}.service"
   systemctl --user daemon-reload
 fi
 
-echo "Installed $app_id under $install_dir"
+` : ""}echo "Installed $app_id under $install_dir"
 `),
   ]
 }
@@ -544,6 +581,25 @@ export function rustKitHelpers(blueprint: NormalizedBlueprint): { records: boole
     ...(http ? ['reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }'] : []),
   ].join("\n")
   return { records, secrets, http, optionalDeps }
+}
+
+// The GTK kit, its locked stack text, and its preset wording all read these flags so they cannot drift apart.
+export function gtkKitFlags(blueprint: NormalizedBlueprint): { settings: boolean; background: boolean; notifications: boolean; dbus: boolean; clock: boolean; portal: boolean; textFields: boolean; textLists: boolean } {
+  const { secrets } = rustKitHelpers(blueprint)
+  const notifications = blueprint.platformNeeds.includes("notifications")
+  const fields = blueprint.domainData.flatMap(item => item.fields)
+  return {
+    settings: blueprint.persistenceNeeds.some(need => need.storage === "settings"),
+    background: blueprint.platformNeeds.includes("background-execution") || blueprint.platformNeeds.includes("launch-at-login"),
+    notifications,
+    // keyring (Secret Service) and desktop notifications talk to the session bus.
+    dbus: secrets || notifications,
+    clock: fields.some(field => field.valueType === "date" || field.valueType === "date-time")
+      || blueprint.features.some(feature => feature.runsEverySeconds !== null || feature.runsDailyAt !== null),
+    portal: blueprint.permissionNeeds.some(item => item.capability === "filesystem"),
+    textFields: fields.some(field => field.valueType === "text" || field.valueType === "long-text"),
+    textLists: fields.some(field => field.valueType === "text-list"),
+  }
 }
 
 const WAYBAR_DEFAULT_SERVICE_SECONDS = 900

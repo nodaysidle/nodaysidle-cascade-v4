@@ -3,6 +3,7 @@ import { ANDROID_SDK } from "./androidKit"
 import { ASTRO_BUDGET_TEXT, astroStaticContentSite } from "./astroWeb"
 import type { NormalizedBlueprint } from "./compiler"
 import type { FeatureSurface } from "./schema"
+import { gtkSpecialize } from "./gtkContracts"
 import { tauriSpecialize } from "./tauriContracts"
 
 export const PRESET_IDS = [
@@ -417,6 +418,8 @@ function androidOwnerFiles(input: OwnerFileInput): OwnerFiles {
 
 const linuxGtk: PresetContract = {
   id: "linux-wayland-gtk4-desktop",
+  providerNotes: ["Write a timing or record-count target (for example a response time for a number of records) only when the idea states one, and then as a bound on a display-free operation such as filtering that many records in memory, never as a whole-screen render time. A length limit on text counts Unicode scalar values of the trimmed text."],
+  specialize: gtkSpecialize,
   label: "Linux Wayland GTK4 Desktop",
   platform: "Linux (Wayland; Arch, Omarchy, Hyprland)",
   implementationMarker: "AdwApplication",

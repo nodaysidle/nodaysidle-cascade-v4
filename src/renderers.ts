@@ -252,7 +252,10 @@ function renderTRD(graph: ProjectGraph): string {
   ].join("\n\n") + "\n"
 }
 
-function renderTask(task: GraphTask): string {
+function renderTask(task: GraphTask, kitPaths: readonly string[] = []): string {
+  // The foundation task does not create a file the kit already copied; it verifies it.
+  const foundationKit = task.id === "TASK-01-FOUNDATION" ? task.filesToCreate.filter(file => kitPaths.includes(file)) : []
+  const created = task.filesToCreate.filter(file => !foundationKit.includes(file))
   return [
     `### ${task.id} — ${task.title}`,
     "",
@@ -262,7 +265,8 @@ function renderTask(task: GraphTask): string {
     `- Requirements: ${task.requirementIds.join(", ") || "none"}`,
     `- Contracts: ${task.contractIds.join(", ") || "foundation identity and stack contract"}`,
     `- Acceptance IDs: ${task.acceptanceIds.join(", ") || "none"}`,
-    `- Files to create: ${task.filesToCreate.join("; ")}`,
+    `- Files to create: ${created.join("; ") || "none"}`,
+    ...(foundationKit.length ? [`- Files to verify (kit-copied before this task): ${foundationKit.join("; ")}`] : []),
     `- Files to modify: ${task.filesToModify.join("; ") || "none"}`,
     `- Focused tests: ${task.focusedTests.join("; ")}`,
     `- Acceptance criteria: ${task.acceptanceCriteria.join("; ")}`,
@@ -278,7 +282,7 @@ function renderTASKS(graph: ProjectGraph): string {
     `- Phase dependencies: ${phase.dependencies.join(", ") || "none"}`,
     "- Exit rule: all phase tasks and validation commands pass before the next phase starts.",
     "",
-    ...phase.tasks.map(renderTask),
+    ...phase.tasks.map(task => renderTask(task, graph.kitPaths)),
   ].join("\n")).join("\n\n")
 
   return [
