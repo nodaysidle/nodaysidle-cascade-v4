@@ -1,8 +1,8 @@
 # NODAYSIDLE Cascade V4 — repo rules
 
-V4 compiles one software idea plus one locked preset into five Markdown contracts, a starter kit where
-the preset has one, and `blueprint.json`. It is a local-first CLI plus a compiler core; the desktop
-shell is a later milestone.
+V4 compiles one software idea plus one locked preset into five Markdown contracts, a starter kit, and
+`blueprint.json`. It is a local-first compiler core with a CLI (`src/cli.ts`) and a Tauri 2 desktop app
+(`src-tauri/`, UI in `src/app.ts`).
 
 ## Presets
 
@@ -37,8 +37,10 @@ There is no native macOS preset. Do not add one back without an explicit product
 ## Checks
 
 ```sh
+npm run check            # typecheck, tests, frontend build, then in src-tauri: cargo fmt --check, clippy -D warnings, cargo test
 npm run typecheck
 npm test
+(cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test)
 npm run kit:check        # slow: builds every preset kit (GTK4, Waybar, Tauri, Astro, Android)
 # All five kits are built by the live packet output plus the per-kit commands in README.
 CASCADE_LIVE_PROBE=1 npm run probe:live   # paid; reads DEEPSEEK_API_KEY and TYPESAFE_API_KEY
