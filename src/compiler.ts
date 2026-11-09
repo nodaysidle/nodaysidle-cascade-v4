@@ -6,6 +6,7 @@ import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage
 import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers } from "./kits"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
+import { TAURI_WIRE_FORMAT, tauriDocumentInterface, tauriFeatureOps, tauriStoreInterface, tauriTaskPrompt, type TauriData, type TauriFeatureUse } from "./tauriContracts"
 
 export const DOCUMENT_NAMES = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS.md"] as const
 export type DocumentName = (typeof DOCUMENT_NAMES)[number]
@@ -47,6 +48,7 @@ export interface NormalizedBlueprint {
     readonly resourceIds: readonly string[]
     readonly choices: readonly string[]
     readonly surface: FeatureSurface
+    readonly userFileAccess: "none" | "opens" | "saves" | "opens-and-saves"
   }[]
   readonly externalServices: readonly {
     readonly name: string
@@ -127,6 +129,7 @@ export interface GraphFeature {
   readonly requiredOwnerIds: readonly string[]
   readonly choices: readonly string[]
   readonly surface: FeatureSurface
+  readonly userFileAccess: "none" | "opens" | "saves" | "opens-and-saves"
 }
 
 export interface GraphAcceptance {
@@ -542,10 +545,10 @@ export function normalizeBlueprint(source: SemanticBlueprint, presetId: PresetId
   // File access is declared per feature by userFileAccess (the feature shows an Open or Save panel or
   // accepts drops); a feature that reopens a declared document by saved path gets it too.
   const documentNames = new Set(dataObjects.filter(item => item.storage === "document").map(item => item.name))
-  const features = baseFeatures.map(({ usesPlatformNeeds, usesData, usesServices, userFileAccess, ...feature }) => ({
+  const features = baseFeatures.map(({ usesPlatformNeeds, usesData, usesServices, ...feature }) => ({
     ...feature,
     resourceIds: featureResourceIds(
-      [...usesPlatformNeeds, ...(userFileAccess !== "none" || usesData.some(name => documentNames.has(name)) ? ["filesystem" as const] : [])],
+      [...usesPlatformNeeds, ...(feature.userFileAccess !== "none" || usesData.some(name => documentNames.has(name)) ? ["filesystem" as const] : [])],
       usesData,
       usesServices,
     ),
@@ -897,9 +900,14 @@ const VALUE_TYPE_LABEL: Record<DataValueType, string> = {
 
 // The stored shape and the exact operations the declared features perform, so every task that
 // touches the store uses one schema and builds no operation nobody asked for.
-function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainData"][number], features: readonly GraphFeature[]): string[] {
+function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainData"][number], features: readonly GraphFeature[], allData: NormalizedBlueprint["domainData"] = []): string[] {
   const users = features.filter(feature => dataFeatureIds(item.name, features).includes(feature.id))
-  const operations = unique(users.flatMap(feature => feature.dataOperations))
+  const tauri = presetId === "tauri2-rust-typescript-desktop"
+  if (tauri && item.storage === "document") return [tauriDocumentInterface(tauriData(item), users)]
+  const documentResources = new Set(allData.filter(other => other.storage === "document").flatMap(other => dataResourceIds(other.name)))
+  // A Tauri feature that saves a document writes only that file; its records are read, not created.
+  const operationsOf = (feature: GraphFeature): readonly DataOperation[] => tauri ? tauriFeatureOps(item.storage, feature, documentResources) : feature.dataOperations
+  const operations = unique(users.flatMap(operationsOf))
   if (item.storage === "app-files" && operations.length && presetId !== "astro-web") {
     const names = operations.flatMap(operation => operation === "create" ? ["import_file(source)"] : operation === "delete" ? ["remove_file(reference)"] : operation === "read" ? ["file_path(reference)"] : [])
     return [`File operations (OWN-DATA-STORE owns them; feature tasks add no other file access): ${names.join(", ")}. A file is copied into the app folder before its record is inserted, and a failed insert removes the copy.`]
@@ -909,10 +917,14 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
     `Stored fields (one record each, plus a stable generated id): ${item.fields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`,
   ]
   if (operations.length) {
-    lines.push(`Store operations, exactly these and no others: ${operations.map(operation => `${operation} (${users.filter(feature => feature.dataOperations.includes(operation)).map(feature => feature.id).join(", ")})`).join("; ")}.`)
+    lines.push(`Store operations, exactly these and no others: ${operations.map(operation => `${operation} (${users.filter(feature => operationsOf(feature).includes(operation)).map(feature => feature.id).join(", ")})`).join("; ")}.`)
     lines.push(storeInterfaceDetail(presetId, item, operations))
   }
   return lines
+}
+
+function tauriData(item: NormalizedBlueprint["domainData"][number]): TauriData {
+  return { name: item.name, base: slug(item.name).replaceAll("-", "_"), record: pascal(item.name), resource: dataResourceIds(item.name)[0]!, storage: item.storage, fields: item.fields }
 }
 
 // One concrete interface per preset, owned by the data owner, so feature tasks call it and never invent storage access.
@@ -920,10 +932,7 @@ function storeInterfaceDetail(presetId: PresetId, item: NormalizedBlueprint["dom
   const base = slug(item.name).replaceAll("-", "_")
   const record = pascal(item.name)
   const methods = (names: Record<DataOperation, string[]>) => operations.flatMap(operation => names[operation])
-  if (presetId === "tauri2-rust-typescript-desktop") {
-    const commands = methods({ create: [`create_${base}`], read: [`list_${base}`, `get_${base}`], update: [`update_${base}`], delete: [`delete_${base}`] })
-    return `Interface: OWN-DATA-STORE owns every Tauri command for ${item.name} and registers them in src-tauri/src/lib.rs: ${commands.join(", ")}. Each takes and returns the stored fields above (ids are i64) and returns the allowlisted error enum on failure; feature tasks call them with invoke and add no Rust command of their own.`
-  }
+  if (presetId === "tauri2-rust-typescript-desktop") return tauriStoreInterface(tauriData(item), operations)
   if (presetId === "android-kotlin-compose") {
     const functions = methods({ create: ["insert"], read: ["observeAll", "getById"], update: ["update"], delete: ["delete"] })
     return `Interface: OWN-DATA-STORE owns one Room entity ${record}Entity with the stored fields above and one ${record}Dao with exactly: ${functions.join(", ")}; feature tasks use a repository over that DAO and add no entity or query of their own.`
@@ -1056,6 +1065,13 @@ function buildOwnersAndContracts(
   }
 
   const dataOwnerId = blueprint.domainData.length || blueprint.persistenceNeeds.length ? "OWN-DATA-STORE" : lifecycleOwnerId
+  let wireFormatPending = preset.id === "tauri2-rust-typescript-desktop"
+  // The Tauri wire format is stated once, on the first data contract that defines commands.
+  const tauriWireFormatFirst = (details: string[]): string[] => {
+    if (!wireFormatPending || !details.some(detail => detail.startsWith("Interface: "))) return details
+    wireFormatPending = false
+    return [...details, TAURI_WIRE_FORMAT]
+  }
   for (const item of blueprint.domainData) {
     const credentialData = item.storage === "secret"
     const inMemoryData = item.storage === "session"
@@ -1064,7 +1080,7 @@ function buildOwnersAndContracts(
       ? (credentialServices.length
         ? unique(credentialServices.flatMap(service => credentialDetails(preset.id, identity, service.name, service.credentialRequirement)))
         : credentialDetails(preset.id, identity, item.name, "credential"))
-      : [...dataShapeDetails(preset.id, item, features), `Retention: ${item.retention}`, `Sensitivity: ${item.sensitivity}`]
+      : [...tauriWireFormatFirst(dataShapeDetails(preset.id, item, features, blueprint.domainData)), `Retention: ${item.retention}`, `Sensitivity: ${item.sensitivity}`]
     contracts.push(contract(
       `CON-DATA-${slug(item.name).toUpperCase()}`,
       "data",
@@ -1495,6 +1511,34 @@ function buildPhases(
   return { owners, phases }
 }
 
+// Applies the preset's blueprint- and option-dependent overrides; the graph and the audit both read the result.
+export function specializePreset(preset: PresetContract, blueprint: NormalizedBlueprint, options: Readonly<Record<string, PresetOptionValue>>): PresetContract {
+  return preset.specialize ? { ...preset, ...preset.specialize(preset, blueprint, options) } : preset
+}
+
+// Tauri task prompts name the exact commands, wrapper, wire format, and clock a task needs.
+function refineTauriPhases(phases: readonly GraphPhase[], owners: readonly GraphOwner[], features: readonly GraphFeature[], blueprint: NormalizedBlueprint, kitPaths: readonly string[]): GraphPhase[] {
+  const data = blueprint.domainData.map(tauriData)
+  const hasRecords = blueprint.persistenceNeeds.some(need => need.storage === "records")
+  const shortcut = blueprint.platformNeeds.includes("global-hotkey")
+  return phases.map(phase => ({
+    ...phase,
+    tasks: phase.tasks.map(task => {
+      const kind = task.id === "TASK-01-FOUNDATION" ? "foundation" as const : owners.find(owner => owner.id === task.ownerIds[0])?.kind
+      if (!kind) return task
+      const extra = tauriTaskPrompt({
+        kind,
+        features: features.filter(feature => task.featureIds.includes(feature.id)),
+        data,
+        hasRecords,
+        shortcut,
+        ownFiles: kind === "foundation" ? task.filesToCreate.filter(file => !kitPaths.includes(file)) : undefined,
+      })
+      return extra ? { ...task, prompt: `${task.prompt} ${extra}` } : task
+    }),
+  }))
+}
+
 function recoveryRulesFor(preset: PresetContract, blueprint: NormalizedBlueprint): readonly string[] {
   const interactive = blueprint.externalServices.length > 0 || blueprint.permissionNeeds.length > 0 || blueprint.platformNeeds.length > 0
   return preset.staticRecoveryRules && !interactive ? preset.staticRecoveryRules : preset.recoveryRules
@@ -1512,8 +1556,9 @@ function lockedStackFor(preset: PresetContract, blueprint: NormalizedBlueprint):
 }
 
 export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: PresetId, presetOptions: Readonly<Record<string, PresetOptionValue>> = {}): ProjectGraph {
-  const preset = PRESETS[presetId]
-  if (!preset) throw new Error(`Unknown preset: ${String(presetId)}`)
+  const basePreset = PRESETS[presetId]
+  if (!basePreset) throw new Error(`Unknown preset: ${String(presetId)}`)
+  const preset = specializePreset(basePreset, blueprint, presetOptions)
   const identity = projectIdentity(blueprint.projectName)
   const featureIds = allocateStableIds("FEAT", blueprint.features.map(feature => feature.name))
   const resolvedFeatures = resolveRequiredOwners(blueprint.features.map((feature, index): GraphFeature => {
@@ -1547,6 +1592,7 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
       requiredOwnerIds: [],
       choices: feature.choices,
       surface: feature.surface,
+      userFileAccess: feature.userFileAccess,
     }
   }))
   const { features, acceptance, requirements } = lowerAcceptanceOwnership(resolvedFeatures)
@@ -1570,7 +1616,9 @@ export function compileProjectGraph(blueprint: NormalizedBlueprint, presetId: Pr
     return [files.implementationFile, files.focusedTestFile]
   }))
   const kitFoundationFiles = kitPaths.filter(path => !preset.sourceLayout(identity).includes(path) && !packagingOwned.has(path) && !featureOwnedFiles.has(path))
-  const { owners, phases } = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices, kitFoundationFiles)
+  const built = buildPhases(preset, identity, ownerDrafts, contracts, features, requirements, acceptance, astroPlan, integrationServices, kitFoundationFiles)
+  const owners = built.owners
+  const phases = presetId === "tauri2-rust-typescript-desktop" ? refineTauriPhases(built.phases, owners, features, blueprint, kitPaths) : built.phases
   const persistenceEnabled = blueprint.persistenceNeeds.length > 0
   const declaredStorage = new Set(blueprint.persistenceNeeds.map(p => p.storage))
   const persistenceDecision = persistenceEnabled
@@ -1680,7 +1728,7 @@ export async function compileNormalizedPacket(
   const documents = renderPacket(graph)
   const repeatedDocuments = renderPacket(graph)
   onProgress?.("export-gate")
-  const packetIssues = auditPacket(graph, documents, PRESETS[presetId])
+  const packetIssues = auditPacket(graph, documents, specializePreset(PRESETS[presetId], graph.blueprint, graph.presetOptions))
   const renderIssues: AuditFailure[] = DOCUMENT_NAMES
     .filter(name => repeatedDocuments[name] !== documents[name])
     .map(name => ({ rule: "render.deterministic", path: name, message: `${name} changed across repeated local rendering.` }))

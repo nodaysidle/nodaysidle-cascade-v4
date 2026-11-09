@@ -30,7 +30,8 @@ const PLUGINS = {
   shortcut: {
     crate: "tauri-plugin-global-shortcut", crateVersion: "2.3.2", npm: "@tauri-apps/plugin-global-shortcut", npmVersion: "2.3.2",
     init: "tauri_plugin_global_shortcut::Builder::new().build()",
-    permissions: ["global-shortcut:allow-register", "global-shortcut:allow-unregister", "global-shortcut:allow-is-registered"],
+    // src/shortcut.ts calls only register and unregister.
+    permissions: ["global-shortcut:allow-register", "global-shortcut:allow-unregister"],
   },
   autostart: {
     crate: "tauri-plugin-autostart", crateVersion: "2.5.1", npm: "@tauri-apps/plugin-autostart", npmVersion: "2.5.1",
@@ -55,11 +56,14 @@ export interface TauriKitUses {
   readonly secrets: boolean
   readonly services: boolean
   readonly tray: boolean
+  // True when the preset option linuxPackaging is set: the kit ships no macOS packaging or signing.
+  readonly linuxOnly: boolean
+  readonly shortcut: boolean
   readonly plugins: readonly TauriPlugin[]
   readonly usageDescriptions: ReadonlyArray<readonly [string, string]>
 }
 
-export function tauriKitUses(blueprint: NormalizedBlueprint, usageDescriptions: ReadonlyArray<readonly [string, string]>): TauriKitUses {
+export function tauriKitUses(blueprint: NormalizedBlueprint, usageDescriptions: ReadonlyArray<readonly [string, string]>, options: Readonly<Record<string, unknown>> = {}): TauriKitUses {
   const storage = new Set(blueprint.persistenceNeeds.map(need => need.storage))
   const needs = new Set<string>(blueprint.platformNeeds)
   // The normalized needs include filesystem whenever a feature shows a file panel or reopens a document.
@@ -71,6 +75,8 @@ export function tauriKitUses(blueprint: NormalizedBlueprint, usageDescriptions: 
       || blueprint.domainData.some(item => item.storage === "secret"),
     services: blueprint.externalServices.length > 0,
     tray: needs.has("background-execution"),
+    linuxOnly: typeof options.linuxPackaging === "string" && options.linuxPackaging.length > 0,
+    shortcut: needs.has("global-hotkey"),
     plugins: [
       ...(needs.has("clipboard") ? [PLUGINS.clipboard] : []),
       ...(needs.has("global-hotkey") ? [PLUGINS.shortcut] : []),
@@ -92,12 +98,13 @@ export function tauriKitFiles(identity: ProjectIdentity, uses: TauriKitUses): Ta
     { path: "src/api.ts", content: API_TS },
     { path: "src/errors.ts", content: ERRORS_TS },
     { path: "src/ui.ts", content: UI_TS },
+    ...(uses.shortcut ? [{ path: "src/shortcut.ts", content: SHORTCUT_TS }, { path: "tests/shortcut.test.ts", content: SHORTCUT_TEST_TS }] : []),
     { path: "src/main.ts", content: mainTs(identity) },
     { path: "src/style.css", content: STYLE_CSS },
     { path: "tests/kit.test.ts", content: KIT_TEST_TS },
     { path: "tests/ui.test.ts", content: UI_TEST_TS },
     { path: "app-icon.svg", content: APP_ICON_SVG },
-    { path: "scripts/package_app.sh", content: packageScript(identity) },
+    ...(uses.linuxOnly ? [] : [{ path: "scripts/package_app.sh", content: packageScript(identity) }]),
     { path: "scripts/package_linux.sh", content: packageLinuxScript(identity) },
     { path: "src-tauri/Cargo.toml", content: cargoToml(identity, lib, uses) },
     { path: "src-tauri/build.rs", content: BUILD_RS },
@@ -110,7 +117,7 @@ export function tauriKitFiles(identity: ProjectIdentity, uses: TauriKitUses): Ta
     ...(uses.records ? [{ path: "src-tauri/src/database.rs", content: DATABASE_RS }] : []),
     ...(uses.secrets ? [{ path: "src-tauri/src/vault.rs", content: VAULT_RS }] : []),
     { path: "src-tauri/tests/kit_tests.rs", content: kitTestsRs(lib, uses) },
-    { path: "src-tauri/tauri.conf.json", content: tauriConf(identity) },
+    { path: "src-tauri/tauri.conf.json", content: tauriConf(identity, uses.linuxOnly) },
     { path: "src-tauri/capabilities/default.json", content: capabilities(uses) },
     ...(uses.usageDescriptions.length ? [{ path: "src-tauri/Info.plist", content: infoPlist(uses.usageDescriptions) }] : []),
   ]
@@ -137,8 +144,10 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     ...(uses.services ? ["- src-tauri/Cargo.toml already has reqwest (json) for the declared services; integration owners use one reqwest::Client and add no HTTP crate of their own."] : []),
     ...(uses.secrets ? ["- vault.rs is the only place secrets are stored: generic passwords in the login keychain under the bundle ID's credentials service. Tests use MemoryStore, never the keychain."] : []),
     ...(uses.tray ? ["- The tray keeps the app running: closing the main window hides it, Show brings it back, and Quit (or quitting from outside) exits. RunEvent::ExitRequested with no exit code is prevented; an explicit exit code is not. Only the main window hides: every other window closes for real, so it is created fresh and loads current data each time it opens instead of showing a stale list."] : []),
+    ...(uses.shortcut ? ["- src/shortcut.ts is the only file that names the system-wide accelerator (DEFAULT_ACCELERATOR, CommandOrControl+Shift+Space). registerShortcut(onPress, onFailure) registers it; a refused registration calls onFailure and returns false, and the app keeps working through its in-app controls. The capability file grants only global-shortcut register and unregister."] : []),
+    ...(uses.records ? ["- src-tauri/tests/kit_tests.rs compares schema_version with database::MIGRATIONS.len(), so adding a migration needs no edit to that test."] : []),
     ...(uses.usageDescriptions.length ? ["- src-tauri/Info.plist holds the privacy usage strings; Tauri merges it into the bundle's Info.plist."] : []),
-    "- scripts/package_app.sh builds only the macOS .app (no DMG), signs it ad hoc, and verifies it; with --install it waits for the running app to quit, moves the installed copy to src-tauri/target/rollback/ (never inside /Applications), installs, restores the previous copy if verification fails, registers, and launches by bundle ID. The first run generates src-tauri/icons from app-icon.svg.",
+    ...(uses.linuxOnly ? [] : ["- scripts/package_app.sh builds only the macOS .app (no DMG), signs it ad hoc, and verifies it; with --install it waits for the running app to quit, moves the installed copy to src-tauri/target/rollback/ (never inside /Applications), installs, restores the previous copy if verification fails, registers, and launches by bundle ID. The first run generates src-tauri/icons from app-icon.svg."]),
     "- scripts/package_linux.sh builds the AppImage, writes dist/, and with --install installs it under ~/.local/bin with a desktop entry and icon. On Arch/Omarchy use it for local proof; the AppImage runs on Wayland with GDK_BACKEND=wayland.",
     "- Versions are exact (= in Cargo.toml, no ^ in package.json) because they are tested together; keep src-tauri/Cargo.lock and package-lock.json from the first build, and change a version only on purpose, never by a broad update.",
     "- Screens are built from src/ui.ts and the classes in src/style.css, never from unstyled elements: button() is sized to its label (primary for the one main action); toolbar() holds a search field and actions; setEnabled() disables a command until it has something to act on (Edit, Delete, Copy with nothing selected); emptyState(title, hint) fills an empty list with one centered message saying how to fill it; list rows use .row with aria-selected for the selection and clampedText() so long text is cut to a few lines with the full text on hover, never a scroll area inside a scrolling list; settings are settingsGroup() sections of settingsRow() lines, label on the left and control on the right, a switchControl() on the same line as its label, and a footnote under the group; body text uses the system font, and monospace only for code.",
@@ -541,7 +550,66 @@ describe("command errors", () => {
 })
 `
 
-// A text source for the app icon; scripts/package_app.sh turns it into src-tauri/icons with tauri icon.
+const SHORTCUT_TS = `import { register, unregister } from "@tauri-apps/plugin-global-shortcut"
+
+/** The one system-wide accelerator the app registers. Change the key combination here and nowhere else. */
+export const DEFAULT_ACCELERATOR = "CommandOrControl+Shift+Space"
+
+/**
+ * Registers DEFAULT_ACCELERATOR. When registration is refused (another app owns the key, or the
+ * session does not allow global shortcuts) onFailure gets the error and this returns false; the app
+ * keeps working through its in-app controls. There is no retry.
+ */
+export const registerShortcut = async (onPress: () => void, onFailure: (error: unknown) => void): Promise<boolean> => {
+  try {
+    await register(DEFAULT_ACCELERATOR, event => {
+      if (event.state === "Pressed") onPress()
+    })
+    return true
+  } catch (error) {
+    onFailure(error)
+    return false
+  }
+}
+
+export const unregisterShortcut = (): Promise<void> => unregister(DEFAULT_ACCELERATOR).catch(() => undefined)
+`
+
+const SHORTCUT_TEST_TS = `import { beforeEach, describe, expect, it, vi } from "vitest"
+
+const plugin = vi.hoisted(() => ({ register: vi.fn(), unregister: vi.fn() }))
+vi.mock("@tauri-apps/plugin-global-shortcut", () => plugin)
+
+import { DEFAULT_ACCELERATOR, registerShortcut } from "../src/shortcut"
+
+describe("global shortcut", () => {
+  beforeEach(() => {
+    plugin.register.mockReset()
+  })
+
+  it("registers the one default accelerator and reacts to key presses only", async () => {
+    plugin.register.mockResolvedValue(undefined)
+    const onPress = vi.fn()
+    expect(await registerShortcut(onPress, vi.fn())).toBe(true)
+    const [accelerator, handler] = plugin.register.mock.calls[0]!
+    expect(accelerator).toBe(DEFAULT_ACCELERATOR)
+    handler({ shortcut: accelerator, id: 1, state: "Released" })
+    expect(onPress).not.toHaveBeenCalled()
+    handler({ shortcut: accelerator, id: 1, state: "Pressed" })
+    expect(onPress).toHaveBeenCalledTimes(1)
+  })
+
+  it("reports a refused registration once and does not throw", async () => {
+    plugin.register.mockRejectedValue(new Error("refused"))
+    const onFailure = vi.fn()
+    expect(await registerShortcut(vi.fn(), onFailure)).toBe(false)
+    expect(onFailure).toHaveBeenCalledTimes(1)
+    expect(plugin.register).toHaveBeenCalledTimes(1)
+  })
+})
+`
+
+// A text source for the app icon; the packaging scripts turn it into src-tauri/icons with tauri icon.
 const APP_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <rect width="1024" height="1024" rx="224" fill="#1d1d1f"/>
   <rect x="272" y="272" width="480" height="480" rx="96" fill="#0a84ff"/>
@@ -1059,7 +1127,9 @@ impl SecretStore for MemoryStore {
 
 function kitTestsRs(lib: string, uses: TauriKitUses): string {
   const commandChecks = [
-    ...(uses.records ? [`    assert_eq!(invoke(&webview, "schema_version", json!({})).unwrap(), json!(0));`] : []),
+    ...(uses.records ? [`    // The data task appends the first migration, so compare with the list instead of a fixed number.
+    let migrations = backend::database::MIGRATIONS.len();
+    assert_eq!(invoke(&webview, "schema_version", json!({})).unwrap(), json!(migrations));`] : []),
     ...(uses.settings ? [`    assert_eq!(invoke(&webview, "save_settings", json!({ "next": {} })).unwrap(), json!({}));`, `    assert_eq!(invoke(&webview, "load_settings", json!({})).unwrap(), json!({}));`] : []),
   ]
   return `use ${lib} as backend;
@@ -1138,7 +1208,7 @@ fn secrets_round_trip_in_the_test_store() {
 ` : ""}`
 }
 
-function tauriConf(identity: ProjectIdentity): string {
+function tauriConf(identity: ProjectIdentity, linuxOnly: boolean): string {
   return `${JSON.stringify({
     $schema: "https://schema.tauri.app/config/2",
     productName: identity.projectName,
@@ -1159,7 +1229,7 @@ function tauriConf(identity: ProjectIdentity): string {
       active: true,
       targets: "all",
       icon: ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
-      macOS: { minimumSystemVersion: "13.0", signingIdentity: "-" },
+      ...(linuxOnly ? {} : { macOS: { minimumSystemVersion: "13.0", signingIdentity: "-" } }),
     },
   }, null, 2)}\n`
 }
