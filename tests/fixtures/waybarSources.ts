@@ -61,7 +61,7 @@ export const airQualityBlueprint: SemanticBlueprint = {
     { name: "Cached air quality index", purpose: "The last good index and the identifier it was fetched for.", sensitivity: "internal", retentionIntent: "Keep until replaced.", storage: "records", writeMode: "direct", singleRecord: true, fields: [{ name: "Index value", valueType: "whole-number", optional: false }, { name: "Fetched at", valueType: "date-time", optional: false }, { name: "Service location identifier", valueType: "text", optional: false }] },
   ],
   externalServices: [
-    { name: "Air quality service", purpose: "Provide the air quality index of a location.", dataSent: ["Service location identifier"], credentialRequired: true, endpoint: "https://api.example.org/feed/{value}/", webPage: "https://example.org/city/{value}/", requestValueFrom: "Service location identifier", responseFields: [{ name: "Index value", valueType: "whole-number", optional: false }] },
+    { name: "Air quality service", purpose: "Provide the air quality index of a location.", dataSent: ["Service location identifier"], credentialRequired: true, endpoint: "https://api.example.org/feed/{value}/", webPage: "https://example.org/city/{value}/", requestValueFrom: "Service location identifier", responseFields: [{ name: "Index value", valueType: "whole-number", optional: false, path: "data.aqi" }] },
   ],
   platformNeeds: ["network", "background-execution"],
   qualityRequirements: ["Text short enough for a bar."],
@@ -74,7 +74,7 @@ export const allSourcesBlueprint: SemanticBlueprint = (() => {
   const all = structuredClone(netSpeedBlueprint)
   all.productName = "System Glance"
   all.features[1]!.systemSource = "network-sent"
-  for (const [name, source] of [["Load readout", "load-average"], ["Memory readout", "memory"], ["Swap readout", "swap"], ["Battery readout", "battery"], ["Disk readout", "disk-space"], ["Temperature readout", "temperature"]] as const) {
+  for (const [name, source] of [["Load readout", "load-average"], ["Memory readout", "memory"], ["Swap readout", "swap"], ["Battery readout", "battery"], ["Disk readout", "disk-space"], ["Disk read readout", "disk-read"], ["Temperature readout", "temperature"]] as const) {
     all.features.push(base(name, `Shows the ${source} reading.`, `The label shows the ${source} reading.`, { usesData: ["Last sample"], dataOperations: [{ data: "Last sample", operations: ["read"] }], systemSource: source }))
   }
   all.ideaCoverage = [{ sentence: 1, features: all.features.map(feature => feature.name), outsideFeatures: "none" }]
@@ -118,10 +118,30 @@ export const sunTimesBlueprint: SemanticBlueprint = {
     { name: "Sunset reading", purpose: "The last good sunset instant and the city it was fetched for.", sensitivity: "internal", retentionIntent: "Keep until replaced.", storage: "records", writeMode: "direct", singleRecord: true, fields: [{ name: "Sunset instant", valueType: "date-time", optional: false }, { name: "City", valueType: "text", optional: false }] },
   ],
   externalServices: [
-    { name: "Sunset service", purpose: "Provide the sunset instant of a city.", dataSent: ["City"], credentialRequired: false, endpoint: "https://api.example.org/sun?city={value}", webPage: "", requestValueFrom: "City", requestValueType: "text", responseFields: [{ name: "Sunset instant", valueType: "date-time", optional: false }] },
+    { name: "Sunset service", purpose: "Provide the sunset instant of a city.", dataSent: ["City"], credentialRequired: false, endpoint: "https://api.example.org/sun?city={value}", webPage: "", requestValueFrom: "City", requestValueType: "text", responseFields: [{ name: "Sunset instant", valueType: "date-time", optional: false, path: "results.sunset" }] },
   ],
   platformNeeds: ["network", "background-execution"],
   qualityRequirements: ["Text short enough for a bar."],
   productConstraints: ["Send only the city to the service."],
   ideaCoverage: [{ sentence: 1, features: ["Scheduled sunset refresh", "Sunset label"], outsideFeatures: "none" }],
 }
+
+// A service module whose label shows a fixed unit with one decimal: the units file ships with no system source.
+export const unitLabelBlueprint: SemanticBlueprint = (() => {
+  const blueprint = structuredClone(airQualityBlueprint)
+  blueprint.features[1]!.labelTemplate = "{value} km/h"
+  blueprint.features[1]!.unit = "km/h"
+  blueprint.features[1]!.valueDecimals = 1
+  return blueprint
+})()
+
+// A disk read speed: the cumulative sectors counter stored with its sample time, shown in a fixed MB/s.
+export const diskReadBlueprint: SemanticBlueprint = (() => {
+  const blueprint = structuredClone(netSpeedBlueprint)
+  blueprint.productName = "Disk IO"
+  for (const feature of blueprint.features) feature.systemSource = "disk-read"
+  blueprint.features[0]!.labelTemplate = "{value} MB/s"
+  blueprint.features[0]!.unit = "MB/s"
+  blueprint.features[0]!.valueDecimals = 1
+  return blueprint
+})()

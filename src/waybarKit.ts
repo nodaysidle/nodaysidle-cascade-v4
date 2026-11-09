@@ -6,12 +6,13 @@ export interface WaybarKitSource {
 }
 
 // The Rust helpers for the declared system sources and the one place the unit convention lives.
-export function waybarSystemKit(sources: readonly SystemSource[], crate: string): WaybarKitSource[] {
-  if (sources.length === 0) return []
+export function waybarSystemKit(sources: readonly SystemSource[], crate: string, units = false): WaybarKitSource[] {
+  if (sources.length === 0 && !units) return []
   const has = (source: SystemSource) => sources.includes(source)
   const net = has("network-received") || has("network-sent")
-  const sizes = net || has("memory") || has("swap") || has("disk-space")
-  const parts: string[] = [`/// Operating-system sources, each read through SystemReader so tests inject their own reader.
+  const counter = net || has("disk-read")
+  const sizes = units
+  const parts: string[] = sources.length === 0 ? [] : [`/// Operating-system sources, each read through SystemReader so tests inject their own reader.
 pub trait SystemReader {
     type Reading;
     fn read(&self) -> Result<Self::Reading, String>;
@@ -22,13 +23,141 @@ fn read_text(path: &str) -> Result<String, String> {
 }
 ` : ""}`]
   const tests: string[] = []
-  if (net) {
+  if (counter) {
     parts.push(`/// A counter that went backwards (reset or interface change) is a change of 0 for that sample.
 pub fn counter_change(previous: u64, current: u64) -> u64 {
     current.saturating_sub(previous)
 }
+`)
+  }
+  if (has("disk-read")) {
+    parts.push(`pub const DISKSTATS_PATH_ENV: &str = "MODULE_DISKSTATS_PATH";
+pub const DISKSTATS_PATH: &str = "/proc/diskstats";
+const SECTOR_BYTES: u64 = 512;
 
-pub const NET_DEV_PATH: &str = "/proc/net/dev";
+/// A whole disk (sdX, hdX, vdX, xvdX, nvmeXnY, mmcblkX), never a partition, loop, ram, or device-mapper device.
+pub fn is_whole_disk(name: &str) -> bool {
+    let letters = |rest: &str| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_lowercase());
+    let digits = |rest: &str| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit());
+    for prefix in ["sd", "hd", "vd", "xvd"] {
+        if let Some(rest) = name.strip_prefix(prefix) {
+            return letters(rest);
+        }
+    }
+    if let Some(rest) = name.strip_prefix("nvme") {
+        return rest
+            .split_once('n')
+            .is_some_and(|(controller, namespace)| digits(controller) && digits(namespace));
+    }
+    name.strip_prefix("mmcblk").is_some_and(digits)
+}
+
+/// Total bytes read since boot: the sectors-read column (field 6 after major, minor, name) of every whole
+/// disk in /proc/diskstats, summed and multiplied by 512.
+pub fn parse_disk_read(text: &str) -> Result<u64, String> {
+    let mut sectors: u64 = 0;
+    let mut seen = false;
+    for line in text.lines() {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        let Some(name) = fields.get(2) else {
+            continue;
+        };
+        if !is_whole_disk(name) {
+            continue;
+        }
+        let value: u64 = fields
+            .get(5)
+            .ok_or_else(|| format!("short line for {name}"))?
+            .parse()
+            .map_err(|_| format!("bad sectors-read counter for {name}"))?;
+        sectors = sectors.saturating_add(value);
+        seen = true;
+    }
+    if seen {
+        Ok(sectors.saturating_mul(SECTOR_BYTES))
+    } else {
+        Err(String::from("no whole disk in diskstats"))
+    }
+}
+
+/// Cumulative bytes read from the whole disks; the file is overridable for tests.
+pub struct DiskReadReader {
+    pub path: String,
+}
+
+impl DiskReadReader {
+    /// Production reads /proc/diskstats unless MODULE_DISKSTATS_PATH names a fixture file.
+    pub fn from_env() -> Self {
+        let path =
+            std::env::var(DISKSTATS_PATH_ENV).unwrap_or_else(|_| String::from(DISKSTATS_PATH));
+        DiskReadReader { path }
+    }
+}
+
+impl SystemReader for DiskReadReader {
+    type Reading = u64;
+    fn read(&self) -> Result<u64, String> {
+        parse_disk_read(&read_text(&self.path)?)
+    }
+}
+`)
+    tests.push(`const DISKSTATS: &str = "   8       0 sda 100 0 2000 50 10 0 80 5 0 40 55
+   8       1 sda1 90 0 1500 40 5 0 40 3 0 30 43
+ 259       0 nvme0n1 200 0 4000 60 20 0 160 9 0 70 69
+ 259       1 nvme0n1p1 190 0 3500 55 15 0 100 7 0 60 62
+   7       0 loop0 5 0 999 1 0 0 0 0 0 1 1
+ 254       0 dm-0 50 0 777 9 0 0 0 0 0 9 9
+";
+
+#[test]
+fn disk_read_sums_the_sectors_of_whole_disks_times_512() {
+    // (2000 + 4000) sectors x 512; partitions, loop, and device-mapper devices are not counted.
+    assert_eq!(parse_disk_read(DISKSTATS), Ok(3_072_000));
+    let only_loop = "   7       0 loop0 5 0 999 1\\n";
+    assert!(parse_disk_read(only_loop).is_err());
+    let short = "   8       0 sda 1 0\\n";
+    assert!(parse_disk_read(short).is_err());
+    assert_eq!(counter_change(3_072_000, 3_584_000), 512_000);
+    assert_eq!(counter_change(3_584_000, 0), 0);
+}
+
+#[test]
+fn whole_disks_are_told_from_partitions() {
+    for name in ["sda", "vdb", "xvda", "hdc", "nvme0n1", "mmcblk0"] {
+        assert!(is_whole_disk(name), "{name}");
+    }
+    for name in [
+        "sda1",
+        "nvme0n1p1",
+        "mmcblk0p2",
+        "loop0",
+        "dm-0",
+        "zram0",
+        "sr0",
+        "md0",
+    ] {
+        assert!(!is_whole_disk(name), "{name}");
+    }
+}
+
+#[test]
+fn the_disk_read_reader_reads_the_overridable_file() {
+    let directory = tempfile::tempdir().expect("temp dir");
+    let path = directory.path().join("diskstats");
+    std::fs::write(&path, DISKSTATS).expect("write fixture");
+    let reader = DiskReadReader {
+        path: path.to_string_lossy().into_owned(),
+    };
+    assert_eq!(reader.read(), Ok(3_072_000));
+    let missing = DiskReadReader {
+        path: directory.path().join("none").to_string_lossy().into_owned(),
+    };
+    assert!(missing.read().is_err());
+}
+`)
+  }
+  if (net) {
+    parts.push(`pub const NET_DEV_PATH: &str = "/proc/net/dev";
 
 /// Sum one /proc/net/dev column (0 = rx_bytes, 8 = tx_bytes) over every interface except lo.
 fn net_column(text: &str, column: usize) -> Result<u64, String> {
@@ -521,13 +650,15 @@ fn temperature_is_the_highest_zone_in_celsius() {
 }
 `)
   }
-  const files: WaybarKitSource[] = [
+  const files: WaybarKitSource[] = sources.length === 0 ? [] : [
     { name: "src/platform/system_source.rs", content: parts.join("\n") },
     { name: "tests/system_source_tests.rs", content: `use ${crate}::platform::system_source::*;\n\n${tests.join("\n")}` },
   ]
   if (sizes) {
     files.push({ name: "src/platform/units.rs", content: `/// Decimal SI units, fixed for every size and rate this module shows: 1 kB = 1000 B, 1 Mb = 1,000,000 bits.
 /// Decimals are fixed: a size shows 2, a rate shows 1 (a size below 1000 B is a whole number of bytes).
+/// Rounding is half away from zero: f64::round of value x 10^decimals, then formatted. Rust's {:.N} on the raw
+/// value is never used for a shown number (it rounds the binary value and can round a decimal tie down).
 pub const SIZE_DECIMALS: usize = 2;
 pub const RATE_DECIMALS: usize = 1;
 const SIZE_UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
@@ -542,13 +673,53 @@ fn scale(mut value: f64, units: &[&'static str]) -> (f64, &'static str) {
     (value, units[index])
 }
 
+/// Round half away from zero at the given number of decimals (1.25 at 1 decimal is 1.3, -1.25 is -1.3).
+pub fn round_half_away(value: f64, decimals: usize) -> f64 {
+    let factor = 10f64.powi(decimals as i32);
+    (value * factor).round() / factor + 0.0 // + 0.0 turns -0.0 into 0.0
+}
+
+/// The number with exactly the given decimals, rounded half away from zero (12.0 at 1 decimal is "12.0").
+pub fn format_decimals(value: f64, decimals: usize) -> String {
+    format!("{:.decimals$}", round_half_away(value, decimals))
+}
+
 /// B below 1000, then kB, MB, GB, TB with the given number of decimals.
 pub fn format_size(bytes: u64, decimals: usize) -> String {
     let (value, unit) = scale(bytes as f64, &SIZE_UNITS);
     if unit == "B" {
         format!("{bytes} B")
     } else {
-        format!("{value:.decimals$} {unit}")
+        format!("{} {unit}", format_decimals(value, decimals))
+    }
+}
+
+/// How many base units (bytes, or bits for b/s, kb/s, Mb/s, Gb/s) one fixed unit holds; None for any other unit.
+pub fn unit_divisor(unit: &str) -> Option<f64> {
+    let base = unit.strip_suffix("/s").map_or(unit, |bare| bare);
+    match base {
+        "B" | "b" => Some(1.0),
+        "kB" | "kb" => Some(1e3),
+        "MB" | "Mb" => Some(1e6),
+        "GB" | "Gb" => Some(1e9),
+        "TB" => Some(1e12),
+        _ => None,
+    }
+}
+
+/// The bare number of an amount in a fixed unit (500,000 B/s in MB/s is "0.5" at 1 decimal): the unit is the
+/// feature's declaration, so the largest-unit choice of format_size and format_bit_rate does not apply.
+pub fn format_in_unit(amount: f64, unit: &str, decimals: usize) -> Result<String, String> {
+    let divisor = unit_divisor(unit).ok_or_else(|| format!("{unit} is not a size or rate unit"))?;
+    Ok(format_decimals(amount / divisor, decimals))
+}
+
+/// Bytes per second from a byte change over whole seconds (0 for 0 seconds).
+pub fn bytes_per_second(bytes: u64, seconds: u64) -> f64 {
+    if seconds == 0 {
+        0.0
+    } else {
+        bytes as f64 / seconds as f64
     }
 }
 
@@ -564,7 +735,7 @@ pub fn bits_per_second(bytes: u64, seconds: u64) -> f64 {
 /// b/s, kb/s, Mb/s, Gb/s with the given number of decimals.
 pub fn format_bit_rate(bits_per_second: f64, decimals: usize) -> String {
     let (value, unit) = scale(bits_per_second, &RATE_UNITS);
-    format!("{value:.decimals$} {unit}")
+    format!("{} {unit}", format_decimals(value, decimals))
 }
 ` })
     files.push({ name: "tests/units_tests.rs", content: `use ${crate}::platform::units::*;
@@ -589,6 +760,40 @@ fn decimals_are_fixed_at_two_for_sizes_and_one_for_rates() {
     assert_eq!(format_size(496_330_000_000, SIZE_DECIMALS), "496.33 GB");
     assert_eq!(format_size(500_000_000_000, SIZE_DECIMALS), "500.00 GB");
     assert_eq!(format_bit_rate(10_000_000.0, RATE_DECIMALS), "10.0 Mb/s");
+}
+
+#[test]
+fn rounding_is_half_away_from_zero_not_the_binary_format() {
+    assert_eq!(format_decimals(1.25, 1), "1.3");
+    assert_eq!(format_decimals(-1.25, 1), "-1.3");
+    assert_eq!(format_decimals(12.0, 1), "12.0");
+    assert_eq!(format_decimals(0.04, 1), "0.0");
+    assert_eq!(format_decimals(2.5, 0), "3");
+    assert_eq!(round_half_away(0.35, 1), 0.4);
+    // 6,250,000 bytes in 5 seconds is 1,250,000 B/s, shown as 1.3 MB/s.
+    assert_eq!(
+        format_in_unit(bytes_per_second(6_250_000, 5), "MB/s", 1),
+        Ok(String::from("1.3"))
+    );
+}
+
+#[test]
+fn a_fixed_unit_scales_to_that_unit_and_never_picks_another() {
+    assert_eq!(
+        format_in_unit(500_000.0, "MB/s", 1),
+        Ok(String::from("0.5"))
+    );
+    assert_eq!(format_in_unit(0.0, "MB/s", 1), Ok(String::from("0.0")));
+    assert_eq!(
+        format_in_unit(2_500_000_000.0, "MB", 2),
+        Ok(String::from("2500.00"))
+    );
+    assert_eq!(
+        format_in_unit(10_000_000.0, "Mb/s", 1),
+        Ok(String::from("10.0"))
+    );
+    assert!(format_in_unit(1.0, "km/h", 1).is_err());
+    assert_eq!(bytes_per_second(100, 0), 0.0);
 }
 
 #[test]

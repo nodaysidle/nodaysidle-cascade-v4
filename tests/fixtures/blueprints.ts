@@ -82,7 +82,7 @@ function blueprint(seed: FixtureSeed): SemanticBlueprint {
       singleRecord: item.singleRecord ?? false,
       fields: item.fields ?? (item.storage === "records" || item.storage === "document" ? [{ name: "Title", valueType: "text" as const, optional: false }] : []),
     })),
-    externalServices: (seed.externalServices ?? []).map(item => ({ endpoint: "https://api.open-meteo.com/v1/forecast", webPage: "", requestValueFrom: "", responseFields: [{ name: "Value", valueType: "text" as const, optional: false }], ...item })),
+    externalServices: (seed.externalServices ?? []).map(item => ({ endpoint: "https://api.open-meteo.com/v1/forecast", webPage: "", requestValueFrom: "", responseFields: [{ name: "Value", valueType: "text" as const, optional: false, path: "value" }], ...item })),
     platformNeeds: [...(seed.platformNeeds ?? [])],
     qualityRequirements: [...(seed.qualityRequirements ?? ["Keyboard-operable controls with visible status and accessible labels."])],
     productConstraints: [...(seed.productConstraints ?? ["Preserve the last valid state across every recoverable failure."])],
