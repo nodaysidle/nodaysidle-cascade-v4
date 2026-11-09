@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { compilePacket, type CompiledPacket } from "../src/compiler"
-import { bareGtkBlueprint, bareWaybarBlueprint, fixtureCases, tidePageBlueprint, tideTickBlueprint } from "./fixtures/blueprints"
+import { bareGtkBlueprint, bareWaybarBlueprint, fixtureCases, lanternBooksBlueprint, tidePageBlueprint, tideTickBlueprint } from "./fixtures/blueprints"
 import { medicineBlueprint } from "./fixtures/medicine"
 import { pantryBlueprint } from "./fixtures/pantry"
 import { airQualityBlueprint, allSourcesBlueprint, netSpeedBlueprint } from "./fixtures/waybarSources"
@@ -119,7 +119,13 @@ describeBuild("v4 starter kits compile and pass their own tests", () => {
   }, 900_000)
 
   // Every Astro fixture: no stored data, one record type with item pages, and several record types.
-  for (const fixture of fixtureCases.filter(item => item.presetId === "astro-web")) {
+  // Plus a counted-sample case (five numbered entries, a time field, long text) built for real.
+  const counted = fixtureCases.find(item => item.blueprint.productName === lanternBooksBlueprint.productName && item.presetId === "astro-web")!
+  const astroFixtures = [
+    ...fixtureCases.filter(item => item.presetId === "astro-web"),
+    { presetId: counted.presetId, blueprint: { ...counted.blueprint, productName: "Counted Samples", dataObjects: counted.blueprint.dataObjects.map((item, index) => index === 0 ? { ...item, entryCount: 5, fields: [...item.fields, { name: "Opens at", valueType: "time" as const, optional: false }] } : item) } },
+  ]
+  for (const fixture of astroFixtures) {
     it(`Astro site kit: ${fixture.blueprint.productName}`, async () => {
       const packet = await compilePacket(fixture.blueprint, fixture.presetId)
       const root = materialize({ ...packet, kit: packet.kit.filter(file => packet.graph.foundationFiles.includes(file.name.replace(/^kit\//, ""))) })

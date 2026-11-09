@@ -11,6 +11,13 @@ export interface AstroCollection {
   readonly name: string
   readonly dataName: string
   readonly fields: readonly DataField[]
+  // The count of entries the idea states for this object when it names none; null otherwise.
+  readonly entryCount: number | null
+}
+
+// The starter seed files of a collection: one, or entryCount numbered sample entries.
+export function seedFileNames(item: Pick<AstroCollection, "entryCount">): string[] {
+  return Array.from({ length: item.entryCount ?? 1 }, (_, index) => `${String(index + 1).padStart(2, "0")}-sample-entry.md`)
 }
 
 export interface AstroRoutePlan {
@@ -62,10 +69,10 @@ export function dataKey(name: string): string {
 export function astroCollections(blueprint: NormalizedBlueprint): AstroCollection[] {
   const stored = blueprint.domainData
     .filter(item => item.storage === "records" && item.fields.length && (item.sensitivity === "public" || item.sensitivity === "internal"))
-    .map(item => ({ name: dataKey(item.name) || "entries", dataName: item.name, fields: item.fields }))
+    .map(item => ({ name: dataKey(item.name) || "entries", dataName: item.name, fields: item.fields, entryCount: item.entryCount ?? null }))
   if (stored.length || !blueprint.features.some(feature => feature.surface === "item-page")) return stored
   // An item-page feature that declares no stored object still gets one generic collection.
-  return [{ name: "entries", dataName: "", fields: [{ name: "Title", valueType: "text", optional: false }, { name: "Description", valueType: "long-text", optional: false }] }]
+  return [{ name: "entries", dataName: "", entryCount: null, fields: [{ name: "Title", valueType: "text", optional: false }, { name: "Description", valueType: "long-text", optional: false }] }]
 }
 
 function collectionOf(feature: PlaceableFeature, collections: readonly AstroCollection[]): AstroCollection | undefined {
@@ -195,7 +202,7 @@ export function planAstroWeb(
     collections,
     contentCollection: (itemFeature ? collectionOf(itemFeature, collections) : collections[0])?.name ?? "entries",
     foundationExtras: usesContentCollections ? ["src/content.config.ts"] : [],
-    seedContentPaths: collections.map(item => `src/content/${item.name}/01-sample-entry.md`),
+    seedContentPaths: collections.flatMap(item => seedFileNames(item).map(name => `src/content/${item.name}/${name}`)),
     featurePlacements,
     routeSummary: unique(routeSummary),
     browserPersistence,
