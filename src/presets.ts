@@ -18,7 +18,7 @@ export type PresetId = (typeof PRESET_IDS)[number]
 export type OwnerKind = "feature" | "integration" | "data" | "credential" | "permission" | "lifecycle" | "packaging"
 export const PERMISSION_CAPABILITIES = ["microphone", "accessibility", "notifications", "filesystem", "network", "camera", "location", "global-input", "clipboard", "background-startup", "background-execution"] as const
 export type PermissionCapability = (typeof PERMISSION_CAPABILITIES)[number]
-export type PresetRuntimeMode = "native" | "waybar" | "cross-platform" | "static" | "server" | "android"
+export type PresetRuntimeMode = "native" | "waybar" | "cross-platform" | "linux-desktop" | "static" | "server" | "android"
 
 export interface PresetSemanticInput {
   readonly externalServices: readonly { readonly credentialRequirement: "none" | "api-key" }[]
@@ -679,6 +679,10 @@ const linuxWaybar: PresetContract = {
 
 const tauriDesktop: PresetContract = {
   id: "tauri2-rust-typescript-desktop",
+  providerNotes: [
+    "The desktop frontend is tested in Vitest with a faked data layer and an injected clock, and the Rust store is tested in Cargo. Write acceptance signals as conditions such a test can check: a record read back from the store shows its saved values, a function returns a stated result for a given calendar day or time, a failed write leaves the previous value. Do not write acceptance as relaunching the app, as a measured render or response time, or as a visual impression; put such limits in a quality requirement only when the idea states them.",
+    "The feature that shows a list owns loading it when the app starts and the one error message for that load failing; no other feature repeats it. A feature that writes a file the user chooses states in its behavior the exact layout of that file (heading text and level, separators, how each date or time is written), because a note or record has no title of its own.",
+  ],
   label: "Tauri 2 Rust + TypeScript Desktop",
   platform: "macOS, Windows, and Linux (Wayland verified)",
   implementationMarker: "tauri::Builder",

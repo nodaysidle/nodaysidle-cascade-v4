@@ -935,7 +935,7 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
   if (tauri && item.storage === "document") return [tauriDocumentInterface(tauriData(item), users)]
   const documentResources = new Set(allData.filter(other => other.storage === "document").flatMap(other => dataResourceIds(other.name)))
   // A Tauri feature that saves a document writes only that file; its records are read, not created.
-  const operationsOf = (feature: GraphFeature): readonly DataOperation[] => tauri ? tauriFeatureOps(item.storage, { ...feature, dataOperations: opsOn(feature, item.name) }, documentResources) : opsOn(feature, item.name)
+  const operationsOf = (feature: GraphFeature): readonly DataOperation[] => tauri ? tauriFeatureOps(item.storage, opsOn(feature, item.name), feature, documentResources) : opsOn(feature, item.name)
   const operations = unique(users.flatMap(operationsOf))
   if (item.storage === "app-files" && operations.length && presetId !== "astro-web") {
     const names = operations.flatMap(operation => operation === "create" ? ["import_file(source)"] : operation === "delete" ? ["remove_file(reference)"] : operation === "read" ? ["file_path(reference)"] : [])
@@ -958,7 +958,7 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
 }
 
 function tauriData(item: NormalizedBlueprint["domainData"][number]): TauriData {
-  return { name: item.name, base: slug(item.name).replaceAll("-", "_"), record: pascal(item.name), resource: dataResourceIds(item.name)[0]!, storage: item.storage, fields: item.fields }
+  return { name: item.name, key: referenceKey(item.name), base: slug(item.name).replaceAll("-", "_"), record: pascal(item.name), resource: dataResourceIds(item.name)[0]!, storage: item.storage, fields: item.fields }
 }
 
 // One concrete interface per preset, owned by the data owner, so feature tasks call it and never invent storage access.
@@ -1671,6 +1671,10 @@ function refineTauriPhases(phases: readonly GraphPhase[], owners: readonly Graph
   const data = blueprint.domainData.map(tauriData)
   const hasRecords = blueprint.persistenceNeeds.some(need => need.storage === "records")
   const shortcut = blueprint.platformNeeds.includes("global-hotkey")
+  const allTasks = phases.flatMap(phase => phase.tasks)
+  const firstMain = allTasks.find(task => task.prompt.includes("You are the first main-surface task"))
+  const operations = features.flatMap(feature => Object.values(feature.operationsByData).flat())
+  const entryForm = operations.includes("create") && operations.includes("update")
   return phases.map(phase => ({
     ...phase,
     tasks: phase.tasks.map(task => {
@@ -1682,6 +1686,9 @@ function refineTauriPhases(phases: readonly GraphPhase[], owners: readonly Graph
         data,
         hasRecords,
         shortcut,
+        slots: task === firstMain ? "first" : task.prompt.includes("Your controls mount into the slots") ? "later" : undefined,
+        firstMainTask: firstMain?.id,
+        entryForm,
         ownFiles: kind === "foundation" ? task.filesToCreate.filter(file => !kitPaths.includes(file)) : undefined,
       })
       return extra ? { ...task, prompt: `${task.prompt} ${extra}` } : task
