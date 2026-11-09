@@ -101,7 +101,7 @@ export interface GeneratePacketResult {
   readonly jev?: JevReport
   // Present when the first provider response failed and one repair request was sent: the checks it failed.
   readonly repairedIssues?: readonly SemanticIssue[]
-  // The validated provider blueprint that compiled (after any repair, before Jev healing), for export.
+  // The validated provider blueprint that compiled (after any repair and after Jev healing), for export.
   readonly blueprint?: SemanticBlueprint
 }
 
@@ -277,6 +277,10 @@ export async function generatePacket(
     const failure = { kind: "invalid-request", classification: "invalid-request" } as const
     return failureResult("input-invalid", [{ path: "$idea", rule: "input.idea-too-long", message: "The software idea exceeds the 32,000 character request limit." }], failure)
   }
+  if (splitIdeaSentences(input.idea).length === 0) {
+    const failure = { kind: "invalid-request", classification: "invalid-request" } as const
+    return failureResult("input-invalid", [{ path: "$idea", rule: "input.idea-empty", message: "The software idea is empty; describe the product in at least one sentence." }], failure)
+  }
   if (splitIdeaSentences(input.idea).length > MAX_IDEA_SENTENCES) {
     const failure = { kind: "invalid-request", classification: "invalid-request" } as const
     return failureResult("input-invalid", [{ path: "$idea", rule: "input.idea-too-many-sentences", message: `The software idea has more than ${MAX_IDEA_SENTENCES} sentences; shorten or merge sentences.` }], failure)
@@ -323,7 +327,7 @@ export async function generatePacket(
     }
     if (cancelled(input)) {
       const failure = { kind: "cancelled", classification: "cancelled" } as const
-      return failureResult("cancelled", [providerIssue(failure)], failure)
+      return withRepair(failureResult("cancelled", [providerIssue(failure)], failure), repairedIssues)
     }
 
     const result = await compileProviderText(providerText, input, compiler, jevProvider, presetMismatch)
@@ -412,10 +416,9 @@ async function compileProviderText(
   try {
     normalized = normalizeBlueprint(blueprint, input.presetId, atomicAudits)
   } catch (error) {
-    const issues = error instanceof NormalizationError
-      ? error.issues
-      : [{ path: "$normalization", rule: "normalization.failure", message: "Local normalization could not produce a safe semantic model." }]
-    return failureResult("local-normalization-failed", issues, undefined, jevReport)
+    // Only a NormalizationError is about the provider's content; anything else is a compiler bug a repair cannot fix.
+    if (error instanceof NormalizationError) return failureResult("local-normalization-failed", error.issues, undefined, jevReport)
+    return failureResult("local-compiler-failure", [{ path: "$normalization", rule: "normalization.failure", message: "Local normalization could not produce a safe semantic model." }], undefined, jevReport)
   }
   if (cancelled(input)) {
     const failure = { kind: "cancelled", classification: "cancelled" } as const
