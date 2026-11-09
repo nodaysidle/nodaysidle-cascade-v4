@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { compilePacket } from "../src/compiler"
@@ -22,20 +22,23 @@ describeBuild("v4 starter kits compile and pass their own tests", () => {
     const fixture = fixtureCases.find(item => item.presetId === presetId)!
     const packet = await compilePacket(fixture.blueprint, presetId)
     const root = mkdtempSync(join(tmpdir(), "cascade-v4-kit-"))
-    const target = mkdtempSync(join(tmpdir(), "cascade-v4-target-"))
+    const cache = join(homedir(), ".cache", "cascade-v4")
+    const target = join(cache, "target")
+    const temporary = join(cache, "tmp")
+    mkdirSync(target, { recursive: true })
+    mkdirSync(temporary, { recursive: true })
     try {
       for (const file of packet.kit) {
         const path = join(root, file.name.replace(/^kit\//, ""))
         mkdirSync(dirname(path), { recursive: true })
         writeFileSync(path, file.content)
       }
-      run("cargo", ["fmt", "--check"], root)
-      run("cargo", ["clippy", "--all-targets", "--", "-D", "warnings"], root, { CARGO_TARGET_DIR: target })
-      run("cargo", ["test"], root, { CARGO_TARGET_DIR: target })
-      run("cargo", ["build", "--release"], root, { CARGO_TARGET_DIR: target })
+      run("cargo", ["fmt", "--check"], root, { TMPDIR: temporary })
+      run("cargo", ["clippy", "--all-targets", "--", "-D", "warnings"], root, { CARGO_TARGET_DIR: target, TMPDIR: temporary })
+      run("cargo", ["test"], root, { CARGO_TARGET_DIR: target, TMPDIR: temporary })
+      run("cargo", ["build", "--release"], root, { CARGO_TARGET_DIR: target, TMPDIR: temporary })
     } finally {
       rmSync(root, { recursive: true, force: true })
-      rmSync(target, { recursive: true, force: true })
     }
   }, 900_000)
 })

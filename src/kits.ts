@@ -528,10 +528,12 @@ echo "Installed $app_id under $install_dir"
   ]
 }
 
-function waybarKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint): KitFile[] {
+function waybarKit(identity: ProjectIdentity, blueprint: NormalizedBlueprint, options: Readonly<Record<string, string | boolean | readonly string[]>> = {}): KitFile[] {
   const slug = identity.slug
   const crate = crateName(slug)
   const service = true
+  const refresh = options.refreshSeconds === "60" || options.refreshSeconds === "5" ? options.refreshSeconds : "15"
+  const tooltip = options.tooltip === false ? false : true
   return [
     file("README.md", String.raw`
 # Starter kit
@@ -697,7 +699,7 @@ impl Default for Settings {
             schema_version: 1,
             text: String::from("${identity.projectName}"),
             tooltip: String::from("${identity.projectName}"),
-            refresh_seconds: 15,
+            refresh_seconds: ${refresh},
             enabled: true,
         }
     }
@@ -935,9 +937,9 @@ fn output_is_one_json_object() {
 {
   "custom/${slug}": {
     "exec": "~/.local/bin/${slug} --once",
-    "interval": 15,
+    "interval": ${refresh},
     "return-type": "json",
-    "tooltip": true,
+    "tooltip": ${tooltip},
     "on-click": "~/.local/bin/${slug} --action toggle"
   }
 }
@@ -982,7 +984,9 @@ package() {
   install -Dm755 "$startdir/target/release/${slug}" "$pkgdir/usr/bin/${slug}"
   install -Dm644 "$startdir/resources/waybar/config.jsonc" "$pkgdir/etc/xdg/waybar/${slug}.jsonc"
   install -Dm644 "$startdir/resources/waybar/style.css" "$pkgdir/etc/xdg/waybar/${slug}.css"
-  install -Dm644 "$startdir/resources/systemd/${slug}.service" "$pkgdir/usr/lib/systemd/user/${slug}.service"
+  install -d "$pkgdir/usr/lib/systemd/user"
+  sed 's|%h/.local/bin|/usr/bin|' "$startdir/resources/systemd/${slug}.service" > "$pkgdir/usr/lib/systemd/user/${slug}.service"
+  chmod 644 "$pkgdir/usr/lib/systemd/user/${slug}.service"
   install -Dm644 "$startdir/LICENSE" "$pkgdir/usr/share/licenses/${slug}/LICENSE"
 }
 `),
@@ -1014,13 +1018,15 @@ if [ -f "resources/systemd/${slug}.service" ]; then
 fi
 
 echo "Installed ${slug} Waybar module under $HOME/.local"
+echo "Add include = [\"$HOME/.config/waybar/${slug}.jsonc\"] to ~/.config/waybar/config.jsonc"
+echo "Add @import \"$HOME/.config/waybar/${slug}.css\"; to ~/.config/waybar/style.css"
 `),
   ]
 }
 
-export function presetKit(presetId: PresetId, identity: ProjectIdentity, blueprint: NormalizedBlueprint): readonly KitFile[] {
+export function presetKit(presetId: PresetId, identity: ProjectIdentity, blueprint: NormalizedBlueprint, options: Readonly<Record<string, string | boolean | readonly string[]>> = {}): readonly KitFile[] {
   if (presetId === "linux-wayland-gtk4-desktop") return gtkKit(identity, blueprint)
-  if (presetId === "linux-hyprland-waybar-module") return waybarKit(identity, blueprint)
+  if (presetId === "linux-hyprland-waybar-module") return waybarKit(identity, blueprint, options)
   return []
 }
 

@@ -87,6 +87,7 @@ export interface PresetCapabilities {
   readonly microphone: boolean
   readonly camera: boolean
   readonly location: boolean
+  readonly launchAtLogin: boolean
   readonly network: boolean
   readonly globalShortcuts: "app" | "compositor-bind" | "none"
   readonly clipboardWatch: boolean
@@ -433,7 +434,7 @@ const linuxGtk: PresetContract = {
   artifactPath: identity => `dist/${identity.slug}`,
   completionEvidence: ["Cargo format, clippy, test, and release build pass.", "desktop-file-validate, appstreamcli, and namcap pass.", "The installed binary launches under Wayland.", "Declared data, credentials, and temporary files survive the restart check."],
   options: [
-    { id: "packaging", label: "Packaging", type: "select", values: ["local", "pkgbuild"], default: "local", description: "Local proof installs to ~/.local; pkgbuild also validates an Arch package." },
+    { id: "packaging", label: "Packaging", type: "select", values: ["local", "pkgbuild"], default: "local", description: "Recorded in the packet. v4.0 validates the PKGBUILD and local install either way; option-driven packaging selection is next." },
   ],
   capabilities: {
     windows: true,
@@ -445,6 +446,7 @@ const linuxGtk: PresetContract = {
     microphone: true,
     camera: true,
     location: true,
+    launchAtLogin: false,
     network: true,
     globalShortcuts: "compositor-bind",
     clipboardWatch: false,
@@ -482,7 +484,7 @@ const linuxWaybar: PresetContract = {
   ownerFiles: waybarOwnerFiles,
   registrationFile: () => "src/main.rs",
   registrationFiles: (kind, identity) => kind === "feature"
-    ? ["src/features/mod.rs", "src/main.rs"]
+    ? ["src/features/mod.rs", "src/module.rs", "src/main.rs"]
     : kind === "data"
       ? ["src/platform/mod.rs", "src/config.rs", "src/main.rs"]
       : kind === "packaging"
@@ -545,9 +547,9 @@ const linuxWaybar: PresetContract = {
   artifactPath: identity => `dist/${identity.slug}`,
   completionEvidence: ["Cargo format, clippy, test, and release build pass.", "jq validates the JSON output and systemd-analyze validates the unit.", "Waybar renders the module with the real fragment.", "The click action and restart behavior pass."],
   options: [
-    { id: "refreshSeconds", label: "Refresh interval", type: "select", values: ["5", "15", "60"], default: "15", description: "Waybar interval for the stateless exec path." },
-    { id: "tooltip", label: "Show tooltip", type: "toggle", default: true, description: "Emit a tooltip field for the module." },
-    { id: "service", label: "Background refresh service", type: "toggle", default: true, description: "Install the systemd user service for slow data." },
+    { id: "refreshSeconds", label: "Refresh interval", type: "select", values: ["5", "15", "60"], default: "15", description: "Sets the Waybar interval in the generated fragment." },
+    { id: "tooltip", label: "Show tooltip", type: "toggle", default: true, description: "Sets the Waybar tooltip flag in the generated fragment." },
+    
   ],
   capabilities: {
     windows: false,
@@ -559,6 +561,7 @@ const linuxWaybar: PresetContract = {
     microphone: false,
     camera: false,
     location: false,
+    launchAtLogin: true,
     network: true,
     globalShortcuts: "compositor-bind",
     clipboardWatch: false,
@@ -619,7 +622,7 @@ const tauriDesktop: PresetContract = {
     () => "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
     () => "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
     () => "cargo test --manifest-path src-tauri/Cargo.toml",
-    () => "npm run tauri -- build --bundles app",
+    () => "npm run tauri -- build",
   ],
   packagingRules: ["Build the frontend with Vite and the native boundary with Cargo.", "Set tauri.conf.json productName to the locked project name.", "Local proof builds only the native .app on macOS; on Linux build the AppImage or deb and validate the desktop entry.", "Use least-privilege capabilities for every command and plugin.", "Verify the installer or bundle before the launch smoke."],
   wiringRules: [
@@ -636,8 +639,8 @@ const tauriDesktop: PresetContract = {
   artifactPath: () => "src-tauri/target/release/bundle/",
   completionEvidence: ["TypeScript, Vitest, Rust format, Clippy, and Cargo tests pass.", "Tauri builds the bundle from the locked capabilities.", "The built app installs and launches.", "Local data and temporary-resource cleanup survive a restart smoke."],
   options: [
-    { id: "linuxPackaging", label: "Linux package", type: "select", values: ["appimage", "deb", "pkgbuild"], default: "appimage", description: "Choose the Linux artifact the packaging task builds." },
-    { id: "wayland", label: "Verify native Wayland", type: "toggle", default: true, description: "Run the launch check with GDK_BACKEND=wayland." },
+    { id: "linuxPackaging", label: "Linux package", type: "select", values: ["appimage", "deb", "pkgbuild"], default: "appimage", description: "Recorded in the packet. v4.0 builds the host default bundles; per-choice artifact selection is next." },
+    { id: "wayland", label: "Verify native Wayland", type: "toggle", default: true, description: "Recorded in the packet. The launch check already requires native Wayland." },
   ],
   capabilities: {
     windows: true,
@@ -649,6 +652,7 @@ const tauriDesktop: PresetContract = {
     microphone: true,
     camera: true,
     location: true,
+    launchAtLogin: true,
     network: true,
     globalShortcuts: "app",
     clipboardWatch: false,
@@ -717,11 +721,11 @@ const astroWeb: PresetContract = {
   artifactPath: () => "dist/",
   completionEvidence: ["Type, content, unit, and production build checks pass.", "Accessibility has no critical findings.", "SEO metadata and internal links validate.", "The production performance budget passes."],
   options: [
-    { id: "siteKind", label: "Site kind", type: "select", values: ["landing", "portfolio", "docs", "blog", "catalog"], default: "landing", description: "Selects the route set, collection schema, and navigation." },
-    { id: "outputMode", label: "Output mode", type: "select", values: ["static", "server"], default: "static", description: "Server output requires an adapter and a declared server endpoint or service." },
-    { id: "adapter", label: "Server adapter", type: "select", values: ["node", "cloudflare", "netlify", "vercel"], default: "node", description: "Used only when outputMode is server." },
-    { id: "features", label: "Site features", type: "multi", values: ["content-collections", "search", "rss", "sitemap", "i18n", "dark-mode", "contact-form", "pagination", "tag-pages"], default: ["sitemap"], description: "Each selected feature gets its own contract and validation gate." },
-    { id: "palette", label: "Palette", type: "select", values: ["void-black", "light"], default: "void-black", description: "Selects the design tokens; custom palettes are declared in qualityRequirements." },
+    { id: "siteKind", label: "Site kind", type: "select", values: ["landing", "portfolio", "docs", "blog", "catalog"], default: "landing", description: "Recorded in the packet. v4.0 renders the landing route set; option-driven Astro route generation is next." },
+    { id: "outputMode", label: "Output mode", type: "select", values: ["static", "server"], default: "static", description: "Recorded in the packet. v4.0 keeps static output unless a declared credential switches it; option-driven server output is next." },
+    { id: "adapter", label: "Server adapter", type: "select", values: ["node", "cloudflare", "netlify", "vercel"], default: "node", description: "Recorded in the packet; option-driven adapter generation is next." },
+    { id: "features", label: "Site features", type: "multi", values: ["content-collections", "search", "rss", "sitemap", "i18n", "dark-mode", "contact-form", "pagination", "tag-pages"], default: ["sitemap"], description: "Recorded in the packet; option-driven feature contracts are next." },
+    { id: "palette", label: "Palette", type: "select", values: ["void-black", "light"], default: "void-black", description: "Recorded in the packet; the existing palette rule still applies." },
   ],
   capabilities: {
     windows: false,
@@ -733,6 +737,7 @@ const astroWeb: PresetContract = {
     microphone: true,
     camera: true,
     location: true,
+    launchAtLogin: false,
     network: true,
     globalShortcuts: "none",
     clipboardWatch: false,
@@ -805,11 +810,11 @@ const androidCompose: PresetContract = {
   artifactPath: () => "app/build/outputs/apk/debug/app-debug.apk",
   completionEvidence: ["Unit, lint, Compose UI, and required instrumentation tests pass.", "assembleDebug produces the expected APK.", "The manifest contains only derived permissions.", "adb installs and launches the locked applicationId."],
   options: [
-    { id: "di", label: "Dependency injection", type: "select", values: ["manual", "hilt"], default: "manual", description: "Manual AppContainer is the default; Hilt adds KSP and Hilt modules." },
-    { id: "navigation", label: "Navigation", type: "select", values: ["navigation3", "navigation-compose"], default: "navigation3", description: "Navigation 3 is the default; Navigation Compose is the fallback." },
-    { id: "modules", label: "Module layout", type: "select", values: ["single", "feature"], default: "single", description: "Single app module by default; feature modules when declared." },
-    { id: "baselineProfile", label: "Baseline profile", type: "toggle", default: true, description: "Add a baseline profile module and generate a profile for release." },
-    { id: "screenshotTests", label: "Screenshot tests", type: "toggle", default: false, description: "Add Roborazzi screenshot tests for the main screens." },
+    { id: "di", label: "Dependency injection", type: "select", values: ["manual", "hilt"], default: "manual", description: "Recorded in the packet. v4.0 ships the manual AppContainer; Hilt generation is next." },
+    { id: "navigation", label: "Navigation", type: "select", values: ["navigation3", "navigation-compose"], default: "navigation3", description: "Recorded in the packet. v4.0 documents Navigation 3; option-driven navigation selection is next." },
+    { id: "modules", label: "Module layout", type: "select", values: ["single", "feature"], default: "single", description: "Recorded in the packet. v4.0 ships a single app module." },
+    { id: "baselineProfile", label: "Baseline profile", type: "toggle", default: true, description: "Recorded in the packet. Baseline-profile generation is next." },
+    { id: "screenshotTests", label: "Screenshot tests", type: "toggle", default: false, description: "Recorded in the packet. Screenshot-test generation is next." },
   ],
   capabilities: {
     windows: true,
@@ -821,6 +826,7 @@ const androidCompose: PresetContract = {
     microphone: true,
     camera: true,
     location: true,
+    launchAtLogin: false,
     network: true,
     globalShortcuts: "none",
     clipboardWatch: false,

@@ -1632,7 +1632,7 @@ export async function compileNormalizedPacket(
     .filter(name => repeatedDocuments[name] !== documents[name])
     .map(name => ({ rule: "render.deterministic", path: name, message: `${name} changed across repeated local rendering.` }))
   const hashes = await hashDocuments(documents)
-  const kit = await Promise.all(presetKit(presetId, graph.identity, graph.blueprint)
+  const kit = await Promise.all(presetKit(presetId, graph.identity, graph.blueprint, graph.presetOptions)
     .map(async file => ({ name: `kit/${file.path}`, content: file.content, sha256: await sha256(file.content) })))
   const failures = [...mechanicalIssues, ...readinessIssues, ...renderIssues, ...packetIssues]
   const ledger = buildValidationLedger(failures)

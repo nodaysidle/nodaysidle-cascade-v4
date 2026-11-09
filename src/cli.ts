@@ -7,7 +7,8 @@ import { nodeJevProvider } from "./jev-wire"
 import { generatePacket, DEFAULT_API_URL, type BlueprintProvider } from "./pipeline"
 import { deepseekProvider } from "./provider"
 import { PRESETS, PRESET_IDS, isPresetId, resolvePresetOptions, type PresetId, type PresetOptionValue } from "./presets"
-import { SemanticBlueprintSchema, type SemanticBlueprint } from "./schema"
+import { auditSemanticIntake, SemanticBlueprintSchema, type SemanticBlueprint } from "./schema"
+import { auditCapabilities } from "./capabilities"
 
 interface PacketManifest {
   readonly schema: "nodaysidle.cascade.packet.v4"
@@ -126,6 +127,12 @@ async function compile(options: Record<string, string>, optionValues: readonly s
   const resolved = resolvePresetOptions(id, optionValues)
   if (resolved.issues.length) fail(resolved.issues.join("\n"))
   const blueprint = blueprintFrom(readJson(options.blueprint ?? fail("Provide --blueprint")))
+  const intake = auditSemanticIntake(blueprint)
+  const capabilities = auditCapabilities(blueprint, PRESETS[id])
+  if (intake.length || capabilities.length) {
+    console.error(JSON.stringify([...intake, ...capabilities], null, 2))
+    process.exit(1)
+  }
   const packet = await compilePacket(blueprint, id, resolved.values)
   if (!packet.exportable) {
     console.error(JSON.stringify(packet.failures, null, 2))
@@ -138,7 +145,15 @@ async function compile(options: Record<string, string>, optionValues: readonly s
 async function verify(options: Record<string, string>): Promise<void> {
   const folder = resolve(options.packet ?? fail("Provide --packet"))
   const manifest = readJson(join(folder, "blueprint.json")) as PacketManifest
-  const packet = await compilePacket(blueprintFrom(manifest.blueprint), manifest.preset.id, manifest.preset.options)
+  const blueprint = blueprintFrom(manifest.blueprint)
+  const intake = auditSemanticIntake(blueprint)
+  const capabilities = auditCapabilities(blueprint, PRESETS[manifest.preset.id])
+  if (intake.length || capabilities.length) {
+    console.error(JSON.stringify([...intake, ...capabilities], null, 2))
+    process.exit(1)
+  }
+  const packet = await compilePacket(blueprint, manifest.preset.id, manifest.preset.options)
+  if (!packet.exportable || manifest.validation.status !== "pass") fail(`Packet is not Gate Clean: ${folder}`)
   const documentMismatch = DOCUMENT_NAMES.find(name => sha256(readFileSync(join(folder, name))) !== manifest.documents[name]?.sha256 || packet.hashes[name] !== manifest.documents[name]?.sha256)
   if (documentMismatch) fail(`Document hash mismatch: ${documentMismatch}`)
   const actualKit = kitFiles(join(folder, "kit")).map(path => path.slice(folder.length + 1).replaceAll("\\", "/")).sort()

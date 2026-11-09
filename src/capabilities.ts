@@ -35,7 +35,7 @@ export function auditCapabilities(blueprint: SemanticBlueprint, preset: PresetCo
     if (feature.usesPlatformNeeds.includes("background-execution") && !preset.capabilities.background) {
       issues.push({ path: `${path}.usesPlatformNeeds`, rule: "capability.background", message: `Feature '${feature.name}' needs background execution, which ${preset.label} does not provide.` })
     }
-    if (feature.usesPlatformNeeds.includes("launch-at-login") && !preset.capabilities.background) {
+    if (feature.usesPlatformNeeds.includes("launch-at-login") && !preset.capabilities.launchAtLogin) {
       issues.push({ path: `${path}.usesPlatformNeeds`, rule: "capability.launch-at-login", message: `Feature '${feature.name}' needs launch at login, which ${preset.label} does not provide.` })
     }
     if (feature.userFileAccess !== "none" && preset.capabilities.fileAccess === "none") {
