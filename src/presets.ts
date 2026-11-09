@@ -5,7 +5,7 @@ import type { NormalizedBlueprint } from "./compiler"
 import type { FeatureSurface } from "./schema"
 import { gtkSpecialize } from "./gtkContracts"
 import { tauriSpecialize } from "./tauriContracts"
-import { WAYBAR_COMPOSITION_ROOT, WAYBAR_EMPTY_LABEL, WAYBAR_FAILURE_RULE, WAYBAR_PROVIDER_NOTES, WAYBAR_RUNTIME_STORY, WAYBAR_TIME_CONVENTION, WAYBAR_UNITS_KIT, WAYBAR_UNIT_CONVENTION, waybarKitParts } from "./waybarContracts"
+import { waybarWiringTest, WAYBAR_EMPTY_LABEL, WAYBAR_FAILURE_RULE, WAYBAR_PROVIDER_NOTES, WAYBAR_RUNTIME_STORY, WAYBAR_TIME_CONVENTION, WAYBAR_UNITS_KIT, WAYBAR_UNIT_CONVENTION, waybarKitParts } from "./waybarContracts"
 import { waybarLaunchers } from "./kits"
 
 export const PRESET_IDS = [
@@ -259,8 +259,8 @@ const waybarPermissionTexts: NonNullable<PresetContract["permissionTexts"]> = {
   },
   notifications: {
     purpose: "Send a desktop notification only from a click action or a declared alert, never as a prompt.",
-    deniedBehavior: "Skip the notification; the bar output is unchanged.",
-    recovery: "Try again on the next qualifying event; never prompt.",
+    deniedBehavior: "A rejected notify-send makes the click action return Err (exit 2, message on stderr); the bar output is unchanged and nothing is retried.",
+    recovery: "The next click sends the notification again; never prompt.",
   },
   filesystem: {
     purpose: "Read and write only the app's XDG config, data, and runtime directories and explicit command-line paths.",
@@ -543,11 +543,18 @@ function waybarSpecialize(preset: PresetContract, blueprint: NormalizedBlueprint
   // The Units and Time conventions name kit files, so they appear only when the kit ships those files.
   const parts = waybarKitParts(blueprint)
   const launches = waybarLaunchers(blueprint)
+  // The datastore owner registers its store in platform/mod.rs; only a settings object also adds functions to config.rs.
+  const settingsData = blueprint.domainData.some(item => item.storage === "settings")
+  const common: Partial<PresetContract> = {
+    wiringRules: preset.wiringRules.map((rule, index) => index === 0 ? waybarWiringTest(blueprint) : rule),
+    registrationFiles: (kind, identity) => kind === "data" ? ["src/platform/mod.rs", ...(settingsData ? ["src/config.rs"] : [])] : preset.registrationFiles!(kind, identity),
+  }
   const shipped = preset.runtimeArchitecture.filter(line => !(line.startsWith("Units are fixed") && !parts.sizes) && !(line.startsWith("Time: ") && !parts.localTime) && !(line.startsWith("A click feature that opens") && !launches.pages.length && !launches.notifies))
-  if (blueprint.persistenceNeeds.some(need => need.storage === "records")) return { runtimeArchitecture: shipped }
+  if (blueprint.persistenceNeeds.some(need => need.storage === "records")) return { ...common, runtimeArchitecture: shipped }
   return {
+    ...common,
     persistence: { ...preset.persistence, recordsPlacement: "None: no data object declares records, so no database file is created." },
-    runtimeArchitecture: shipped.map(line => line.replace("persisted records (SQLite records and the JSON settings file,", "persisted values (the JSON settings file,").replace(" A setting is a key in the values map of config.json only (no SQLite table for it) and a record is SQLite only (no config key for it).", "")),
+    runtimeArchitecture: shipped.map(line => line.replace("persisted records (SQLite records and the JSON settings file,", "persisted values (the JSON settings file,").replace(": a click action that needs the reading reads the stored record through the store, never cache.json, and with no stored record it does nothing and exits non-zero.", ".").replace(" A setting is a key in the values map of config.json only (no SQLite table for it) and a record is SQLite only (no config key for it).", "")),
     lifecycleRules: preset.lifecycleRules.map(rule => rule.replace(" (a store is opened inside each pass and dropped at its end)", "")),
     fileBoundaryDetails: preset.fileBoundaryDetails?.filter(detail => !detail.startsWith("Records:")),
   }
@@ -600,7 +607,7 @@ const linuxWaybar: PresetContract = {
     WAYBAR_RUNTIME_STORY,
     `${WAYBAR_UNIT_CONVENTION}${WAYBAR_UNITS_KIT}`,
     `${WAYBAR_TIME_CONVENTION}`,
-    "Source of truth: persisted records (SQLite records and the JSON settings file, per each data object's declared storage) are authoritative; cache.json under $XDG_RUNTIME_DIR is only a derived render of the final label text, written by the --service loop and read by --once, and no feature reads it as data. A setting is a key in the values map of config.json only (no SQLite table for it) and a record is SQLite only (no config key for it).",
+    "Source of truth: persisted records (SQLite records and the JSON settings file, per each data object's declared storage) are authoritative; cache.json under $XDG_RUNTIME_DIR is only a derived render of the final label text, written by the --service loop and read by --once, and no feature reads it as data: a click action that needs the reading reads the stored record through the store, never cache.json, and with no stored record it does nothing and exits non-zero. A setting is a key in the values map of config.json only (no SQLite table for it) and a record is SQLite only (no config key for it).",
     `Display: the label is the labelTemplate of the one feature that composes it, with {value} replaced by the formatted reading; the stale marker is the one constant STALE_SUFFIX in src/module.rs, appended to the label when the class becomes stale (stale is derived when the module renders, never stored). The empty label is always ${WAYBAR_EMPTY_LABEL}, the kit default of Settings.text. No other marker is invented.`,
     `Classes: the output class is exactly one of normal, warning, critical, stale, empty, each coloured in resources/waybar/style.css. render_with sets it. Before the first successful refresh the class is empty and the text is settings.text (default ${WAYBAR_EMPTY_LABEL}). A reading is stale when the last refresh failed or it is older than twice the service interval: the class is stale, the text keeps the last value plus the stale marker, and stale wins over warning and critical, so the severity colour is not shown while stale. Otherwise the class is normal, or warning (amber) or critical (red) from the raw ModuleOutput.value (not the rounded label) against THRESHOLDS in src/module.rs, which the kit generates from the thresholds a feature declares (strictly above or strictly below, critical wins); with no declared thresholds it is always normal.`,
     "A click feature that opens a declared service web page runs xdg-open through std::process::Command behind an injectable Launcher trait (src/platform/launcher.rs) and the Arch package depends on xdg-utils; a click feature that sends a notification runs notify-send the same way and the package depends on libnotify.",
@@ -654,7 +661,7 @@ const linuxWaybar: PresetContract = {
     "./scripts/package.sh --install, systemd-analyze verify, and makepkg write to the user's ~/.local, ~/.config, and systemd session and start a real service: they are local-machine checks. When no user systemd session or Waybar is available (a sandbox or CI), run the rest, report those steps as PARTIAL with the reason, and leave no installed files behind.",
   ],
   wiringRules: [
-    WAYBAR_COMPOSITION_ROOT,
+    waybarWiringTest({ features: [], externalServices: [] }),
     "Test doubles exist only under tests/.",
     "Kit helpers that no contract names are optional; do not call a credential or HTTP helper only to satisfy the wiring gate. Every owner named in TRD.md must be reachable from the production entry point.",
     ...WAYBAR_WIRING_RULES,

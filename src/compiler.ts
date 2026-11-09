@@ -461,10 +461,11 @@ const STATIC_SITE_RECOVERY = "A bad content file fails npm run build and names t
 const tauriEditsOnly = (feature: SemanticBlueprint["features"][number], presetId: PresetId): boolean =>
   presetId === "tauri2-rust-typescript-desktop" && feature.dataOperations.some(entry => entry.operations.includes("update") || entry.operations.includes("edit")) && !feature.dataOperations.some(entry => entry.operations.includes("create"))
 
-function featureRecovery(name: string, recovery: FeatureRecovery, staticSite = false): string {
+function featureRecovery(name: string, recovery: FeatureRecovery, staticSite = false, presetId?: PresetId): string {
   if (staticSite) return STATIC_SITE_RECOVERY
   switch (recovery) {
     case "exit":
+      if (presetId === "linux-hyprland-waybar-module") return `A failed ${name} action returns Err (exit 2, message on stderr); the bar output and everything stored stay as they were.`
       return `Release partial resources before exiting so a relaunch of ${name} starts from a clean state.`
     case "fallback":
       return `Apply the stated fallback automatically, keep ${name} usable, and require no user retry.`
@@ -567,7 +568,7 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       outputs: [userOutcome],
       acceptanceOutcomes: acceptance.length ? acceptance : [`${name} produces the documented user outcome.`],
       failureBehavior: failure,
-      recoveryExpectations: [featureRecovery(name, feature.failureRecovery, astroStaticSource(source, presetId))],
+      recoveryExpectations: [featureRecovery(name, feature.failureRecovery, astroStaticSource(source, presetId), presetId)],
       failureRecovery: feature.failureRecovery,
       // A feature provides itself, so another feature's buildsOn becomes an owner dependency.
       providedCapabilities: [slug(name)],
@@ -1753,7 +1754,7 @@ function buildPhases(
     `The locked identity is ${identity.bundleId}${preset.id === "astro-web" ? ', recorded as the "identity" field of package.json' : ""}.`,
     preset.id === "android-kotlin-compose"
       ? `ContractTest reads build.gradle.kts relative to the test working directory (Gradle runs unit tests with the app/ module directory as the working directory, so the file is app/build.gradle.kts from the project root) and asserts that it declares ${identity.bundleId} as the namespace and applicationId, and reads src/main/java/${identity.packagePath}/App.kt the same way and asserts that it declares the App composable.`
-      : `The implementation marker is ${preset.implementationMarker}${preset.id === "linux-hyprland-waybar-module" ? ` (the Waybar module key prefix; this module's key is custom/${identity.slug})` : preset.id === "linux-wayland-gtk4-desktop" ? ` (adw::Application::builder() with application_id ${identity.bundleId} in src/main.rs)` : ""}.`,
+      : `The implementation marker is ${preset.implementationMarker}${preset.id === "linux-hyprland-waybar-module" ? ` (the Waybar module key prefix; resources/waybar/config.jsonc declares the key "custom/${identity.slug}")` : preset.id === "linux-wayland-gtk4-desktop" ? ` (adw::Application::builder() with application_id ${identity.bundleId} in src/main.rs)` : ""}.`,
     ...(preset.id === "astro-web" ? ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS.map(script => `package.json defines npm run ${script}.`) : []),
   ]
   const foundationTask: GraphTask = {
@@ -1987,7 +1988,7 @@ function lockedStackFor(preset: PresetContract, blueprint: NormalizedBlueprint):
   const { records, secrets, http } = rustKitHelpers(blueprint)
   const launchers = preset.id === "linux-hyprland-waybar-module" ? waybarLaunchers(blueprint) : { pages: [], notifies: false }
   const parts = preset.id === "linux-hyprland-waybar-module" ? waybarKitParts(blueprint) : { disk: false, localTime: false }
-  const omitted = new Set([...(parts.disk ? [] : ["nix (statvfs)"]), ...(parts.localTime ? [] : ["chrono (local time zone)"]), ...(records ? [] : ["rusqlite"]), ...(secrets ? [] : ["keyring (Secret Service)"]), ...(http ? [] : ["reqwest with rustls"]), ...(launchers.pages.length ? [] : ["xdg-open (xdg-utils)"]), ...(launchers.notifies ? [] : ["notify-send (libnotify)"])])
+  const omitted = new Set([...(preset.id === "linux-hyprland-waybar-module" && !http ? ["tokio"] : []), ...(parts.disk ? [] : ["nix (statvfs)"]), ...(parts.localTime ? [] : ["chrono (local time zone)"]), ...(records ? [] : ["rusqlite"]), ...(secrets ? [] : ["keyring (Secret Service)"]), ...(http ? [] : ["reqwest with rustls"]), ...(launchers.pages.length ? [] : ["xdg-open (xdg-utils)"]), ...(launchers.notifies ? [] : ["notify-send (libnotify)"])])
   return preset.allowedTechnologies.filter(technology => !omitted.has(technology))
 }
 

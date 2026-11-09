@@ -154,7 +154,7 @@ fn meminfo_bytes(text: &str, key: &str) -> Result<u64, String> {
     Ok(kilobytes.saturating_mul(1024))
 }
 
-/// used = MemTotal - MemAvailable; the meminfo kB lines are multiplied by 1024 to bytes.
+/// free = MemAvailable (not MemFree); used = MemTotal - MemAvailable; the meminfo kB lines are multiplied by 1024 to bytes.
 pub fn parse_meminfo(text: &str) -> Result<MemoryUse, String> {
     let total_bytes = meminfo_bytes(text, "MemTotal:")?;
     let available = meminfo_bytes(text, "MemAvailable:")?;
@@ -164,12 +164,26 @@ pub fn parse_meminfo(text: &str) -> Result<MemoryUse, String> {
     })
 }
 
-pub struct MemoryReader;
+pub const MEMINFO_PATH_ENV: &str = "MODULE_MEMINFO_PATH";
+pub const MEMINFO_PATH: &str = "/proc/meminfo";
+
+pub struct MemoryReader {
+    pub path: String,
+}
+
+impl MemoryReader {
+    /// Production reads /proc/meminfo unless MODULE_MEMINFO_PATH names a fixture file.
+    pub fn from_env() -> Self {
+        MemoryReader {
+            path: std::env::var(MEMINFO_PATH_ENV).unwrap_or_else(|_| String::from(MEMINFO_PATH)),
+        }
+    }
+}
 
 impl SystemReader for MemoryReader {
     type Reading = MemoryUse;
     fn read(&self) -> Result<MemoryUse, String> {
-        parse_meminfo(&read_text("/proc/meminfo")?)
+        parse_meminfo(&read_text(&self.path)?)
     }
 }
 `)
@@ -180,6 +194,21 @@ fn meminfo_gives_used_bytes() {
     assert_eq!(used.total_bytes, 1_024_000);
     assert_eq!(used.used_bytes, 768_000);
     assert!(parse_meminfo("MemTotal: 1 kB\\n").is_err());
+}
+
+#[test]
+fn memory_reader_reads_the_fixture_file_and_fails_on_a_missing_one() {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let path = directory.path().join("meminfo");
+    std::fs::write(&path, "MemTotal: 1000 kB\\nMemAvailable: 250 kB\\n").expect("fixture");
+    let reader = MemoryReader {
+        path: path.to_string_lossy().into_owned(),
+    };
+    assert_eq!(reader.read().expect("read").used_bytes, 768_000);
+    let missing = MemoryReader {
+        path: directory.path().join("none").to_string_lossy().into_owned(),
+    };
+    assert!(missing.read().is_err());
 }
 `)
   }

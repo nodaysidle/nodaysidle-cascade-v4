@@ -830,8 +830,7 @@ clap = { version = "4.6", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ${optionalDeps}${extraDeps ? "\n" + extraDeps : ""}
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
-signal-hook = "0.3"
+${http ? 'tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }\n' : ""}signal-hook = "0.3"
 dirs = "7"
 thiserror = "2"
 tempfile = "3"
@@ -1270,7 +1269,7 @@ ${records ? `pub fn database_path() -> PathBuf {
 }
 `),
     file("src/platform/mod.rs", String.raw`
-${["atomic_file", ...(secrets ? ["credentials"] : []), ...(http ? ["http"] : []), ...(launches ? ["launcher"] : []), "runtime", ...(records ? ["sqlite"] : []), ...platformMods].sort().map(name => `pub mod ${name};`).join("\n")}
+${["atomic_file", ...(secrets ? ["credentials"] : []), ...(http ? ["http"] : []), ...(launches ? ["launcher"] : []), ...(http ? ["runtime"] : []), ...(records ? ["sqlite"] : []), ...platformMods].sort().map(name => `pub mod ${name};`).join("\n")}
 `),
     file("src/platform/atomic_file.rs", String.raw`
 use std::fs;
@@ -1468,7 +1467,7 @@ ${launchers.pages.length ? `
     }
 ` : ""}}
 `)] : []),
-    file("src/platform/runtime.rs", String.raw`
+    ...(http ? [file("src/platform/runtime.rs", String.raw`
 use std::sync::OnceLock;
 
 use tokio::runtime::{Builder, Runtime};
@@ -1483,7 +1482,7 @@ pub fn runtime() -> &'static Runtime {
             .expect("tokio runtime construction is infallible for the default configuration")
     })
 }
-`),
+`)] : []),
     file("src/features/mod.rs", String.raw`
 // Feature owners are added by the tasks in TASKS.md. Each feature file owns one capability and
 // depends only on the platform traits in this crate.
