@@ -65,7 +65,7 @@ describe("Tauri expense log: recovery, form ownership, and boilerplate", () => {
 
   it("names the injected dependencies once so a test can inject a failing call", async () => {
     const tasks = (await compilePacket(expenseLogBlueprint, PRESET, linux)).documents["TASKS.md"]
-    expect(task(tasks, "TASK-05-ADD-EXPENSE")).toContain("Export one factory taking its dependencies as a single object: call (the src/api.ts function), errors (src/ui.ts), the shared view state, now")
+    expect(task(tasks, "TASK-05-ADD-EXPENSE")).toContain("Export one factory taking its dependencies as a single object: call (the src/api.ts function), errors (the banner object that src/main.ts exports, made by createErrorBanner in src/errors.ts), the shared view state (the store), now")
   })
 
   it("wires the lifecycle owner into run() and sets the Wayland desktop entry from the option", async () => {
@@ -83,7 +83,8 @@ describe("Tauri timer app: no slots for controls nobody builds", () => {
     const first = task(tasks, "TASK-05-TIMER-CONTROL")
     expect(first).not.toContain("an add-entry control")
     expect(first).not.toContain("The entry form is one shell")
-    expect(first).toContain("a per-row action area")
+    // The timer and its editing feature need no row control, so the slot is not built.
+    expect(first).not.toContain("a per-row action area")
     expect(first).toContain("a running activity stays running until its stop is saved")
     // The shortcut toggle has no form or row control; the editing feature owns the edit form.
     const shortcut = task(tasks, "TASK-06-SHORTCUT-TOGGLE")
