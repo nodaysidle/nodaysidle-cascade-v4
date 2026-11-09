@@ -48,6 +48,11 @@ export function verifyPacketFolder(folderInput: string, packet: CompiledPacket, 
   const actualKit = kitFiles(join(folder, "kit")).map(path => path.slice(folder.length + 1).replaceAll("\\", "/")).sort()
   const expectedKit = manifest.kit.map(item => item.path).sort()
   if (actualKit.join("|") !== expectedKit.join("|")) return `Kit file set mismatch: ${folder}`
+  // The manifest is not trusted on its own: every kit file must also match what the current compiler renders.
+  const compiledKit = new Map(packet.kit.map(file => [file.name, file.sha256]))
+  if (compiledKit.size !== manifest.kit.length) return `Kit file set differs from the compiler output: ${folder}`
+  const staleKit = manifest.kit.find(item => compiledKit.get(item.path) !== item.sha256)
+  if (staleKit) return `Kit file differs from the compiler output: ${staleKit.path}`
   const kitMismatch = manifest.kit.find(item => sha256(readFileSync(join(folder, item.path))) !== item.sha256)
   return kitMismatch ? `Kit hash mismatch: ${kitMismatch.path}` : undefined
 }

@@ -90,9 +90,19 @@ async function compile(options: Record<string, string>, optionValues: readonly s
   console.log(`Compiled: ${destination}`)
 }
 
+function manifestFrom(value: unknown, folder: string): PacketManifest {
+  const manifest = value as Partial<PacketManifest> | null
+  const presetId = manifest?.preset?.id
+  if (!manifest || typeof presetId !== "string" || !isPresetId(presetId) || !manifest.preset?.options || typeof manifest.preset.options !== "object"
+    || typeof manifest.documents !== "object" || !Array.isArray(manifest.kit) || typeof manifest.validation !== "object") {
+    return fail(`Malformed blueprint.json (not a Cascade V4 packet manifest): ${folder}`)
+  }
+  return manifest as PacketManifest
+}
+
 async function verify(options: Record<string, string>): Promise<void> {
   const folder = resolve(options.packet ?? fail("Provide --packet"))
-  const manifest = readJson(join(folder, "blueprint.json")) as PacketManifest
+  const manifest = manifestFrom(readJson(join(folder, "blueprint.json")), folder)
   const blueprint = blueprintFrom(manifest.blueprint)
   const intake = auditSemanticIntake(blueprint)
   const capabilities = auditCapabilities(blueprint, PRESETS[manifest.preset.id])
