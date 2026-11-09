@@ -17,8 +17,13 @@ function run(command: string, args: string[], cwd: string, env: NodeJS.ProcessEn
   return `${result.stdout}\n${result.stderr}`
 }
 
-function materialize(packet: CompiledPacket): string {
+// The project root is the packet folder, so the whole kit/ stays inside it while tasks copy from it.
+function materialize(packet: CompiledPacket, all: CompiledPacket["kit"] = packet.kit): string {
   const root = mkdtempSync(join(tmpdir(), "cascade-v4-kit-"))
+  for (const file of all) {
+    mkdirSync(dirname(join(root, file.name)), { recursive: true })
+    writeFileSync(join(root, file.name), file.content)
+  }
   for (const file of packet.kit) {
     const path = join(root, file.name.replace(/^kit\//, ""))
     mkdirSync(dirname(path), { recursive: true })
@@ -130,7 +135,7 @@ describeBuild("v4 starter kits compile and pass their own tests", () => {
   for (const fixture of astroFixtures) {
     it(`Astro site kit: ${fixture.blueprint.productName}`, async () => {
       const packet = await compilePacket(fixture.blueprint, fixture.presetId)
-      const root = materialize({ ...packet, kit: packet.kit.filter(file => packet.graph.foundationFiles.includes(file.name.replace(/^kit\//, ""))) })
+      const root = materialize({ ...packet, kit: packet.kit.filter(file => packet.graph.foundationFiles.includes(file.name.replace(/^kit\//, ""))) }, packet.kit)
       try {
         // TASK-01 state: only the files copied before it exist, and npm test must already pass.
         run("npm", ["install", "--no-audit", "--no-fund"], root)

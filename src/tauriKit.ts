@@ -177,7 +177,8 @@ function packageJson(identity: ProjectIdentity, uses: TauriKitUses): string {
       dev: "vite",
       build: "tsc --noEmit && vite build",
       typecheck: "tsc --noEmit",
-      test: "vitest run",
+      // kit/ stays in the project root while tasks copy from it; its own tests must not run there.
+      test: "vitest run --exclude 'kit/**'",
       tauri: "tauri",
     },
     dependencies,

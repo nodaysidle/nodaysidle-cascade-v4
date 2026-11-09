@@ -286,9 +286,10 @@ Sample content${mark}. Keep it when the idea supplies no entries; the site owner
         build: "astro build",
         preview: "astro preview",
         // The two production-build checks read dist/, so they run after npm run build, not in npm test.
-        test: "vitest run --exclude tests/accessibility.test.ts --exclude tests/performance.test.ts",
-        "test:a11y": "vitest run tests/accessibility.test.ts",
-        "audit:performance": "vitest run tests/performance.test.ts",
+        // kit/ stays in the project root until its last file is copied; its own tests must not run there.
+        test: "vitest run --exclude 'kit/**' --exclude tests/accessibility.test.ts --exclude tests/performance.test.ts",
+        "test:a11y": "vitest run tests/accessibility.test.ts --exclude 'kit/**'",
+        "audit:performance": "vitest run tests/performance.test.ts --exclude 'kit/**'",
       },
       dependencies: {
         astro: "^5.0.0",
@@ -310,7 +311,7 @@ export default defineConfig({
   ${sitemap ? "...(site ? { site, integrations: [sitemap()] } : {})," : "..." + "(site ? { site } : {}),"}
 })
 `),
-    file("tsconfig.json", JSON.stringify({ extends: "astro/tsconfigs/strict", include: [".astro/types.d.ts", "**/*"], exclude: ["dist"] }, null, 2) + "\n"),
+    file("tsconfig.json", JSON.stringify({ extends: "astro/tsconfigs/strict", include: [".astro/types.d.ts", "**/*"], exclude: ["dist", "kit"] }, null, 2) + "\n"),
     file("src/env.d.ts", `/// <reference types="astro/client" />\n`),
     file("src/styles/global.css", `:root {
   color-scheme: dark;
