@@ -195,7 +195,7 @@ export function planAstroWeb(
     collections,
     contentCollection: (itemFeature ? collectionOf(itemFeature, collections) : collections[0])?.name ?? "entries",
     foundationExtras: usesContentCollections ? ["src/content.config.ts"] : [],
-    seedContentPaths: collections.map(item => `src/content/${item.name}/sample-entry.md`),
+    seedContentPaths: collections.map(item => `src/content/${item.name}/01-sample-entry.md`),
     featurePlacements,
     routeSummary: unique(routeSummary),
     browserPersistence,

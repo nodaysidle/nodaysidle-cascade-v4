@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { compilePacket } from "../src/compiler"
+import { blueprintExportFile, compilePacket } from "../src/compiler"
 import { fieldKey } from "../src/astroWeb"
 import { fixtureCases, lanternBooksBlueprint } from "./fixtures/blueprints"
 
@@ -12,8 +12,8 @@ describe("Astro packets for a site with several record types", () => {
     for (const name of ["featured-book", "reading-event", "opening-hours"]) {
       expect(config).toContain(`"${name}": defineCollection`)
       expect(config).toContain(`base: "./src/content/${name}"`)
-      expect(kitFile(packet, `src/content/${name}/sample-entry.md`)).toBeDefined()
-      expect(packet.graph.foundationFiles).toContain(`src/content/${name}/sample-entry.md`)
+      expect(kitFile(packet, `src/content/${name}/01-sample-entry.md`)).toBeDefined()
+      expect(packet.graph.foundationFiles).toContain(`src/content/${name}/01-sample-entry.md`)
     }
     expect(config).toContain("author: z.string()")
     expect(config).toContain("startsAt: z.coerce.date()")
@@ -133,7 +133,7 @@ describe("Astro packets for a site with several record types", () => {
     expect(kitFile(packet, "src/content.config.ts")).toContain("shortDescription: z.string()")
     expect(kitFile(packet, "src/content.config.ts")).toContain("lengthKilometres: z.number()")
     expect(kitFile(packet, "src/content.config.ts")).toContain("openingTime: z.string().optional()")
-    expect(kitFile(packet, "src/content/featured-book/sample-entry.md")).toContain("lengthKilometres: 1")
+    expect(kitFile(packet, "src/content/featured-book/01-sample-entry.md")).toContain("lengthKilometres: 1")
     expect(packet.documents["TASKS.md"]).toContain("Frontmatter holds exactly shortDescription, lengthKilometres, openingTime (optional)")
     expect(packet.documents["TRD.md"]).not.toContain("shortdescription")
   })
@@ -155,11 +155,11 @@ describe("Astro packets for a site with several record types", () => {
 
   it("keeps sample entries as sample content when the idea supplies none, and says who replaces them", async () => {
     const packet = await compilePacket(lanternBooksBlueprint, "astro-web")
-    const seed = kitFile(packet, "src/content/featured-book/sample-entry.md")!
+    const seed = kitFile(packet, "src/content/featured-book/01-sample-entry.md")!
     expect(seed).toContain("Sample content")
     expect(packet.documents["TASKS.md"]).toContain("keep its sample entry unchanged and invent nothing; the site owner replaces it")
     const data = packet.graph.phases.flatMap(phase => phase.tasks).find(task => task.ownerIds.includes("OWN-DATA-STORE"))!
-    expect(data.prompt).toContain("create one file per entry the idea names and delete that collection's sample-entry.md")
+    expect(data.prompt).toContain("create one file per entry the idea names, named with a two-digit numeric prefix in the order the idea lists them (01-, 02-), and delete that collection's 01-sample-entry.md")
   })
 
   it("states the content catalog interface and tests pages over the build", async () => {
@@ -192,5 +192,71 @@ describe("Astro packets for a site with several record types", () => {
   it("keeps the interactive wiring and recovery text for a site with a declared service", async () => {
     const packet = await compilePacket(lanternBooksBlueprint, "astro-web")
     expect(packet.documents["TRD.md"]).not.toContain("Preserve entered form content")
+  })
+
+  it("gives a records collection to every content object whatever storage or platform needs the provider wrote", async () => {
+    const needs = ["notifications" as const, "camera" as const, "location" as const, "local-storage" as const]
+    const asDocuments = {
+      ...lanternBooksBlueprint,
+      platformNeeds: needs,
+      features: lanternBooksBlueprint.features.map(feature => ({ ...feature, usesPlatformNeeds: needs })),
+      dataObjects: lanternBooksBlueprint.dataObjects.map((item, index) => ({ ...item, storage: index === 0 ? "document" as const : "app-files" as const })),
+    }
+    const packet = await compilePacket(asDocuments, "astro-web")
+    const config = kitFile(packet, "src/content.config.ts")!
+    for (const name of ["featured-book", "reading-event", "opening-hours"]) expect(config).toContain(`"${name}": defineCollection`)
+    expect(config).not.toContain('"entries"')
+    expect(packet.kit.map(item => item.name)).toContain("kit/src/pages/featured-book/[slug].astro")
+    const ids = packet.graph.contracts.map(item => item.id)
+    for (const id of ["CON-PERMISSION-FILESYSTEM", "CON-PERMISSION-NOTIFICATIONS", "CON-PERMISSION-CAMERA", "CON-PERMISSION-LOCATION", "CON-PLATFORM-FILES"]) expect(ids).not.toContain(id)
+    expect(packet.graph.owners.map(owner => owner.id)).not.toContain("OWN-LIFECYCLE-COORDINATOR")
+    expect(packet.graph.owners.map(owner => owner.id)).not.toContain("OWN-PERMISSION-COORDINATOR")
+    expect(packet.documents["TASKS.md"]).not.toMatch(/permissioncoordinator|lifecyclecoordinator/)
+    expect(packet.graph.astroPlan?.staticSite).toBe(true)
+    // The same packet as the records version.
+    expect(packet.documents["TASKS.md"]).toBe((await compilePacket(lanternBooksBlueprint, "astro-web")).documents["TASKS.md"])
+  })
+
+  it("renders the detail page through the catalog function and shows every declared field", async () => {
+    const packet = await compilePacket(lanternBooksBlueprint, "astro-web")
+    const page = kitFile(packet, "src/pages/featured-book/[slug].astro")!
+    expect(page).toContain('import { listFeaturedBookEntries } from "../../lib/contentcatalog"')
+    expect(page).not.toContain("getCollection")
+    const catalog = kitFile(packet, "src/lib/contentcatalog.ts")!
+    for (const name of ["FeaturedBook", "ReadingEvent", "OpeningHours"]) expect(catalog).toContain(`export async function list${name}Entries()`)
+    expect(packet.graph.foundationFiles).not.toContain("src/lib/contentcatalog.ts")
+    expect(kitFile(packet, "README.md")).toContain("src/lib/contentcatalog.ts")
+    for (const label of ["Title", "Author", "Short note"]) expect(page).toContain(`<dt>${label}</dt>`)
+    const events = { ...lanternBooksBlueprint, features: lanternBooksBlueprint.features.map(feature => feature.name === "Book page" ? { ...feature, usesData: ["Reading event"], dataOperations: [{ data: "Reading event", operations: ["read" as const] }] } : feature) }
+    const eventPage = kitFile(await compilePacket(events, "astro-web"), "src/pages/reading-event/[slug].astro")!
+    expect(eventPage).toContain("entry.data.startsAt.toISOString()")
+    expect(eventPage).toContain("{entry.data.presenter !== undefined &&")
+  })
+
+  it("states one order rule: ascending entry id, numeric-prefixed files, and no invented order field", async () => {
+    const packet = await compilePacket(lanternBooksBlueprint, "astro-web")
+    for (const name of ["PRD.md", "TRD.md", "TASKS.md"] as const) expect(packet.documents[name], name).toContain("every list is in ascending entry id")
+    expect(packet.documents["TRD.md"]).toContain("sorted ascending by id, the file name without extension")
+    expect(packet.documents["TASKS.md"]).not.toContain("render in the order the feature declares")
+  })
+
+  it("puts the identity in package.json, a viewport check in the build test, and a manual-evidence note on the 320 px check", async () => {
+    const packet = await compilePacket(lanternBooksBlueprint, "astro-web")
+    expect(JSON.parse(kitFile(packet, "package.json")!).identity).toBe("com.lantern.books")
+    expect(kitFile(packet, "tests/contract.test.ts")).toContain('"com.lantern.books"')
+    expect(kitFile(packet, "tests/accessibility.test.ts")).toContain("viewport meta")
+    const tasks = packet.documents["TASKS.md"]
+    expect(tasks).toContain('recorded as the "identity" field of package.json')
+    expect(packet.documents["TRD.md"]).toContain("dist/sitemap-index.xml only when SITE_URL was set")
+    expect(packet.documents["TRD.md"]).toContain("manual evidence to report, not a test")
+  })
+
+  it("records a static site in blueprint.json with no adapter and no browser capability", async () => {
+    const packet = await compilePacket(lanternBooksBlueprint, "astro-web")
+    const file = await blueprintExportFile(packet, lanternBooksBlueprint, "astro-web", { siteKind: "landing", outputMode: "static", adapter: "node" })
+    const manifest = JSON.parse(file.content)
+    expect(manifest.preset.options).toEqual({ siteKind: "landing", outputMode: "static" })
+    for (const key of ["notifications", "microphone", "camera", "location", "network"]) expect(manifest.preset.capabilities[key], key).toBe(false)
+    expect(manifest.preset.capabilities.fileAccess).toBe("none")
   })
 })
