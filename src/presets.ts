@@ -436,6 +436,7 @@ const linuxGtk: PresetContract = {
     "src/app.rs is the composition root and constructs every feature with the concrete platform owners named in the contracts; test doubles exist only under tests/.",
     "The packaging focused test constructs the production composition root and asserts that every injected platform dependency is the concrete production type.",
     "Before completion, launch the installed binary under Wayland, complete one acceptance outcome per feature, quit, relaunch, and confirm that every declared stored data object is still present.",
+    "Keep filtering, ordering, validation, and message selection in display-free view-model functions that the focused tests assert on; cargo test must pass without a display, and widget checks belong to the launch check.",
     "Kit helpers that no contract names are optional; do not call a credential, HTTP, or tray helper only to satisfy the wiring gate. Every owner named in TRD.md must be reachable from the production composition root.",
     ...SHARED_WIRING_RULES,
   ],
@@ -641,7 +642,7 @@ const tauriDesktop: PresetContract = {
     () => "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
     () => "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
     () => "cargo test --manifest-path src-tauri/Cargo.toml",
-    () => "npm run tauri -- build",
+    () => "npm run tauri -- build --no-bundle",
   ],
   packagingRules: ["Build the frontend with Vite and the native boundary with Cargo.", "Set tauri.conf.json productName to the locked project name.", "Local proof builds only the native .app on macOS; on Linux build the AppImage or deb and validate the desktop entry.", "Use least-privilege capabilities for every command and plugin.", "Verify the installer or bundle before the launch smoke."],
   wiringRules: [

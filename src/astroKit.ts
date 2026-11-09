@@ -1,6 +1,6 @@
 import type { NormalizedBlueprint } from "./compiler"
 import type { PresetId, ProjectIdentity } from "./presets"
-import { contentCollectionName } from "./astroWeb"
+import { contentCollectionName, pageRoute } from "./astroWeb"
 
 export interface AstroKitFile {
   readonly path: string
@@ -54,6 +54,16 @@ function collectionFields(blueprint: NormalizedBlueprint): { schema: string; see
   }
 }
 
+// Keys the kit pages read: the first declared text field is the title; the first long text field is the description.
+function pageKeys(blueprint: NormalizedBlueprint): { title: string; description?: string } {
+  const item = blueprint.domainData.find(candidate => candidate.fields.length && (candidate.sensitivity === "public" || candidate.sensitivity === "internal"))
+    ?? blueprint.domainData.find(candidate => candidate.fields.length)
+  if (!item) return { title: "title", description: "description" }
+  const title = item.fields.find(field => field.valueType === "text") ?? item.fields[0]!
+  const description = item.fields.find(field => field.valueType === "long-text" || (field.valueType === "text" && field !== title))
+  return { title: fieldKey(title.name), ...(description ? { description: fieldKey(description.name) } : {}) }
+}
+
 function hasContent(blueprint: NormalizedBlueprint): boolean {
   return blueprint.domainData.length > 0 || blueprint.features.some(feature => feature.surface === "item-page")
 }
@@ -66,6 +76,11 @@ export function astroKit(identity: ProjectIdentity, blueprint: NormalizedBluepri
   const collection = collectionFor(blueprint)
   const content = hasContent(blueprint)
   const fields = collectionFields(blueprint)
+  const keys = pageKeys(blueprint)
+  const navLinks = [
+    ...blueprint.features.filter(feature => feature.surface === "page").map(feature => ({ href: `/${pageRoute(feature.name)}/`, label: feature.name.replace(/\s+page$/i, "") })),
+    ...(blueprint.features.some(feature => feature.surface === "collection-index") ? [{ href: `/${collection}/`, label: "All" }] : []),
+  ]
   const about = hasSurface(blueprint, "about-page")
   const item = content
   const features = Array.isArray(options.features) ? options.features : ["sitemap"]
@@ -160,6 +175,7 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site) : Astro.u
         <a href="/">${blueprint.projectName}</a>
         <nav aria-label="Primary">
           <a href="/">Home</a>
+          ${navLinks.map(link => `<a href="${link.href}">${link.label}</a>`).join("\n          ")}
           ${about ? '<a href="/about/">About</a>' : ""}
         </nav>
       </header>
@@ -181,7 +197,7 @@ ${content ? `import { getCollection } from "astro:content"\nconst entries = awai
   <div class="grid">
     ${blueprint.features.map(feature => `<article class="card"><h3>${feature.name}</h3><p>${feature.outputs[0] ?? feature.behavior}</p></article>`).join("\n    ")}
   </div>
-  ${content ? `<h2>Entries</h2><ul class="list">{entries.map(entry => <li><a href={\`/${collection}/\${entry.id}/\`}>{entry.data.title}</a></li>)}</ul>` : ""}
+  ${content ? `<h2>Entries</h2><ul class="list">{entries.map(entry => <li><a href={\`/${collection}/\${entry.id}/\`}>{entry.data.${keys.title}}</a></li>)}</ul>` : ""}
 </BaseLayout>
 `),
     file("src/pages/404.astro", `---
@@ -265,7 +281,7 @@ const entries = await getCollection("${collection}")
 <BaseLayout title="${blueprint.projectName}" description="${blueprint.productDefinition.slice(0, 150)}">
   <h1>${blueprint.projectName}</h1>
   <ul class="list">
-    {entries.map(entry => <li><a href={\`/${collection}/\${entry.id}/\`}>{entry.data.title}</a></li>)}
+    {entries.map(entry => <li><a href={\`/${collection}/\${entry.id}/\`}>{entry.data.${keys.title}}</a></li>)}
   </ul>
 </BaseLayout>
 `),
@@ -283,9 +299,9 @@ export async function getStaticPaths() {
 const { entry } = Astro.props
 const { Content } = await render(entry)
 ---
-<BaseLayout title={entry.data.title} description={entry.data.description}>
+<BaseLayout title={entry.data.${keys.title}} ${keys.description ? `description={entry.data.${keys.description}}` : ""}>
   <article>
-    <h1>{entry.data.title}</h1>
+    <h1>{entry.data.${keys.title}}</h1>
     <Content />
   </article>
 </BaseLayout>

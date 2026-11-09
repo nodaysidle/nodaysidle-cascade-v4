@@ -887,9 +887,13 @@ const VALUE_TYPE_LABEL: Record<DataValueType, string> = {
 // The stored shape and the exact operations the declared features perform, so every task that
 // touches the store uses one schema and builds no operation nobody asked for.
 function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainData"][number], features: readonly GraphFeature[]): string[] {
-  if (!item.fields.length) return []
   const users = features.filter(feature => dataFeatureIds(item.name, features).includes(feature.id))
   const operations = unique(users.flatMap(feature => feature.dataOperations))
+  if (item.storage === "app-files" && operations.length && presetId !== "astro-web") {
+    const names = operations.flatMap(operation => operation === "create" ? ["import_file(source)"] : operation === "delete" ? ["remove_file(reference)"] : operation === "read" ? ["file_path(reference)"] : [])
+    return [`File operations (OWN-DATA-STORE owns them; feature tasks add no other file access): ${names.join(", ")}. A file is copied into the app folder before its record is inserted, and a failed insert removes the copy.`]
+  }
+  if (!item.fields.length) return []
   const lines = [
     `Stored fields (one record each, plus a stable generated id): ${item.fields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]})`).join("; ")}.`,
   ]
@@ -915,7 +919,7 @@ function storeInterfaceDetail(presetId: PresetId, item: NormalizedBlueprint["dom
   }
   if (presetId === "astro-web") return `Interface: the content collection schema declares exactly the stored fields above; pages read entries through getCollection and no page defines its own schema.`
   const functions = methods({ create: ["insert"], read: ["list", "get"], update: ["update"], delete: ["delete"] })
-  return `Interface: OWN-DATA-STORE defines struct ${record} with the stored fields above (id: i64) and trait ${record}Store with exactly: ${functions.join(", ")}; every function returns Result with a typed error, and feature tasks call the trait and add no other storage access.`
+  return `Interface: OWN-DATA-STORE defines struct ${record} with the stored fields above (id: i64) and trait ${record}Store with exactly: ${functions.join(", ")}; every function returns Result with a typed error, and feature tasks call the trait and add no other storage access. OWN-DATA-STORE creates the table in its own transactional migration that raises PRAGMA user_version by one; ordered lists of text lines are stored as a JSON text column; list returns records by descending id unless a feature states another order, with id as the final tie-break.`
 }
 
 function persistencePlacement(
@@ -1382,7 +1386,7 @@ function buildPhases(
     focusedTests: [foundationTest],
     acceptanceIds: [],
     acceptanceCriteria: foundationCriteria,
-    prompt: `Create the ${preset.label} foundation with identity ${identity.bundleId}. Use only the locked stack and create every listed file before any later task modifies it.${preset.id === "astro-web" ? " package.json must define npm run check, test, test:a11y, build, and audit:performance before any later validation gate." : ""} Add a contract test that fails on stack or identity drift.`,
+    prompt: `Create the ${preset.label} foundation with identity ${identity.bundleId}. Use only the locked stack. Kit files are copied before this task (see Working Rules): verify each listed kit file exists unchanged and create every other listed file before any later task modifies it.${preset.id === "astro-web" ? " package.json must define npm run check, test, test:a11y, build, and audit:performance before any later validation gate." : ""} Add a contract test that fails on stack or identity drift.`,
     validationCommands: preset.foundationValidationCommands
       ?? preset.validationCommands.slice(0, 2).map(command => command(identity)),
   }
@@ -1459,7 +1463,7 @@ function buildPhases(
       focusedTests: [files.focusedTestFile],
       acceptanceIds: ownedAcceptance.map(item => item.id),
       acceptanceCriteria,
-      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.id === firstMainOwnerId ? " You are the first main-surface task: also build the main window content area and the shared view state (the loaded records of every declared data object, the current search query, and the active filter) that later feature tasks extend; later tasks must not replace them." : ""}`,
+      prompt: `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}${draft.id === firstMainOwnerId ? " You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them." : ""}`,
       validationCommands: draft.kind === "packaging"
         ? [files.focusedTestCommand, ...preset.validationCommands.map(command => command(identity))]
         : [files.focusedTestCommand, ...preset.validationCommands.slice(0, 2).map(command => command(identity))],
@@ -1486,6 +1490,10 @@ function recoveryRulesFor(preset: PresetContract, blueprint: NormalizedBlueprint
 }
 
 function lockedStackFor(preset: PresetContract, blueprint: NormalizedBlueprint): readonly string[] {
+  if (preset.id === "tauri2-rust-typescript-desktop") {
+    const { http } = rustKitHelpers(blueprint)
+    return http ? preset.allowedTechnologies : preset.allowedTechnologies.filter(technology => technology !== "reqwest" && !technology.startsWith("tokio-tungstenite"))
+  }
   if (preset.id !== "linux-hyprland-waybar-module" && preset.id !== "linux-wayland-gtk4-desktop") return preset.allowedTechnologies
   const { records, secrets, http } = rustKitHelpers(blueprint)
   const omitted = new Set([...(records ? [] : ["rusqlite"]), ...(secrets ? [] : ["keyring (Secret Service)"]), ...(http ? [] : ["reqwest with rustls"])])

@@ -53,6 +53,11 @@ export function astroBrowserPersistence(
     && !astroUsesContentCollections(blueprint, runtimeMode)
 }
 
+// The route of a feature on the generic "page" surface: its name without a trailing "page".
+export function pageRoute(featureName: string): string {
+  return featureName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/-page$/, "") || "page"
+}
+
 export function astroFeaturePlacement(
   feature: GraphFeature,
   collection: string,
@@ -77,8 +82,7 @@ export function astroFeaturePlacement(
     case "search-page":
       return { kind: "page", pageFile: "src/pages/search.astro", registrationFile: "src/pages/search.astro" }
     case "page": {
-      const route = feature.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").replace(/-page$/, "") || "page"
-      const pageFile = `src/pages/${route}.astro`
+      const pageFile = `src/pages/${pageRoute(feature.name)}.astro`
       return { kind: "page", pageFile, registrationFile: pageFile }
     }
     case "main":
