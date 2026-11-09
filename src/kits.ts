@@ -3,7 +3,7 @@ import { astroKit } from "./astroKit"
 import { tauriKitFiles, tauriKitReadme, tauriKitUses } from "./tauriKit"
 import type { NormalizedBlueprint } from "./compiler"
 import type { PresetId, ProjectIdentity } from "./presets"
-import { WAYBAR_EMPTY_LABEL, WAYBAR_FAILURE_RULE, waybarKitParts, waybarSources } from "./waybarContracts"
+import { WAYBAR_EMPTY_LABEL, WAYBAR_FAILURE_RULE, waybarKitParts, waybarRequestSlots, waybarSources } from "./waybarContracts"
 import { waybarLocalTimeKit, waybarSystemKit } from "./waybarKit"
 
 export interface KitFile {
@@ -684,7 +684,10 @@ export function waybarTaskNotes(blueprint: NormalizedBlueprint, featureNames: re
       notes.push(`The label is built by the pure function exported by ${roles.labelOwners.join(", ")} (stored record and saved settings in, ModuleOutput out); those tasks come first, so call that function instead of formatting the label yourself.`)
     }
     for (const service of blueprint.externalServices.filter(item => item.requestValueFrom !== "")) {
-      notes.push(`The stored record carries the value of the saved setting '${service.requestValueFrom}' it was fetched for; write it with every successful fetch.`)
+      const slots = waybarRequestSlots(service, blueprint.domainData)
+      notes.push(slots === undefined
+        ? `The stored record carries the value of the saved setting '${service.requestValueFrom}' it was fetched for; write it with every successful fetch.`
+        : `The request is built from several saved values: read each of ${slots.map(slot => `'${slot.name}' (settings key ${snakeKey(slot.name)})`).join(", ")} from the saved settings of '${service.requestValueFrom}' and pass them to the integration owner's request_url, which builds the address with http::fill_url (src/platform/http.rs). A value that is not saved, or that fill_url refuses (empty, not a number, outside the field's min..max), is a failed fetch: no request is sent and the failure rule above applies exactly as for a missing single value. The stored record carries every one of those saved values it was fetched for; write them with every successful fetch.`)
     }
     notes.push(`Set ModuleOutput.value to the raw numeric reading${blueprint.features.some(feature => feature.thresholds.length) ? " in the unit the declared thresholds use (bytes for a size)" : ""} when the label shows one; severity is the kit's: THRESHOLDS in src/module.rs is generated from the declared thresholds${blueprint.features.some(feature => feature.thresholds.length) ? "" : " (none are declared, so the class is always normal)"} and no task edits it. Set ModuleOutput.tooltip to the label text unless the acceptance criteria state tooltip wording. The empty label is ${WAYBAR_EMPTY_LABEL}, the kit default of Settings.text; do not change it.`)
     if (blueprint.persistenceNeeds.some(need => need.storage === "records")) {
@@ -693,13 +696,15 @@ export function waybarTaskNotes(blueprint: NormalizedBlueprint, featureNames: re
   }
   if (roles.labelOwners.some(name => featureNames.includes(name))) {
     const keyed = blueprint.externalServices.filter(item => item.requestValueFrom !== "")
-    notes.push(`You own the pure label function for the stored reading: export label(reading, settings) -> ModuleOutput, where reading is the stored record or none (an Option over a reference to this product's stored record type) and ModuleOutput has text, tooltip, class, value; with no reading it returns the empty state. It never reads cache.json, fetches, measures, or schedules; the refresh-loop owner calls it from fetch_output. It sets value to the raw reading and leaves class to the kit, which sets class with severity_class(value) after the label function returns, so a test of amber (warning) or red (critical) asserts severity_class_with or the refresh path, never label(). A criterion about a failed refresh (class stale, STALE_SUFFIX) or about what the module prints is asserted in this task through module::refresh_with(cache_path, settings, now, fetch, stored) and module::render_with(settings, cache, now) with injected fetch and stored closures, because fetch_output is built in a later task; label() itself stays pure.${keyed.length ? ` When the record's saved-setting value (the field named ${keyed.map(item => `'${item.requestValueFrom}'`).join(", ")}) differs from the current saved setting, it returns the empty state, never another place's value.` : ""}`)
+    notes.push(`You own the pure label function for the stored reading: export label(reading, settings) -> ModuleOutput, where reading is the stored record or none (an Option over a reference to this product's stored record type) and ModuleOutput has text, tooltip, class, value; with no reading it returns the empty state. It never reads cache.json, fetches, measures, or schedules; the refresh-loop owner calls it from fetch_output. It sets value to the raw reading and leaves class to the kit, which sets class with severity_class(value) after the label function returns, so a test of amber (warning) or red (critical) asserts severity_class_with or the refresh path, never label(). A criterion about a failed refresh (class stale, STALE_SUFFIX) or about what the module prints is asserted in this task through module::refresh_with(cache_path, settings, now, fetch, stored) and module::render_with(settings, cache, now) with injected fetch and stored closures, because fetch_output is built in a later task; label() itself stays pure.${keyed.length ? ` When the record's saved-setting value (the field${keyed.some(item => waybarRequestSlots(item, blueprint.domainData) !== undefined) ? "s" : ""} named ${keyed.flatMap(item => (waybarRequestSlots(item, blueprint.domainData)?.map(slot => slot.name) ?? [item.requestValueFrom]).map(name => `'${name}'`)).join(", ")}) differs from the current saved setting, it returns the empty state, never another place's value.` : ""}`)
   }
   if (roles.clickOwner !== undefined && featureNames.includes(roles.clickOwner)) {
     notes.push("You are the click-action owner: replace the body of click in src/module.rs and change its signature to click(settings: &Settings, launcher: &dyn Launcher), updating run_action to pass &SystemLauncher (click is the composition root of the click path); the Waybar fragment (already bound to --action click) needs no change, and no other --action name is added unless a feature declares one. A failed click returns Err (exit 2, message on stderr) and writes neither the store nor the cache.")
     const launchers = waybarLaunchers(blueprint)
     for (const page of launchers.pages) {
-      notes.push(`Open ${page.includes("{value}") ? `the address the integration owner's page_url function builds from the saved setting (template ${page})` : page} with open_url from src/platform/launcher.rs (xdg-open through std::process::Command) and take the launcher as an injected &dyn Launcher, so the focused test passes a recording launcher and a failing launcher; a launcher error makes click return Err.${page.includes("{value}") ? " Read the saved setting first and return Err before calling page_url when none is saved." : ""}`)
+      const templated = /\{[^{}]*\}/.test(page)
+      const several = templated && page.replace("{value}", "").includes("{")
+      notes.push(`Open ${templated ? `the address the integration owner's page_url function builds from the saved ${several ? "settings" : "setting"} (template ${page})` : page} with open_url from src/platform/launcher.rs (xdg-open through std::process::Command) and take the launcher as an injected &dyn Launcher, so the focused test passes a recording launcher and a failing launcher; a launcher error makes click return Err.${templated ? (several ? " Read every saved setting the template uses first and return Err before calling page_url when one is not saved." : " Read the saved setting first and return Err before calling page_url when none is saved.") : ""}`)
     }
     if (launchers.notifies) {
       notes.push("Send the notification with notify from src/platform/launcher.rs (notify-send through std::process::Command) from click only, through an injected &dyn Launcher, so the focused test asserts exactly one request and a failing launcher makes click return Err.")
@@ -1393,6 +1398,60 @@ pub fn percent_encode(value: &str) -> String {
     out
 }
 
+/// The saved value that fills one {name} placeholder of an endpoint or page template.
+pub enum Slot<'a> {
+    Text(&'a str),
+    Number {
+        value: &'a str,
+        min: Option<f64>,
+        max: Option<f64>,
+    },
+}
+
+/// Builds a request or page address from a template whose {name} placeholders each have a slot. Text is
+/// percent-encoded; a number must parse, be finite and lie inside min..max, and is written as its number text.
+/// An empty value, a refused number, an unclosed brace, or a placeholder with no slot is an Err (a failed fetch).
+pub fn fill_url(template: &str, slots: &[(&str, Slot)]) -> Result<String, String> {
+    let mut out = String::new();
+    let mut rest = template;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let close = after
+            .find('}')
+            .ok_or_else(|| format!("unclosed placeholder in {template}"))?;
+        let name = &after[..close];
+        let (_, slot) = slots
+            .iter()
+            .find(|(slot_name, _)| *slot_name == name)
+            .ok_or_else(|| format!("no saved value for the placeholder {name}"))?;
+        match slot {
+            Slot::Text(value) => {
+                if value.trim().is_empty() {
+                    return Err(format!("the saved value for {name} is empty"));
+                }
+                out.push_str(&percent_encode(value));
+            }
+            Slot::Number { value, min, max } => {
+                let number: f64 = value
+                    .trim()
+                    .parse()
+                    .map_err(|_| format!("the saved value for {name} is not a number"))?;
+                if !number.is_finite() {
+                    return Err(format!("the saved value for {name} is not finite"));
+                }
+                if min.is_some_and(|low| number < low) || max.is_some_and(|high| number > high) {
+                    return Err(format!("the saved value for {name} is out of range"));
+                }
+                out.push_str(&number.to_string());
+            }
+        }
+        rest = &after[close + 1..];
+    }
+    out.push_str(rest);
+    Ok(out)
+}
+
 /// The one place a service response value is read: follow the keys, and when the value is a JSON array take
 /// element 0 (a one-element daily list). null, a missing key, or an empty array is an Err, which is a failed fetch.
 pub fn value_at<'a>(
@@ -1441,6 +1500,61 @@ fn percent_encoding_keeps_unreserved_and_encodes_the_rest_as_utf8() {
     assert_eq!(percent_encode("San José"), "San%20Jos%C3%A9");
     assert_eq!(percent_encode("a-b.c_d~e1"), "a-b.c_d~e1");
     assert_eq!(percent_encode("a+b/c?"), "a%2Bb%2Fc%3F");
+}
+
+#[test]
+fn fill_url_substitutes_numbers_and_encodes_text() {
+    let template = "https://x.example/f?latitude={latitude}&longitude={longitude}&q={city}";
+    let url = fill_url(
+        template,
+        &[
+            (
+                "latitude",
+                Slot::Number {
+                    value: " 48.85 ",
+                    min: Some(-90.0),
+                    max: Some(90.0),
+                },
+            ),
+            (
+                "longitude",
+                Slot::Number {
+                    value: "-3",
+                    min: Some(-180.0),
+                    max: Some(180.0),
+                },
+            ),
+            ("city", Slot::Text("San José")),
+        ],
+    );
+    assert_eq!(
+        url,
+        Ok(String::from(
+            "https://x.example/f?latitude=48.85&longitude=-3&q=San%20Jos%C3%A9"
+        ))
+    );
+}
+
+#[test]
+fn fill_url_refuses_missing_empty_and_out_of_range_values() {
+    let lat = |value| Slot::Number {
+        value,
+        min: Some(-90.0),
+        max: Some(90.0),
+    };
+    assert!(fill_url("a/{latitude}", &[("latitude", lat("91"))]).is_err());
+    assert!(fill_url("a/{latitude}", &[("latitude", lat("-90.5"))]).is_err());
+    assert!(fill_url("a/{latitude}", &[("latitude", lat("north"))]).is_err());
+    assert!(fill_url("a/{latitude}", &[("latitude", lat("NaN"))]).is_err());
+    assert!(fill_url("a/{latitude}", &[("latitude", lat("inf"))]).is_err());
+    assert!(fill_url("a/{latitude}", &[("latitude", lat(""))]).is_err());
+    assert!(fill_url("a/{city}", &[("city", Slot::Text("  "))]).is_err());
+    assert!(fill_url("a/{longitude}", &[("latitude", lat("1"))]).is_err());
+    assert!(fill_url("a/{latitude", &[("latitude", lat("1"))]).is_err());
+    assert_eq!(
+        fill_url("a/{latitude}", &[("latitude", lat("90"))]),
+        Ok(String::from("a/90"))
+    );
 }
 
 #[test]
