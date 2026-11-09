@@ -1,5 +1,7 @@
 import { ASTRO_BUDGET_TEXT } from "./astroWeb"
+import type { NormalizedBlueprint } from "./compiler"
 import type { FeatureSurface } from "./schema"
+import { tauriSpecialize } from "./tauriContracts"
 
 export const PRESET_IDS = [
   "linux-wayland-gtk4-desktop",
@@ -193,6 +195,8 @@ export interface PresetContract {
   readonly fileBoundaryDetails?: readonly string[]
   readonly launchCheck: (identity: ProjectIdentity) => string
   readonly options: readonly PresetOption[]
+  // Blueprint- and option-dependent overrides, applied once where the graph and the audit read the preset.
+  readonly specialize?: (preset: PresetContract, blueprint: NormalizedBlueprint, options: Readonly<Record<string, PresetOptionValue>>) => Partial<PresetContract>
   readonly capabilities: PresetCapabilities
 }
 
@@ -256,11 +260,11 @@ const tauriPermissionPatterns: Readonly<Record<PermissionCapability, string>> = 
   microphone: "On macOS declare NSMicrophoneUsageDescription in src-tauri/Info.plist; on Linux request capture through the desktop portal and PipeWire; expose one Rust command for platform authorization and never capture before approval.",
   accessibility: "Keep platform accessibility adapters behind one Rust command with denial recovery. On Wayland, controlling another app is outside the compositor's security model.",
   notifications: "Use tauri-plugin-notification with the notification:default permission; check isPermissionGranted() and requestPermission() only from a user action before sendNotification().",
-  filesystem: "Use tauri-plugin-dialog only to let the user choose paths; Rust commands read and write only those chosen paths, including paths saved earlier to reopen, with std::fs after canonicalizing each path; the frontend gets no tauri-plugin-fs access.",
+  filesystem: "Use tauri-plugin-dialog only to let the user choose paths; Rust commands read and write only those chosen paths, including paths saved earlier to reopen, with std::fs after canonicalizing each existing path (for a save target that may not exist yet, its parent directory); the frontend gets no tauri-plugin-fs access.",
   network: "Perform remote calls in Rust with an allowlisted HTTPS destination and privacy-safe errors.",
   camera: "On macOS declare NSCameraUsageDescription in src-tauri/Info.plist; on Linux request capture through the portal and PipeWire; request access only after an explicit action.",
   location: "On macOS declare the location usage strings in src-tauri/Info.plist; on Linux use GeoClue2 through the portal; denial keeps non-location behavior available.",
-  "global-input": "Verify the plugin's Wayland behavior at kit-build time. If it is X11-only, provide a Hyprland bind that invokes the app and grant no global-shortcut plugin permission.",
+  "global-input": "Register one system-wide accelerator with tauri-plugin-global-shortcut from src/shortcut.ts, where the constant DEFAULT_ACCELERATOR (CommandOrControl+Shift+Space) is the only place the key combination is written; the capability file grants only global-shortcut:allow-register and global-shortcut:allow-unregister. If registration fails, show the feature's declared failure message and keep every in-app control working; there is no retry and no compositor bind.",
   clipboard: "Use tauri-plugin-clipboard-manager: a copy-only feature gets clipboard-manager:allow-write-text and never reads; grant allow-read-text only to a feature that reads clipboard content from an explicit action.",
   "background-startup": "Use tauri-plugin-autostart behind an explicit setting; on Linux prefer a systemd user unit or a Hyprland exec-once line when the plugin does not work on Wayland.",
   "background-execution": "Keep the Rust process and tray running after the main window closes only when declared; use a systemd user service where the platform requires one.",
@@ -677,7 +681,7 @@ const tauriDesktop: PresetContract = {
   },
   credentialPlacement: "Use one Rust SecretStore trait: the macOS login keychain, Linux Secret Service (GNOME Keyring or KWallet), or Windows Credential Manager through the keyring crate; tests use an in-memory store and never the real store; never expose stored values to the frontend after insertion.",
   fileBoundary: "Read and write only paths the user chooses through the dialog; the app never scans a broad folder or keeps a copy of a user document.",
-  fileBoundaryDetails: ["Every path comes from tauri-plugin-dialog or a path the app saved to reopen.", "Rust canonicalizes the path and operates on that exact path.", "The frontend receives no unrestricted filesystem scope."],
+  fileBoundaryDetails: ["Every path comes from tauri-plugin-dialog or a path the app saved to reopen.", "Rust canonicalizes the path, or the parent directory of a save target that does not exist yet, and operates on that exact path.", "The frontend receives no unrestricted filesystem scope."],
   launchCheck: identity => `scripts/package_linux.sh --install, then launch the installed ${identity.projectName} app and complete one acceptance outcome per feature.`,
   permissionPatterns: tauriPermissionPatterns,
   lifecycleRules: ["Use tauri::Builder as the cross-platform desktop entry.", "Close managed tasks, database handles, temporary files, and platform listeners on exit.", "Keep platform differences behind Rust commands and capability files."],
@@ -703,8 +707,9 @@ const tauriDesktop: PresetContract = {
   signingDecision: () => "Use Tauri platform signing: macOS codesign/notarization, Windows code signing, and verified Linux package checksums. For local macOS proof without a signing identity, re-sign with codesign --force --deep --sign -.",
   outputArtifact: "Tauri bundle (AppImage, deb, or native .app)",
   artifactPath: () => "src-tauri/target/release/bundle/",
-  completionEvidence: ["TypeScript, Vitest, Rust format, Clippy, and Cargo tests pass.", "Tauri builds the bundle from the locked capabilities.", "The built app installs and launches.", "Local data and temporary-resource cleanup survive a restart smoke."],
-  foundationValidationCommands: ["npm install", "npm run tauri -- icon app-icon.svg", "npm run typecheck", "npm test"],
+  completionEvidence: ["TypeScript, Vitest, Rust format, Clippy, and Cargo tests pass.", "npm run tauri -- build --no-bundle compiles the release binary with the locked capabilities.", "The packaged app installs and launches.", "Local data and temporary-resource cleanup survive a restart smoke."],
+  foundationValidationCommands: ["npm install", "npm run tauri -- icon app-icon.svg", "npm run typecheck", "npm test", "npm run build", "cargo test --manifest-path src-tauri/Cargo.toml"],
+  specialize: tauriSpecialize,
   options: [
     { id: "linuxPackaging", label: "Linux package", type: "select", values: ["appimage", "deb", "pkgbuild"], default: "appimage", description: "Recorded in the packet. v4.0 builds the host default bundles; per-choice artifact selection is next." },
     { id: "wayland", label: "Verify native Wayland", type: "toggle", default: true, description: "Recorded in the packet. The launch check already requires native Wayland." },
