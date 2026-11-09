@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { compilePacket, type CompiledPacket } from "../src/compiler"
-import { bareWaybarBlueprint, fixtureCases } from "./fixtures/blueprints"
+import { bareGtkBlueprint, bareWaybarBlueprint, fixtureCases } from "./fixtures/blueprints"
 
 const describeBuild = process.env.CASCADE_KIT_BUILD ? describe : describe.skip
 
@@ -60,6 +60,17 @@ describeBuild("v4 starter kits compile and pass their own tests", () => {
 
   it("Waybar module kit without optional helpers", async () => {
     const root = materialize(await compilePacket(bareWaybarBlueprint, "linux-hyprland-waybar-module"))
+    try {
+      run("cargo", ["fmt", "--check"], root, { TMPDIR: temporary })
+      run("cargo", ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"], root, { CARGO_TARGET_DIR: target, TMPDIR: temporary })
+      run("cargo", ["test"], root, { CARGO_TARGET_DIR: target, TMPDIR: temporary })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  }, 900_000)
+
+  it("GTK4 desktop kit without optional helpers", async () => {
+    const root = materialize(await compilePacket(bareGtkBlueprint, "linux-wayland-gtk4-desktop"))
     try {
       run("cargo", ["fmt", "--check"], root, { TMPDIR: temporary })
       run("cargo", ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"], root, { CARGO_TARGET_DIR: target, TMPDIR: temporary })

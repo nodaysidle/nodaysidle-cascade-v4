@@ -3,7 +3,7 @@ import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREME
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetOptionValue, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { renderPacket } from "./renderers"
 import { featureDataUses, featureReferenceIssues, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
-import { kitProjectPaths, nativeUsageDescriptions, presetKit, waybarHelpers } from "./kits"
+import { kitProjectPaths, nativeUsageDescriptions, presetKit, rustKitHelpers } from "./kits"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
 
@@ -1457,8 +1457,8 @@ function buildPhases(
 }
 
 function lockedStackFor(preset: PresetContract, blueprint: NormalizedBlueprint): readonly string[] {
-  if (preset.id !== "linux-hyprland-waybar-module") return preset.allowedTechnologies
-  const { records, secrets, http } = waybarHelpers(blueprint)
+  if (preset.id !== "linux-hyprland-waybar-module" && preset.id !== "linux-wayland-gtk4-desktop") return preset.allowedTechnologies
+  const { records, secrets, http } = rustKitHelpers(blueprint)
   const omitted = new Set([...(records ? [] : ["rusqlite"]), ...(secrets ? [] : ["keyring (Secret Service)"]), ...(http ? [] : ["reqwest with rustls"])])
   return preset.allowedTechnologies.filter(technology => !omitted.has(technology))
 }

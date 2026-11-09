@@ -331,16 +331,22 @@ export const fixtureCases: ReadonlyArray<{ presetId: FixturePresetId; blueprint:
   { presetId: "android-kotlin-compose", blueprint: trailChecklistBlueprint },
 ]
 
-// Synthetic Waybar blueprint with no records, secrets, services, or network: the kit must omit every optional helper.
-export const bareWaybarBlueprint: SemanticBlueprint = {
-  ...networkMonitorBlueprint,
-  dataObjects: networkMonitorBlueprint.dataObjects.filter(item => item.storage === "settings"),
-  externalServices: [],
-  platformNeeds: networkMonitorBlueprint.platformNeeds.filter(need => need !== "network"),
-  features: networkMonitorBlueprint.features.map(feature => ({
-    ...feature,
-    usesData: feature.usesData.filter(name => networkMonitorBlueprint.dataObjects.some(item => item.name === name && item.storage === "settings")),
-    usesServices: [],
-    usesPlatformNeeds: feature.usesPlatformNeeds.filter(need => need !== "network"),
-  })),
+// Synthetic blueprints with no records, secrets, services, or network: a Rust kit must omit every optional helper.
+function bare(base: SemanticBlueprint): SemanticBlueprint {
+  const keep = (name: string) => base.dataObjects.some(item => item.name === name && item.storage === "settings")
+  return {
+    ...base,
+    dataObjects: base.dataObjects.filter(item => item.storage === "settings"),
+    externalServices: [],
+    platformNeeds: base.platformNeeds.filter(need => need !== "network"),
+    features: base.features.map(feature => ({
+      ...feature,
+      usesData: feature.usesData.filter(keep),
+      usesServices: [],
+      usesPlatformNeeds: feature.usesPlatformNeeds.filter(need => need !== "network"),
+    })),
+  }
 }
+
+export const bareWaybarBlueprint: SemanticBlueprint = bare(networkMonitorBlueprint)
+export const bareGtkBlueprint: SemanticBlueprint = bare(photoCleanerBlueprint)

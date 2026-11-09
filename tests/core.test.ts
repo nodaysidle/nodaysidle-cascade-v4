@@ -7,7 +7,7 @@ import { exportPacketTo } from "../src/bridge"
 import { DOCUMENT_NAMES, compilePacket } from "../src/compiler"
 import { auditSemanticIntake } from "../src/schema"
 import { PRESETS, PRESET_IDS } from "../src/presets"
-import { bareWaybarBlueprint, fixtureCases } from "./fixtures/blueprints"
+import { bareGtkBlueprint, bareWaybarBlueprint, fixtureCases } from "./fixtures/blueprints"
 
 describe("v4 deterministic core", () => {
   it("exposes only the approved presets", () => {
@@ -49,10 +49,14 @@ describe("v4 deterministic core", () => {
     expect(waybarPacket.kit.map(file => file.name)).toContain("kit/resources/waybar/style.css")
   })
 
-  it("ships Waybar platform helpers and stack entries only for declared storage, secrets, and services", async () => {
-    const waybarBlueprints = [...fixtureCases.filter(item => item.presetId === "linux-hyprland-waybar-module").map(item => item.blueprint), bareWaybarBlueprint]
-    for (const blueprint of waybarBlueprints) {
-      const packet = await compilePacket(blueprint, "linux-hyprland-waybar-module")
+  it("ships Rust platform helpers and stack entries only for declared storage, secrets, and services", async () => {
+    const cases = [
+      ...fixtureCases.filter(item => item.presetId === "linux-hyprland-waybar-module" || item.presetId === "linux-wayland-gtk4-desktop"),
+      { presetId: "linux-hyprland-waybar-module" as const, blueprint: bareWaybarBlueprint },
+      { presetId: "linux-wayland-gtk4-desktop" as const, blueprint: bareGtkBlueprint },
+    ]
+    for (const { presetId, blueprint } of cases) {
+      const packet = await compilePacket(blueprint, presetId)
       const names = packet.kit.map(file => file.name)
       const text = (name: string) => packet.kit.find(file => file.name === name)?.content ?? ""
       const cargo = text("kit/Cargo.toml")
@@ -60,15 +64,18 @@ describe("v4 deterministic core", () => {
       const stackText = `${packet.documents["TRD.md"]}\n${packet.documents["AGENTS.md"]}`
       for (const [file, dep, stack] of [["sqlite", "rusqlite", "rusqlite"], ["credentials", "keyring", "keyring (Secret Service)"], ["http", "reqwest", "reqwest with rustls"]] as const) {
         const shipped = names.includes(`kit/src/platform/${file}.rs`)
-        expect(cargo.includes(`${dep} =`), `${blueprint.productName} cargo ${dep}`).toBe(shipped)
-        expect(mod.includes(`pub mod ${file};`), `${blueprint.productName} mod ${file}`).toBe(shipped)
-        expect(stackText.includes(stack), `${blueprint.productName} stack ${stack}`).toBe(shipped)
+        const label = `${presetId} ${blueprint.productName}`
+        expect(cargo.includes(`${dep} =`), `${label} cargo ${dep}`).toBe(shipped)
+        expect(mod.includes(`pub mod ${file};`), `${label} mod ${file}`).toBe(shipped)
+        expect(stackText.includes(stack), `${label} stack ${stack}`).toBe(shipped)
       }
       expect(text("kit/tests/contract_tests.rs").includes("platform::sqlite")).toBe(names.includes("kit/src/platform/sqlite.rs"))
       expect(names).toContain("kit/src/platform/atomic_file.rs")
     }
-    const bare = await compilePacket(bareWaybarBlueprint, "linux-hyprland-waybar-module")
-    expect(bare.kit.map(file => file.name).some(name => /platform\/(sqlite|credentials|http)\.rs$/.test(name))).toBe(false)
+    for (const [presetId, blueprint] of [["linux-hyprland-waybar-module", bareWaybarBlueprint], ["linux-wayland-gtk4-desktop", bareGtkBlueprint]] as const) {
+      const bare = await compilePacket(blueprint, presetId)
+      expect(bare.kit.map(file => file.name).some(name => /platform\/(sqlite|credentials|http)\.rs$/.test(name))).toBe(false)
+    }
   })
 
   it("renders create and modify file lists as separate sentences", async () => {
