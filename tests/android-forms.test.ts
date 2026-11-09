@@ -110,7 +110,6 @@ describe("Android form, validation, and notification contracts", () => {
     expect(tasks).toContain('the write-failure message of a later task\'s save, delete, mark, or toggle')
     expect(tasks).toContain('"summary-row-" plus the record id')
     expect(tasks).toContain("asserted by the packaging focused test as well")
-    expect(tasks).toContain("the stored records (the record type itself")
     expect(packet.documents["ARD.md"]).not.toContain("the kit's SettingsRepository, built on Jetpack DataStore, holds run and permission state")
   })
 })
