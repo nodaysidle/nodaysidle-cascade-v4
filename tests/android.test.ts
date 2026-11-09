@@ -245,7 +245,7 @@ describe("Android per-record reminders and tailored slots", () => {
   it("exposes only the slots the declared operations need, and names the slot or none per task", async () => {
     const { task, tasks } = await medicine()
     const first = task("TASK-04").prompt
-    expect(first).toContain("a per-row action area on every list row")
+    expect(first).toContain("a per-row action area on every row of the main list")
     expect(first).not.toMatch(/detail view|Edit button/)
     expect(task("TASK-05-MARK-TAKEN").prompt).toContain("(the per-row action area)")
     expect(task("TASK-05-MARK-TAKEN").prompt).not.toContain("Reuse the form fields")
@@ -292,7 +292,11 @@ describe("Android per-record reminders and tailored slots", () => {
     expect(trd).not.toContain("restores every setting")
     expect(trd).not.toContain("a command with nothing to act on")
     expect(trd).not.toContain("or WorkManager rather")
-    expect(packet.documents["TASKS.md"]).toContain("ContractTest asserts that app/build.gradle.kts declares com.trail.ready as the namespace and applicationId")
+    expect(trd).not.toContain("DataStore, filesDir, cacheDir")
+    expect(trd).not.toContain("provider changes")
+    expect(packet.documents["ARD.md"]).toContain("OWN-DATA-STORE is Room only: add no Jetpack DataStore")
+    expect(packet.documents["TASKS.md"]).toContain("ContractTest reads build.gradle.kts relative to the test working directory")
+    expect(packet.documents["TASKS.md"]).toContain("declares com.trail.ready as the namespace and applicationId")
     expect(packet.documents["TASKS.md"]).not.toContain("The implementation marker is")
     expect(packet.documents["TASKS.md"]).toContain("Packaging API: Packaging.kt defines `fun assertProductionWiring(container: AppContainer)`")
     expect(packet.documents["TASKS.md"]).toContain("LifecycleCoordinator API")

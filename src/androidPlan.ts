@@ -1,3 +1,4 @@
+import { ANDROID_DELETE_PROMPT, ANDROID_DISPLAY_FORMATS } from "./androidForms"
 import type { OwnerKind, ProjectIdentity } from "./presets"
 
 // Android-only planning: the files, contract, and task text a declared schedule, a notification
@@ -21,6 +22,10 @@ export interface AndroidScheduledFeature {
   // Per-record reminder: the stored record whose time field decides when each reminder is due.
   readonly at: { readonly record: string; readonly timeField: string; readonly titleField: string; readonly body: string } | null
   readonly notifies: boolean
+  // The declared title literal and text rule of a fixed-time or interval notification.
+  readonly notice: { readonly titleText: string; readonly notificationBody: string } | null
+  // Implementation files of the features this one builds on: where a shared selection rule already lives.
+  readonly selectionFiles: readonly string[]
 }
 
 function directory(file: string): string {
@@ -31,16 +36,12 @@ function applicationFile(identity: ProjectIdentity): string {
   return `app/src/main/java/${identity.packagePath}/${identity.pascalName}Application.kt`
 }
 
-function containerFile(identity: ProjectIdentity): string {
-  return `app/src/main/java/${identity.packagePath}/AppContainer.kt`
-}
-
 export function androidScheduleFiles(identity: ProjectIdentity, feature: AndroidScheduledFeature): { create: string[]; modify: string[]; worker: string; scheduler: string; schedulerTest: string } {
   const folder = directory(feature.implementationFile)
   const worker = `${folder}/${feature.pascal}Worker.kt`
   const scheduler = `${folder}/${feature.pascal}Scheduler.kt`
   const schedulerTest = `${folder.replace("app/src/main/", "app/src/test/")}/${feature.pascal}SchedulerTest.kt`
-  return { worker, scheduler, schedulerTest, create: [worker, scheduler, schedulerTest], modify: [applicationFile(identity), containerFile(identity)] }
+  return { worker, scheduler, schedulerTest, create: [worker, scheduler, schedulerTest], modify: [applicationFile(identity)] }
 }
 
 const NO_DIRECT_TIME = "no code calls LocalDate.now(), Instant.now(), or System.currentTimeMillis() directly"
@@ -67,7 +68,7 @@ export function androidScheduleContract(identity: ProjectIdentity, feature: Andr
         ? [`Reminder log: ReminderLogRepository (kit, app platform/reminders/ReminderLog.kt, provided as AppContainer.reminderLog) holds one row per (${at.record} id, local epoch day), with wasNotified(recordId, epochDay) and markNotified(recordId, epochDay). For every due id the Worker skips the record when wasNotified(id, LocalDate.now(clock).toEpochDay()) is true; otherwise it posts that record's notification and then calls markNotified. Several records, including records with the same time or the same ${at.titleField}, each get their own notification (notification id = the record id) and their own log row. This log is the only once-per-day state of the reminder: no data object, no SettingsRepository key, and no lastRunEpochDay is added for it.`]
         : []),
       ...(feature.notifies
-        ? [`Notification channel: ${files.scheduler} defines ${feature.pascal}Scheduler.registerChannel(context), which creates a NotificationChannel with id "${feature.slug}" and name "${feature.name}" (IMPORTANCE_DEFAULT) and is safe to call on every launch; the Worker posts through that channel only when NotificationManagerCompat.areNotificationsEnabled() is true and otherwise posts nothing and still returns Result.success(). ${at !== null ? `The notification title is the record's ${at.titleField} value and its text is exactly "${at.body}" (stated in the feature's acceptance); the Worker adds no other text and invents none` : "The notification uses the feature name as its title, the sentence the feature's behavior gives as its text"}, the platform icon android.R.drawable.ic_dialog_info (add no resource file), and a PendingIntent.FLAG_IMMUTABLE content intent that opens MainActivity. No screen shows the notification status unless a feature declares one.`]
+        ? [`Notification channel: ${files.scheduler} defines ${feature.pascal}Scheduler.registerChannel(context), which creates a NotificationChannel with id "${feature.slug}" and name "${feature.name}" (IMPORTANCE_DEFAULT) and is safe to call on every launch; the Worker posts through that channel only when NotificationManagerCompat.areNotificationsEnabled() is true (lint does not read that guard as a permission check, so the notify call carries @SuppressLint("MissingPermission")) and otherwise posts nothing and still returns Result.success(). ${at !== null ? `The notification title is the record's ${at.titleField} value and its text is exactly "${at.body}" (stated in the feature's acceptance); the Worker adds no other text and invents none` : feature.notice ? `The notification title is exactly "${feature.notice.titleText}" (the channel name is "${feature.name}", never the title) and its text is: ${feature.notice.notificationBody}; a list of values in the text is joined with ", " in the order the app's own list shows them${feature.selectionFiles.length ? `; the rule that decides which values are listed is the function the builds-on feature already exports from ${feature.selectionFiles.join(" or ")}, which the Worker calls and never copies` : ""}` : "The notification uses the feature name as its title, the sentence the feature's behavior gives as its text"}, the platform icon android.R.drawable.ic_dialog_info (add no resource file), and a PendingIntent.FLAG_IMMUTABLE content intent that opens MainActivity. No screen shows the notification status unless a feature declares one.`]
         : []),
       ...(at !== null ? [] : [`Run state: the epoch day (LocalDate.now(clock).toEpochDay()) on which this schedule last sent or deliberately skipped its run is kept in SettingsRepository under the schedule name "${feature.slug}" (lastRunEpochDay("${feature.slug}") and recordRun("${feature.slug}", epochDay), both already in the kit and tested). doWork() reads it first and does nothing when it equals today, so a day is never notified twice; it records today after it sends and after the feature's own skip rule applies, so a skipped day stays skipped. No other store holds this state and no data object is added for it.`]),
       `Enqueue point: ${application}.onCreate is the one owner that starts this schedule: it calls ${feature.notifies ? `${feature.pascal}Scheduler.registerChannel(this) and then ` : ""}${feature.pascal}Scheduler.enqueue(container.workManager${at !== null ? "" : ", container.clock"}) right after the container is created. AppContainer.kt already provides workManager and clock${at !== null ? " and reminderLog" : ""}. The lifecycle owner's start(container) does not enqueue it and starts nothing for it.`,
@@ -100,6 +101,16 @@ export function androidTaskExtras(input: {
   readonly focusedTestFile: string
   readonly firstMain?: boolean
   readonly detailView?: boolean
+  // Some owned feature renders on a screen (it is not only a schedule).
+  readonly screen?: boolean
+  // An owned feature saves records through a form.
+  readonly form?: boolean
+  // An owned feature deletes records.
+  readonly deletes?: boolean
+  // An owned feature shows stored numbers or dates.
+  readonly displays?: boolean
+  // Expected concrete type of every AppContainer property, for the packaging check.
+  readonly containerTypes?: readonly string[]
 }): AndroidTaskExtras {
   const { identity } = input
   const create: string[] = []
@@ -111,17 +122,27 @@ export function androidTaskExtras(input: {
     modify.push(...files.modify)
     notes.push(`This feature runs on a schedule: create ${files.worker}, ${files.scheduler}, and ${files.schedulerTest}, and wire them into ${applicationFile(identity)} exactly as CON-${feature.id.replace(/^FEAT-/, "")}-SCHEDULE says.`)
   }
+  if (input.scheduled.length && input.scheduled.every(feature => feature.notifies)) {
+    notes.push(`Focused commands: run ${input.scheduled.map(feature => androidScheduleFiles(identity, feature).schedulerTest.split("/").pop()!.replace(/\.kt$/, "")).join(" and ")} together with ${input.focusedTestFile.split("/").pop()!.replace(/\.kt$/, "")}, not only the feature's focused test.`)
+  }
+  if (input.screen === false) {
+    notes.push(`Registration: this feature adds no control or route, so App.kt and AppContainer.kt stay unchanged unless it needs a repository registered; only ${applicationFile(identity).split("/").pop()} changes.`)
+  }
+  if (input.form) {
+    notes.push("Form rules: build the form exactly as the Form, Field rules and Rejection details of the owned interface contracts say; the same validation function backs the Save rejection, the failure behavior, and the focused test, and the form and its validation are exported for any edit task to reuse.")
+  }
+  if (input.deletes) notes.push(ANDROID_DELETE_PROMPT)
   if (input.clockDependent) {
-    notes.push(`Time rule: this feature is scheduled or reads a stored date or time; every comparison of one with today or now takes a java.time.Clock (AppContainer.clock in production), and when its behavior or acceptance has such a boundary, ${input.focusedTestFile} passes Clock.fixed dates before, on, and after it; ${NO_DIRECT_TIME}. A status the screen derives from today is recomputed from the clock on every resume (Lifecycle.Event.ON_RESUME) and after every write; no timer exists for it unless a schedule contract names one.`)
+    notes.push(`Time rule: this feature is scheduled or reads a stored date or time; every comparison of one with today or now takes a java.time.Clock (AppContainer.clock in production), and when its behavior or acceptance has such a boundary, ${input.focusedTestFile} passes Clock.fixed dates before, on, and after it; ${NO_DIRECT_TIME}.${input.screen === false ? "" : " A status the screen derives from today is recomputed from the clock on every resume (Lifecycle.Event.ON_RESUME) and after every write; no timer exists for it unless a schedule contract names one."}`)
   }
   if (input.stamps) {
-    notes.push(`Stamp rule: a stored date or time this feature writes that the user does not enter (a creation or completion moment) is stamped from AppContainer.clock (clock.millis() for a date and time, LocalDate.now(clock).toEpochDay() for a date), and ${input.focusedTestFile} then passes a fixed java.time.Clock and asserts the stored value equals it; ${NO_DIRECT_TIME}. A date the user enters is stored as entered. Nothing here compares a stored value with now, so no before/on/after boundary applies.`)
+    notes.push(`Stamp rule: a stored date or time this feature writes that the user does not enter (a creation or completion moment) is stamped from AppContainer.clock (clock.millis() for a date and time, LocalDate.now(clock).toEpochDay() for a date), and ${input.focusedTestFile} then passes a fixed java.time.Clock and asserts the stored value equals it; ${NO_DIRECT_TIME}. A date the user enters is stored as entered, and every stored date or time is displayed as ${ANDROID_DISPLAY_FORMATS}. Nothing here compares a stored value with now, so no before/on/after boundary applies.`)
   }
   if (input.kind === "data") {
     notes.push("Room writes the schema JSON app/schemas/(the AppDatabase class name)/1.json when the project builds (the kit sets room.schemaLocation); that file is generated build output, committed with this task, and is not part of the create-only list.")
   }
   if (input.firstMain) {
-    notes.push(`Every list row${input.detailView ? " and detail view" : ""} shows every stored field the PRD says that list${input.detailView ? " or view" : ""} shows, in the form the stored value has (for a date, the formatted date); a value an acceptance outcome asserts on screen is shown there too.`)
+    notes.push(`Every list row${input.detailView ? " and detail view" : ""} shows every stored field the PRD says that list${input.detailView ? " or view" : ""} shows, in the form the stored value has (for a date, the formatted date: ${ANDROID_DISPLAY_FORMATS}); a value an acceptance outcome asserts on screen is shown there too.`)
   }
   if (input.kind === "permission" && input.notifications) {
     modify.push(`app/src/main/java/${identity.packagePath}/MainActivity.kt`)
@@ -131,7 +152,7 @@ export function androidTaskExtras(input: {
     notes.push("LifecycleCoordinator API: `fun start(container: AppContainer)` and `fun stop()`. Both have empty bodies unless a contract names a coroutine the coordinator must own, and then they start and cancel only that coroutine; neither ever enqueues WorkManager work, because each schedule contract names the Application as its one starter.")
   }
   if (input.kind === "packaging") {
-    notes.push("Packaging API: Packaging.kt defines `fun assertProductionWiring(container: AppContainer)`, which throws IllegalStateException naming the first container dependency that is not its concrete production type; the packaging test calls it on a production container.")
+    notes.push(`Packaging API: Packaging.kt defines \`fun assertProductionWiring(container: AppContainer)\`, which throws IllegalStateException naming the first container dependency that is not its concrete production type; the packaging focused test is its only caller: production code never calls it, and it is not wired into Application.onCreate.${input.containerTypes?.length ? ` Expected concrete type of each container property: ${input.containerTypes.join("; ")}; a test Application (when the kit has one) may build the container with a fixed Clock, and the check then accepts the Clock type.` : ""}`)
     modify.push(applicationFile(identity), `app/src/main/java/${identity.packagePath}/MainActivity.kt`)
     notes.push(`${ANDROID_DEVICE_GATE_RULE} Device gates: ${ANDROID_DEVICE_COMMANDS.map(command => `\`${command}\``).join("; ")}.`)
   }

@@ -35,6 +35,8 @@ export const pantryBlueprint: SemanticBlueprint = {
       usesPlatformNeeds: ["notifications", "background-execution"],
       runsDailyAt: "09:00",
       runsAtField: null,
+      scheduledNotification: { titleText: "Expiring soon", notificationBody: "the names of the items that expire within three days, joined by ', '" },
+      acceptanceSignals: ["The Worker posts one notification titled \"Expiring soon\" listing the expiring item names."],
       usesData: ["Grocery items", "Reminder preferences"],
     }),
   ],

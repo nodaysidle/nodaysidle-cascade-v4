@@ -52,6 +52,9 @@ export function auditCapabilities(blueprint: SemanticBlueprint, preset: PresetCo
     if (feature.usesPlatformNeeds.includes("notifications") && !preset.capabilities.notifications) {
       issues.push({ path: `${path}.usesPlatformNeeds`, rule: "capability.notifications", message: `Feature '${feature.name}' needs notifications, which ${preset.label} does not provide.` })
     }
+    if (preset.id === "android-kotlin-compose" && feature.runsAtField === null && feature.usesPlatformNeeds.includes("notifications") && (feature.runsDailyAt !== null || feature.runsEverySeconds !== null) && !feature.scheduledNotification) {
+      issues.push({ path: `${path}.scheduledNotification`, rule: "capability.android-notification-text", message: `Feature '${feature.name}' posts a scheduled notification; declare scheduledNotification with the literal titleText (quoted exactly in one acceptanceSignal) and the notificationBody (what its text says, including any literal used when there is nothing to list).` })
+    }
     if (feature.usesPlatformNeeds.includes("background-execution") && !preset.capabilities.background) {
       issues.push({ path: `${path}.usesPlatformNeeds`, rule: "capability.background", message: `Feature '${feature.name}' needs background execution, which ${preset.label} does not provide.` })
     }

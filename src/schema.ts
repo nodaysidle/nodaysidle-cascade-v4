@@ -82,6 +82,8 @@ const FeatureSchema = z.strictObject({
   systemSource: z.enum(["none", "network-received", "network-sent", "load-average", "memory", "battery"]).default("none"),
   // A reminder whose time of day is a stored record's field: the data object, its time field, the text field that titles the notification, and the constant notification body (quoted in acceptanceSignals); null otherwise.
   runsAtField: z.strictObject({ data: shortMeaning, timeField: shortMeaning, titleField: shortMeaning, notificationBody: compactMeaning }).nullable().default(null),
+  // The notification a scheduled (runsDailyAt or runsEverySeconds) feature posts: the literal title (quoted in acceptanceSignals) and what its text says (a constant sentence, or a rule such as "the low medicine names joined by ', ', or 'No low medicines' when none"); null otherwise.
+  scheduledNotification: z.strictObject({ titleText: compactMeaning, notificationBody: compactMeaning }).nullable().optional(),
 })
 
 export const DataStorageSchema = z.enum(["settings", "records", "document", "app-files", "secret", "temporary", "session"])
@@ -598,6 +600,17 @@ function dataShapeIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
       const normal = (value: string) => value.replace(/\s+/g, " ").trim().toLowerCase()
       if (!feature.acceptanceSignals.some(signal => normal(signal).includes(normal(at.notificationBody)))) {
         issues.push({ path: `${path}.notificationBody`, rule: "semantic.run-at-body", message: `Feature '${feature.name}' notificationBody must be quoted exactly in one of its acceptanceSignals.` })
+      }
+    }
+    const notice = feature.scheduledNotification
+    if (notice) {
+      const path = `features[${index}].scheduledNotification`
+      if (feature.runsDailyAt === null && feature.runsEverySeconds === null) {
+        issues.push({ path, rule: "semantic.notification-schedule", message: `Feature '${feature.name}' declares scheduledNotification but no runsDailyAt or runsEverySeconds; set it to null, or declare the schedule.` })
+      }
+      const normalTitle = (value: string) => value.replace(/\s+/g, " ").trim().toLowerCase()
+      if (!feature.acceptanceSignals.some(signal => normalTitle(signal).includes(normalTitle(notice.titleText)))) {
+        issues.push({ path: `${path}.titleText`, rule: "semantic.notification-title", message: `Feature '${feature.name}' scheduledNotification.titleText must be quoted exactly in one of its acceptanceSignals.` })
       }
     }
   })
