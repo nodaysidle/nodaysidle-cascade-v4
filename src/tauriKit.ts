@@ -58,6 +58,8 @@ export interface TauriKitUses {
   readonly tray: boolean
   // True when the preset option linuxPackaging is set: the kit ships no macOS packaging or signing.
   readonly linuxOnly: boolean
+  // The Wayland option: the installed desktop entry launches with GDK_BACKEND=wayland.
+  readonly wayland: boolean
   readonly shortcut: boolean
   readonly plugins: readonly TauriPlugin[]
   readonly usageDescriptions: ReadonlyArray<readonly [string, string]>
@@ -76,6 +78,7 @@ export function tauriKitUses(blueprint: NormalizedBlueprint, usageDescriptions: 
     services: blueprint.externalServices.length > 0,
     tray: needs.has("background-execution"),
     linuxOnly: typeof options.linuxPackaging === "string" && options.linuxPackaging.length > 0,
+    wayland: options.wayland === true,
     shortcut: needs.has("global-hotkey"),
     plugins: [
       ...(needs.has("clipboard") ? [PLUGINS.clipboard] : []),
@@ -105,7 +108,7 @@ export function tauriKitFiles(identity: ProjectIdentity, uses: TauriKitUses): Ta
     { path: "tests/ui.test.ts", content: uses.settings ? UI_TEST_TS : UI_TEST_TS.replace(", settingsGroup, settingsRow, switchControl", "").replace(/  it\("names every settings control[\s\S]*?\n  \}\)\n\n/, "") },
     { path: "app-icon.svg", content: APP_ICON_SVG },
     ...(uses.linuxOnly ? [] : [{ path: "scripts/package_app.sh", content: packageScript(identity) }]),
-    { path: "scripts/package_linux.sh", content: packageLinuxScript(identity) },
+    { path: "scripts/package_linux.sh", content: packageLinuxScript(identity, uses.wayland) },
     { path: "src-tauri/Cargo.toml", content: cargoToml(identity, lib, uses) },
     { path: "src-tauri/build.rs", content: BUILD_RS },
     { path: "src-tauri/rustfmt.toml", content: RUSTFMT_TOML },
@@ -621,7 +624,7 @@ const APP_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" heigh
 </svg>
 `
 
-function packageLinuxScript(identity: ProjectIdentity): string {
+function packageLinuxScript(identity: ProjectIdentity, wayland: boolean): string {
   return `#!/usr/bin/env bash
 # Build an AppImage, install it for the current user, and add the desktop entry.
 # Usage: scripts/package_linux.sh [--install]
@@ -667,7 +670,7 @@ cat > "$INSTALL_DIR/share/applications/${identity.bundleId}.desktop" <<DESKTOP
 [Desktop Entry]
 Name=$APP_NAME
 Comment=$APP_NAME
-Exec=$INSTALL_DIR/bin/$SLUG.AppImage
+Exec=${wayland ? "env GDK_BACKEND=wayland " : ""}$INSTALL_DIR/bin/$SLUG.AppImage
 Icon=$SLUG
 Terminal=false
 Type=Application

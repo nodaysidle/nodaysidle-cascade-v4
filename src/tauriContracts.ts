@@ -1,6 +1,6 @@
 import type { DataField, DataOperation, NormalizedBlueprint } from "./compiler"
 import type { OwnerKind, PresetContract, PresetOptionValue } from "./presets"
-import type { DataValueType } from "./schema"
+import type { DataValueType, FeatureRecovery } from "./schema"
 
 // Tauri-only contract text: the Rust/TypeScript wire format, the store and document command
 // interfaces, the option-dependent preset text, and the per-task prompt additions. Everything here is
@@ -17,6 +17,10 @@ export interface TauriFeatureUse {
   readonly resourceIds: readonly string[]
   readonly runsEverySeconds: number | null
   readonly runsDailyAt: string | null
+  readonly failureRecovery: FeatureRecovery
+  readonly invokedBy: string
+  // Rendered "Name: option, option; initially X" lines of the feature's declared choice lists.
+  readonly choices: readonly string[]
 }
 
 export interface TauriData {
@@ -59,6 +63,19 @@ export function tauriStoreCommands(base: string, operations: readonly DataOperat
   return operations.flatMap(operation => ({ create: [`create_${base}`], read: [`list_${base}`, `get_${base}`], update: [`update_${base}`], delete: [`delete_${base}`] })[operation])
 }
 
+// What Rust itself rejects, from the declared fields only; a feature's own value rules (a minimum, a fixed set) belong to its form.
+function validation(data: TauriData): string {
+  const required = data.fields.filter(field => !field.optional && (field.valueType === "text" || field.valueType === "long-text"))
+  const days = data.fields.filter(field => field.valueType === "date")
+  const stamps = data.fields.filter(field => field.valueType === "date-time")
+  const rules = [
+    ...(required.length ? [`an empty required text field (${required.map(field => snake(field.name)).join(", ")})`] : []),
+    ...(days.length ? [`a date (${days.map(field => snake(field.name)).join(", ")}) that is not a real YYYY-MM-DD calendar day`] : []),
+    ...(stamps.length ? [`a date-time (${stamps.map(field => snake(field.name)).join(", ")}) that is not an RFC3339 UTC string`] : []),
+  ]
+  return `Validation: create and update return AppError invalid for ${rules.length ? rules.join(", ") : "a body that does not match the Rust shape"}; any other value rule a feature states (a minimum, a fixed set of options) is checked by that feature's form before it calls the command, and Rust checks only what is listed here.`
+}
+
 export function tauriStoreInterface(data: TauriData, operations: readonly DataOperation[]): string {
   if (data.storage === "settings") {
     return `Interface: the kit already provides load_settings() and save_settings(next), both returning the AppSettings value, in src-tauri/src/lib.rs; OWN-DATA-STORE adds the fields above to AppSettings (with #[serde(default)]) and adds no other command for ${data.name}.`
@@ -68,7 +85,7 @@ export function tauriStoreInterface(data: TauriData, operations: readonly DataOp
     [`create_${base}`]: `create_${base}(input: ${record}Input) returns ${record}`,
     [`list_${base}`]: `list_${base}() takes no arguments and returns every ${record} by descending id`,
     [`get_${base}`]: `get_${base}(id: i64) returns ${record}`,
-    [`update_${base}`]: `update_${base}(id: i64, input: ${record}Input) returns the updated ${record} and replaces every field with input, so the caller sends the stored value of each field it does not change and null only to clear an optional field`,
+    [`update_${base}`]: `update_${base}(id: i64, input: ${record}Input) returns the updated ${record} and replaces every field with input, so the caller sends the stored value of each field it does not change${data.fields.some(field => field.optional) ? " and null only to clear an optional field" : ""}`,
     [`delete_${base}`]: `delete_${base}(id: i64) returns nothing`,
   }
   const optional = data.fields.filter(field => field.optional)
@@ -76,6 +93,7 @@ export function tauriStoreInterface(data: TauriData, operations: readonly DataOp
     `Interface: OWN-DATA-STORE owns every Tauri command for ${data.name}, registers them in src-tauri/src/lib.rs, and appends one migration that creates the table to database::MIGRATIONS in src-tauri/src/database.rs${data.fields.some(field => field.valueType === "text-list") ? " (a text-list column holds a JSON array)" : ""}; it never hard-codes the schema version.`,
     `Rust shapes: struct ${record} { id: i64, ${data.fields.map(rustField).join(", ")} } and struct ${record}Input with the same fields without id, both deriving Serialize, Deserialize, Clone, Debug, PartialEq; the JSON keys on the wire are exactly id${data.fields.map(field => `, ${snake(field.name)}`).join("")}, so TypeScript reads and writes those keys and no camelCase variant.`,
     `Commands, exactly: ${tauriStoreCommands(base, operations).map(name => signatures[name]).join("; ")}. Each returns the AppError enum on failure (not-found for an unknown id); feature tasks reach them only through the call(command, args) wrapper in src/api.ts and add no Rust command of their own.`,
+    validation(data),
     ...(optional.length ? [`Optional: ${optional.map(field => snake(field.name)).join(", ")} ${optional.length === 1 ? "is" : "are"} declared as a Rust Option in ${record} and ${record}Input; a record whose optional value is null is saved and reloaded unchanged, and quitting or relaunching never fills in, edits, or deletes it.`] : []),
   ].join(" ")
 }
@@ -86,7 +104,7 @@ export function tauriDocumentInterface(data: TauriData, users: readonly TauriFea
   const readers = users.filter(opens)
   const ids = (list: readonly TauriFeatureUse[]) => list.map(feature => feature.id).join(", ")
   const parts = [
-    ...(writers.length ? [`write_${data.base}(path: String, content: String) returns nothing (${ids(writers)}): path is the target the user chose in the Save dialog and may not exist yet, so Rust canonicalizes its parent directory (it must exist and be a directory, otherwise AppError invalid), joins the file name onto it, writes the content to a temporary file in that directory, syncs it, and renames it over the target; a failure removes the temporary file and leaves an existing target untouched; the feature that saves it owns the file's layout and builds the whole content string in TypeScript from its own data in the layout its behavior states; OWN-DATA-STORE only writes the string it is given`] : []),
+    ...(writers.length ? [`write_${data.base}(path: String, content: String) returns nothing (${ids(writers)}): path is the target the user chose in the Save dialog and may not exist yet, so Rust canonicalizes its parent directory (it must exist and be a directory, otherwise AppError invalid), joins the file name onto it, writes the content to a temporary file in that directory, syncs it, and renames it over the target; a failure removes the temporary file and leaves an existing target untouched; the feature that saves it owns the file's layout and builds the whole content string in TypeScript from its own data in the layout its behavior states, writing every date or time it shows in local time (the stored UTC value converted; this is the one time rule for every exported file); OWN-DATA-STORE only writes the string it is given`] : []),
     ...(readers.length || !writers.length ? [`read_${data.base}(path: String) returns the file text (${ids(readers)}): path is a file the user chose in the Open dialog or a saved path to reopen; Rust canonicalizes it, requires a regular file, and returns its text`] : []),
   ]
   return `Interface: ${data.name} is a file the user chooses, not a record: it has no id and no list, get, create, update, or delete command. OWN-DATA-STORE owns exactly these Tauri commands and registers them in src-tauri/src/lib.rs: ${parts.join("; ")}.`
@@ -124,7 +142,7 @@ export function tauriNeedsClock(feature: TauriFeatureUse, data: readonly TauriDa
 export function tauriDayRule(feature: TauriFeatureUse, data: readonly TauriData[]): string {
   const days = usedFields(feature, data, "date")
   if (!days.length) return ""
-  return `Calendar-day field${days.length === 1 ? "" : "s"} (${days.map(({ item, field }) => `${item.name}.${snake(field.name)}`).join(", ")}) ${days.length === 1 ? "holds" : "hold"} the user's local YYYY-MM-DD day as a string: derive today from the injected clock's local year, month, and day (never from toISOString() or any UTC value), and decide equality, ordering, and consecutive days (a streak counts each previous local day by calendar arithmetic, not by subtracting 24 hours) only by comparing those strings. Its tests fix the clock and cover a day boundary near local midnight.`
+  return `Calendar-day field${days.length === 1 ? "" : "s"} (${days.map(({ item, field }) => `${item.name}.${snake(field.name)}`).join(", ")}) ${days.length === 1 ? "holds" : "hold"} the user's local YYYY-MM-DD day as a string: derive today from the injected clock's local year, month, and day (never from toISOString() or any UTC value), and decide equality and ordering only by comparing those strings, and do any day arithmetic (the previous or next day, the days between) on calendar dates, not by subtracting 24 hours. Its tests fix the clock and cover a day boundary near local midnight.`
 }
 
 export interface TauriTaskInput {
@@ -155,7 +173,7 @@ export function tauriTaskPrompt(input: TauriTaskInput): string {
     lines.push(`Its focused test also covers a failed document write: write_${documents[0]!.base} to a target whose parent directory is missing or is not a directory returns AppError invalid and creates nothing, and a failure after an existing target was chosen leaves that file's bytes identical.`)
   }
   if (input.kind === "lifecycle") {
-    lines.push(`src-tauri/src/platform/lifecyclecoordinator.rs holds the launch and exit sequence the lifecycle contracts name: ${input.hasRecords ? "a launch function that runs database::open and database::migrate and returns the AppError instead of a half-initialized state, and " : "a launch function that creates no file until a feature needs one, and "}an exit function that ${input.hasRecords ? "drops the connection and " : ""}removes the app's temporary files. Its tests ${input.hasRecords ? "open and migrate a store in a temporary directory, close it, reopen it, and assert the same user_version, and assert that opening a path that is a file returns an error and leaves nothing behind" : "run launch and exit in a temporary directory and assert nothing is left behind"}. It adds no plugin or capability, so Cargo.toml and capabilities/default.json stay unchanged.`)
+    lines.push(`src-tauri/src/platform/lifecyclecoordinator.rs holds the launch and exit sequence the lifecycle contracts name: ${input.hasRecords ? "a launch(folder) function that opens the store through database::open (which already applies the migrations) and returns the AppError instead of a half-initialized state, and " : "a launch function that creates no file until a feature needs one, and "}an exit function that removes the app's temporary files. run() in src-tauri/src/lib.rs calls launch(&folder) in its setup closure before manage_state (the store it opens is the one manage_state reopens) and exit in the RunEvent::Exit arm of the run callback; both are wired, not only defined. Its tests ${input.hasRecords ? "call launch on a temporary directory, drop the connection, call it again, and assert the same user_version, and assert that opening a path that is a file returns an error and leaves nothing behind" : "run launch and exit in a temporary directory and assert nothing is left behind"}. It adds no plugin or capability, so Cargo.toml and capabilities/default.json stay unchanged.`)
   }
   if (input.kind === "permission" && documents.length) {
     lines.push("src-tauri/src/platform/permissioncoordinator.rs holds the two path helpers every document command uses, existing_file(path) and save_target(path) (each canonicalizes as the filesystem contract states and returns AppError invalid for a missing target, a missing or non-directory parent, or a directory where a file is needed). TASK-02 runs first and may canonicalize inline: move that code into these helpers and make the document commands call them, then test the helpers in a temporary directory. No plugin or capability is added; the dialog plugin is already initialized and granted by the kit.")
@@ -165,11 +183,35 @@ export function tauriTaskPrompt(input: TauriTaskInput): string {
   }
   if (input.kind === "feature") {
     if (input.slots === "first") {
-      lines.push(`${input.entryForm ? "The detail view is also the entry form and the only editor: it opens empty from the add-entry control and prefilled for the selected record, with a confirm control, a cancel control, and one message slot; the add and edit feature tasks only wire confirm to their create and update commands. " : ""}You also own the one load of every record list at launch and the single message shown when that load fails, with its retry action; keep the loaded state and that error in the shared view state, and later tasks neither repeat the load nor show another launch-load message.`)
+      const shell = input.entryForm ? "The entry form is one shell with a confirm control, a cancel control, and one message slot: the add-entry control opens it empty and the Edit button of the detail view (read-only until then, showing every stored field) opens it for the selected record. You build only the shell; the add task builds its field inputs and choice pickers, and the edit task reuses them and wires confirm to update. " : ""
+      const recovery = input.features[0]?.failureRecovery ?? "retry"
+      const loadFailure = recovery === "retry" ? "with a retry action that repeats the load" : recovery === "fallback" ? "a notice given after the declared fallback has run, with no retry control" : "given after releasing partial resources, with no retry control"
+      lines.push(`${shell}You also own the one load of every record list at launch and the single message shown when that load fails, ${loadFailure}; keep the loaded state and that error in the shared view state, and later tasks neither repeat the load nor show another launch-load message.`)
     }
     if (input.slots === "later") {
-      lines.push(`Read the shared view state that ${input.firstMainTask} loads once at launch and refresh it after your own writes; do not load the lists again at launch, do not show a launch-load error message (that one belongs to ${input.firstMainTask}), and do not build another editor or detail view: reuse the one it exposes. Show only the failure message of your own commands.`)
+      lines.push(`Read the shared view state that ${input.firstMainTask} loads once at launch and refresh it after your own writes; do not load the lists again at launch, do not show a launch-load error message (that one belongs to ${input.firstMainTask}), and do not build another detail view${input.entryForm ? " or entry-form shell: reuse the ones it exposes" : ": reuse the one it exposes"}. Show only the failure message of your own commands.`)
     }
+    const recordKeys = new Set(input.data.filter(item => item.storage === "records").map(item => item.key))
+    const writers = input.features.filter(feature => Object.entries(feature.operationsByData).some(([key, operations]) => recordKeys.has(key) && operations.includes("create") && !operations.includes("update")))
+    if (writers.length) {
+      const fields = input.data.filter(item => item.storage === "records" && writers.some(feature => (feature.operationsByData[item.key] ?? []).includes("create"))).flatMap(item => item.fields.map(field => `${snake(field.name)} (${field.valueType})`))
+      const choices = [...new Set(writers.flatMap(feature => feature.choices))]
+      lines.push(`Build the entry form's field inputs here, one per stored field (${fields.join(", ")}), except that a date-time field is stamped from the injected clock and is no input${choices.length ? `; build each declared choice list as a picker that lists exactly its options and opens with its initial option selected (${choices.join("; ")})` : ""}; export the fields and their validation for the edit task to reuse.`)
+    }
+    const editors = input.features.filter(feature => Object.values(feature.operationsByData).some(operations => operations.includes("update")) && !writers.includes(feature) && feature.invokedBy !== "shortcut" && feature.invokedBy !== "schedule" && !feature.resourceIds.includes("permission:global-input"))
+    if (editors.length && input.entryForm) {
+      lines.push("Connect the detail view's Edit button to open the shared entry form for the selected record: every input prefilled from the record and every choice picker set to the stored option, not the list's initial one; confirm calls the update command.")
+    } else if (editors.length && input.slots === "later") {
+      lines.push(`No task builds an add form, so build the edit form in your own file: one input per stored field of the record you update, every choice picker preselecting the stored option${editors.some(feature => feature.choices.length) ? ` (${[...new Set(editors.flatMap(feature => feature.choices))].join("; ")})` : ""}, opened from the detail view or the row action; confirm calls the update command.`)
+    }
+    const failures = new Map<FeatureRecovery, string[]>()
+    for (const feature of input.features) failures.set(feature.failureRecovery, [...(failures.get(feature.failureRecovery) ?? []), feature.id])
+    const failureRules: Record<FeatureRecovery, string> = {
+      retry: "on a failed command leave the stored and shown state as it was (a form keeps its input, a running activity stays running until its stop is saved, an unsaved change stays pending) and show one message with a retry action that repeats the same command with the same input",
+      fallback: "on a failed command apply the stated fallback automatically, keep the feature usable, and show one notice with no retry control",
+      exit: "on a failed command release partial resources and show one message with no retry control; a relaunch starts clean",
+    }
+    lines.push(`Declared failure recovery: ${[...failures].map(([recovery, ids]) => `${failures.size > 1 ? `${ids.join(", ")} (${recovery}) ` : `${recovery}: `}${failureRules[recovery]}`).join("; ")}.`)
     const dialogs = input.features.filter(feature => feature.userFileAccess !== "none")
     if (dialogs.length) {
       const verbs = [...(dialogs.some(saves) ? ["save"] : []), ...(dialogs.some(opens) ? ["open"] : [])]
@@ -177,14 +219,20 @@ export function tauriTaskPrompt(input: TauriTaskInput): string {
     }
     const commands = [...new Set(input.features.flatMap(feature => tauriFeatureCommands(feature, input.data)))]
     if (commands.length) {
-      lines.push(`Call Rust only through the call(command, args) function exported by src/api.ts, the one typed invoke wrapper, generic over the result type (import invoke nowhere else). The commands this feature calls, all owned by OWN-DATA-STORE: ${commands.join(", ")}. Pass arguments camelCase and exactly in the TRD wire format; add no Rust command.`)
+      lines.push(`Call Rust only through the call(command, args) function exported by src/api.ts, the one typed invoke wrapper, generic over the result type (import invoke nowhere else). The commands this feature calls, all owned by OWN-DATA-STORE: ${commands.join(", ")}. Pass arguments camelCase and exactly in the TRD wire format; add no Rust command. Export one factory taking its dependencies as a single object: call (the src/api.ts function), errors (src/ui.ts), the shared view state${input.features.some(feature => tauriNeedsClock(feature, input.data)) ? ", now" : ""}${dialogs.length ? ", the dialog adapter" : ""}; main.ts passes the real ones and tests pass fakes, so a test can inject a failing call.`)
     }
-    if (input.features.some(feature => tauriNeedsClock(feature, input.data))) {
-      lines.push("Its time-dependent behavior and acceptance (timestamps, elapsed time, intervals, any limit stated in seconds or milliseconds) must read time only through one injected clock, a now: () => Date parameter that main.ts supplies from the real clock; its tests pass a fake clock and advance it instead of sleeping or reading Date.now() directly.")
+    const clocked = input.features.filter(feature => tauriNeedsClock(feature, input.data))
+    if (clocked.length) {
+      const subjects = [
+        ...(clocked.some(feature => feature.runsEverySeconds !== null || feature.runsDailyAt !== null) ? ["its schedule, intervals, and any limit stated in seconds or milliseconds"] : []),
+        ...(clocked.some(feature => usedFields(feature, input.data, "date-time").some(({ item }) => writes(feature, item))) ? ["the timestamps it stamps"] : []),
+        ...(clocked.some(feature => usedFields(feature, input.data, "date").length > 0) ? ["today's local date"] : []),
+      ]
+      lines.push(`Its time-dependent behavior (${subjects.join(", ")}) must read time only through one injected clock, a now: () => Date parameter that main.ts supplies from the real clock; its tests pass a fake clock and advance it instead of sleeping or reading Date.now() directly.`)
     }
     for (const rule of new Set(input.features.map(feature => tauriDayRule(feature, input.data)).filter(Boolean))) lines.push(rule)
     if (input.shortcut && input.features.some(feature => feature.resourceIds.includes("permission:global-input"))) {
-      lines.push("Register the system-wide shortcut only through registerShortcut(onPress, onFailure) from src/shortcut.ts and name no key combination yourself: DEFAULT_ACCELERATOR in src/shortcut.ts is the only place it is written. onFailure shows this feature's declared failure message through errors.show() and the in-app controls keep working; do not retry the registration.")
+      lines.push("Register the system-wide shortcut only through registerShortcut(onPress, onFailure) from src/shortcut.ts and name no key combination yourself: DEFAULT_ACCELERATOR in src/shortcut.ts is the only place it is written. onFailure shows this feature's declared failure message through errors.show() and the in-app controls keep working; do not retry the registration (the one exception to a retry action).")
     }
   }
   return lines.join(" ")
@@ -216,6 +264,16 @@ export function tauriSpecialize(preset: PresetContract, blueprint: NormalizedBlu
     overrides.fileBoundaryDetails = (preset.fileBoundaryDetails ?? []).map(detail => detail.replace(" or a path the app saved to reopen", ""))
     overrides.permissionPatterns = { ...preset.permissionPatterns, filesystem: preset.permissionPatterns.filesystem.replace(", including paths saved earlier to reopen,", ",") }
   }
+  // The long-text launch-check clauses apply only when a record can hold free text: a long-text or text-list field, or more text fields than fixed choice lists.
+  const recordFields = blueprint.domainData.filter(item => item.storage === "records").flatMap(item => item.fields)
+  const choiceNames = new Set(blueprint.features.flatMap(feature => feature.choices.map(choice => choice.split(":")[0]!)))
+  const freeText = recordFields.some(field => field.valueType === "long-text" || field.valueType === "text-list") || recordFields.filter(field => field.valueType === "text").length > choiceNames.size
+  if (!freeText) {
+    overrides.wiringRules = (overrides.wiringRules ?? preset.wiringRules).map(rule => rule
+      .replace("one of them longer than the view is wide, ", "")
+      .replace("long text truncates or wraps inside it, ", "")
+      .replace("long text in a list is cut to a few lines with the full text available, never a scroll area inside a scrolling list; ", ""))
+  }
   if (!settings) {
     overrides.persistence = {
       ...preset.persistence,
@@ -223,7 +281,7 @@ export function tauriSpecialize(preset: PresetContract, blueprint: NormalizedBlu
       settingsPlacement: "No data object uses settings storage, so the app writes no settings file.",
     }
     // The shared wiring rule's settings-row sentence applies only when a settings screen exists.
-    overrides.wiringRules = preset.wiringRules.map(rule => rule.replace(" settings are grouped rows with the label on the left and the control on the right, a switch or checkbox on the same line as its label, and a short note under each group;", ""))
+    overrides.wiringRules = (overrides.wiringRules ?? preset.wiringRules).map(rule => rule.replace(" settings are grouped rows with the label on the left and the control on the right, a switch or checkbox on the same line as its label, and a short note under each group;", ""))
   }
   if (blueprint.features.every(feature => feature.surface === "main")) {
     overrides.wiringRules = (overrides.wiringRules ?? preset.wiringRules).map(rule => rule.startsWith("Every window the app opens") ? "The app opens one window with the fixed label main, listed in the windows array of src-tauri/capabilities/default.json." : rule)

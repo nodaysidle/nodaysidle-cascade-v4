@@ -48,7 +48,7 @@ describe("Tauri habit tracker with a calendar-day record", () => {
     for (const id of ["TASK-05-ADD-HABIT", "TASK-06-EDIT-HABIT-NAME", "TASK-07-MARK-DONE-TODAY"]) {
       expect(task(tasks, id)).toContain("do not show a launch-load error message (that one belongs to TASK-04-HABIT-LIST)")
     }
-    expect(task(tasks, "TASK-04-HABIT-LIST")).toContain("The detail view is also the entry form and the only editor")
+    expect(task(tasks, "TASK-04-HABIT-LIST")).toContain("You build only the shell; the add task builds its field inputs and choice pickers")
   })
 
   it("names JSON keys, update semantics, and list order in the data contract", async () => {
@@ -84,7 +84,8 @@ describe("Tauri habit tracker with a calendar-day record", () => {
 
   it("gives the lifecycle owner a concrete deliverable", async () => {
     const tasks = (await compilePacket(habitStreakBlueprint, PRESET, linux)).documents["TASKS.md"]
-    expect(task(tasks, "TASK-03-LIFECYCLE-COORDINATOR")).toContain("a launch function that runs database::open and database::migrate")
+    expect(task(tasks, "TASK-03-LIFECYCLE-COORDINATOR")).toContain("a launch(folder) function that opens the store through database::open")
+    expect(task(tasks, "TASK-03-LIFECYCLE-COORDINATOR")).toContain("exit in the RunEvent::Exit arm")
   })
 })
 
@@ -95,8 +96,8 @@ describe("Tauri notes app with an editor and a Markdown export", () => {
 
   it("has the first main-surface task own the editor, and the later tasks reuse it", async () => {
     const tasks = (await compilePacket(quickNotesBlueprint, PRESET, linux)).documents["TASKS.md"]
-    expect(task(tasks, "TASK-04-NOTE-LIST")).toContain("opens empty from the add-entry control and prefilled for the selected record")
-    for (const id of ["TASK-05-ADD-NOTE", "TASK-06-EDIT-NOTE"]) expect(task(tasks, id)).toContain("do not build another editor or detail view")
+    expect(task(tasks, "TASK-04-NOTE-LIST")).toContain("the add-entry control opens it empty and the Edit button of the detail view (read-only until then, showing every stored field) opens it for the selected record")
+    for (const id of ["TASK-05-ADD-NOTE", "TASK-06-EDIT-NOTE"]) expect(task(tasks, id)).toContain("do not build another detail view or entry-form shell")
   })
 
   it("asks for the injected clock only where a date-time is written", async () => {

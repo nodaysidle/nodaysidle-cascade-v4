@@ -688,6 +688,7 @@ const tauriDesktop: PresetContract = {
   id: "tauri2-rust-typescript-desktop",
   providerNotes: [
     "The desktop frontend is tested in Vitest with a faked data layer and an injected clock, and the Rust store is tested in Cargo. Write acceptance signals as conditions such a test can check: a record read back from the store shows its saved values, a function returns a stated result for a given calendar day or time, a failed write leaves the previous value. Do not write acceptance as relaunching the app, as a measured render or response time, or as a visual impression; put such limits in a quality requirement only when the idea states them.",
+    "Where a feature shows an amount, total, or count, state in its behavior how it is written (decimals, unit) and what the empty list and empty total say; where a value must be above a minimum or from a fixed set, state that rule in the behavior (the form checks it; Rust only checks types and required fields). Neither can be detected afterwards, so a packet that omits them leaves the agent to guess.",
     "The feature that shows a list owns loading it when the app starts and the one error message for that load failing; no other feature repeats it. A feature that writes a file the user chooses states in its behavior the exact layout of that file (heading text and level, separators, how each date or time is written), because a note or record has no title of its own.",
   ],
   label: "Tauri 2 Rust + TypeScript Desktop",
@@ -749,7 +750,7 @@ const tauriDesktop: PresetContract = {
   packagingRules: ["Build the frontend with Vite and the native boundary with Cargo.", "Set tauri.conf.json productName to the locked project name.", "Local proof builds only the native .app on macOS; on Linux build the AppImage or deb and validate the desktop entry.", "Use least-privilege capabilities for every command and plugin.", "Verify the installer or bundle before the launch smoke."],
   wiringRules: [
     "src-tauri/src/lib.rs defines a public app_builder function, generic over tauri::Runtime, that takes and returns a tauri::Builder, initializes every tauri-plugin crate listed in src-tauri/Cargo.toml and registers every #[tauri::command] with invoke_handler(tauri::generate_handler![...]), and nothing else. run() calls app_builder(tauri::Builder::default()) and owns the only setup closure.",
-    "src/main.ts constructs every feature with adapters that call invoke() or the initialized plugin APIs; test doubles exist only under tests/.",
+    "src/main.ts constructs every feature with the real call() from src/api.ts (the only file that imports invoke) and the initialized plugin APIs; test doubles exist only under tests/.",
     "Every window the app opens has a fixed label and is listed in the windows array of src-tauri/capabilities/default.json. Only the main window hides when closed; every other window closes for real and is created fresh.",
     "Before completion, launch the installed app, complete one acceptance outcome per feature, quit, relaunch, and confirm that every declared stored data object is still present.",
     ...SHARED_WIRING_RULES,
@@ -764,7 +765,7 @@ const tauriDesktop: PresetContract = {
   specialize: tauriSpecialize,
   options: [
     { id: "linuxPackaging", label: "Linux package", type: "select", values: ["appimage"], default: "appimage", description: "The packaging script builds an AppImage." },
-    { id: "wayland", label: "Verify native Wayland", type: "toggle", default: true, description: "Recorded in the packet. The launch check already requires native Wayland." },
+    { id: "wayland", label: "Verify native Wayland", type: "toggle", default: true, description: "Recorded in the packet; the installed desktop entry launches with GDK_BACKEND=wayland, and the launch check requires native Wayland." },
   ],
   capabilities: {
     windows: true,
