@@ -88,14 +88,15 @@ async function main(): Promise<void> {
 
   const client = new Anthropic()
   // No fallback model on purpose: this tool measures the named model, so another model must never answer for it.
-  const response = await client.messages.parse({
+  // Streamed with a high ceiling: thinking counts against max_tokens, and a review cut short is not valid JSON.
+  const response = await client.messages.stream({
     model: values.model,
-    max_tokens: 20000,
+    max_tokens: 64000,
     output_config: { effort: "high", format: zodOutputFormat(Review) },
     messages: [{ role: "user", content: prompt }],
-  })
-  if (response.stop_reason !== "end_turn" || !response.parsed_output) throw new Error(`The model stopped with ${response.stop_reason} and gave no usable review.`)
-  const review = response.parsed_output
+  }).finalMessage()
+  if (response.stop_reason !== "end_turn") throw new Error(`The model stopped with ${response.stop_reason} after ${response.usage.output_tokens} output tokens and gave no usable review.`)
+  const review = Review.parse(JSON.parse(response.content.flatMap(block => block.type === "text" ? [block.text] : []).join("")))
   const checked = { ...review, blocking: review.blocking.map(item => ({ ...item, quoteFound: quoteFound(item.quote, files) })), polish: review.polish.map(item => ({ ...item, quoteFound: quoteFound(item.quote, files) })) }
   const usage = { model: response.model, input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens }
   if (values.out) writeFileSync(values.out, JSON.stringify({ usage, review: checked }, null, 2))
