@@ -134,6 +134,32 @@ Suggested fix order (each: failing test first with a fixture from the packet's b
 4. Budget Book (a): row-selection read-only view (decide: build it, or send the prose back for repair).
 5. Green Kitchen: tag-page nav link + empty state, list-field rendering (kit change: needs `npm run kit:check`).
 
+**Document-stage fixes after that live check (2026-11-10, Alan said go; tests in `tests/round12-docs.test.ts`):**
+
+| Packet | Fix (shared code, no product names) | Re-audit |
+|---|---|---|
+| Tip Split | `androidNoData` (src/compiler.ts): zero data objects = no list; `noListSlotsSentence(.., noData)` gives one section per feature, and src/androidPlan.ts tells the first main task to drive its own acceptance with no repository. Android only: Tauri/GTK with zero data objects are untested. | 0 blocking |
+| Disk Free | `capability.waybar-label-decimals` (a label example whose decimals differ from valueDecimals) and `capability.waybar-class-example` (an example whose class disagrees with the thresholds for its reading; only "N bytes" or the one number shown with a non-scaling unit, rates unchecked), both in src/waybarContracts.ts; the Units rule yields to a label that states its decimals; provider note says "never 3.67 GB". | 0 blocking (third audit; the second found the wrong class) |
+| Budget Book | (b) `isTauriSummary` (src/compiler.ts): a later read-only main feature with narrowsListBy none gets a "summary" host, writes nothing to the store, one load-failure rule; Tauri filters now need narrowsListBy != none (`hasFilterFeature`). (a) Alan's decision: send the wording back. `capability.tauri-no-detail-view` (src/capabilities.ts) fires when no feature edits a record and a feature text names a view of one selected record ("read-only view", "selecting a row shows", "open one to view"). Root cause was our own Tauri provider note ("a delete starts from the record's read-only view"), now scoped to products with an edit feature. | 1 blocking left by the re-audit (the userOutcome "can open one to view it"); pattern extended, recompiled; the new packet differs from the audited one only in that sentence and one "detail view" clause (sentence diff, kit identical). No third audit. |
+| Green Kitchen | `astroTagPages` (src/astroWeb.ts): a tag page over the collection's one choice field gets a kit shell (`tagPage`, src/astroKit.ts: one page per option, "No entries yet."), nav links per option, a route line stating the page set, and a task prompt that starts from the kit shell. Text-list fields render as `<ol><li>`; the seed has two items; the test-reading rule covers a list field. | 0 blocking |
+
+Two of the four (Disk Free, Budget Book) were recompiled from blueprints repaired by hand exactly as the new check
+messages ask (scratchpad copies; the fixtures in tests/fixtures are the unrepaired provider answers). **A live run must
+confirm the provider makes those repairs in its one repair request**: Disk Free can need three kinds of fix at once
+(decimals, class) and Budget Book two features.
+
+Polish backlog from these audits (not fixed): Android no-data boilerplate (Room in Locked Stack/kit, "Room database
+opens on first use", SavedStateHandle vs "nothing survives", relaunch check "data the app saved", "shared view state
+(the loaded records ...)" for one feature), no rounding rule for a calculator; Tauri money rule (two decimals, cents,
+row format), current month must name the `date` field, number/date inputs unstyled in kit style.css, ACC "no category"
+unreachable with a picker, unquoted failure texts; Astro final validation runs `npm test` before `npm run build`, list
+items cannot contain a comma (flow list), both seed lists hold the same items, /teas/ example route, long-text and MDX
+boilerplate; Waybar click boilerplate with no click feature, "two hooks", `{app-id}` placeholder, tooltip exact text,
+feature function signature, kit units.rs comment still says sizes are fixed at 2 decimals, AGP build-tools 36 vs docs 37.
+
+Next: (1) with Alan's yes, run the 25 round-12 ideas live (`fish scripts/agent-ready/run-round.fish /tmp/v4-round12`)
+and audit; (2) still unknown: the Tauri HTTP status and the Jev score of the rejected Astro idea.
+
 **Original brief.** The next session's job is to make the *intake stage* (Jev check, AI provider call, blueprint
 checks + the one repair) stop failing on ordinary ideas. The *document stage* is in good shape: round 11 ended 5/5
 agent-ready (see the next block). Repo state: `main` at the commit after 7c8b06e, clean, 441 tests pass, `npm run check`
