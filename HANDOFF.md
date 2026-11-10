@@ -93,6 +93,9 @@ Done (one commit, failing-first tests in `tests/round12-intake.test.ts`, 454 tes
   measuring feature. Copies that differ are untouched and rejected as before. All presets: a `scheduledNotification`
   with no schedule is set to null when no feature uses the notifications need.
 - AGENTS.md states these exceptions to "never drop provider content".
+- `npm run check` green (454 tests, clippy, cargo test). No kit changed, so `kit:check` was not rerun. App rebuilt and
+  installed from f2f4f5c with `scripts/install-linux-app.sh`; an app window opened before 13:50 on 2026-11-10 is the
+  old build and must be closed and reopened. Nothing pushed.
 
 Not done / open:
 1. **Tauri HTTP status is still unknown.** Nothing records it; it needs one re-run from the rebuilt app. Request size
