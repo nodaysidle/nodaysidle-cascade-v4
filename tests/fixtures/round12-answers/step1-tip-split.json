@@ -1,0 +1,97 @@
+{
+  "productName": "Tip Split",
+  "summary": "A calculator that splits a bill: the user enters a bill amount, picks a tip of 10, 15, or 20 percent, and enters the number of people, and the screen shows the tip, the total, and the amount per person rounded to two decimals. Nothing is stored.",
+  "targetUsers": [
+    "People splitting a restaurant or group bill who want a quick tip and per-person amount"
+  ],
+  "goals": [
+    "Compute the tip from the bill amount and the chosen tip percentage",
+    "Show the tip, the total, and the amount per person rounded to two decimals",
+    "Keep the calculation entirely in memory with nothing stored"
+  ],
+  "nonGoals": [
+    "Storing, saving, or restoring any entered or computed values",
+    "Custom tip percentages beyond 10, 15, and 20 percent",
+    "Exporting, sharing, or printing results"
+  ],
+  "features": [
+    {
+      "name": "Split bill calculator",
+      "userOutcome": "The user sees the tip, the total, and the amount per person for the entered bill, chosen tip percentage, and number of people.",
+      "trigger": "The user enters a bill amount, picks a tip percentage, or changes the number of people.",
+      "behavior": "The screen has a 'Bill amount' number field, a 'Tip percentage' choice list with options 10, 15, and 20 percent selected initially at 15, and a 'Number of people' whole-number field starting at 1. The tip is the bill amount times the tip percentage divided by 100, the total is the bill amount plus the tip, and the amount per person is the total divided by the number of people. The screen shows 'Tip', 'Total', and 'Per person', each rounded to two decimals (for example 84.50 means 2). Results update whenever any input changes. If the bill amount is empty or the number of people is empty or less than 1, the results show 0.00 and nothing is computed. All values are held in memory only and are never written to disk.",
+      "failureOutcome": "If the bill amount is empty or the number of people is empty or less than 1, the results show 0.00 instead of a computed value.",
+      "failureRecovery": "fallback",
+      "surface": "main",
+      "acceptanceSignals": [
+        "With a bill amount of 100, tip percentage 15, and 1 person, the screen shows 'Tip' 15.00, 'Total' 115.00, and 'Per person' 115.00.",
+        "With a bill amount of 100, tip percentage 20, and 3 people, the screen shows 'Tip' 20.00, 'Total' 120.00, and 'Per person' 40.00.",
+        "With a bill amount of 50, tip percentage 10, and 3 people, the screen shows 'Tip' 5.00, 'Total' 55.00, and 'Per person' 18.33.",
+        "The 'Tip percentage' choice list offers exactly 10, 15, and 20 percent and starts at 15.",
+        "With an empty 'Bill amount' or a 'Number of people' of 0, the screen shows 'Tip' 0.00, 'Total' 0.00, and 'Per person' 0.00.",
+        "After entering values and restarting the app, the fields show their starting values and no entered or computed value is restored."
+      ],
+      "usesPlatformNeeds": [],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [
+        {
+          "name": "Tip percentage",
+          "options": [
+            "10",
+            "15",
+            "20"
+          ],
+          "initial": "15"
+        }
+      ],
+      "buildsOn": [],
+      "dataOperations": [],
+      "narrowsListBy": "none",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    }
+  ],
+  "dataObjects": [],
+  "externalServices": [],
+  "platformNeeds": [],
+  "qualityRequirements": [
+    "The tip, total, and per-person results are rounded to two decimals and displayed with exactly two decimal places.",
+    "Results update on every change to the bill amount, tip percentage, or number of people without a separate calculate action."
+  ],
+  "productConstraints": [
+    "Nothing is stored: no entered or computed value is written to disk or restored after a restart.",
+    "The tip percentage is limited to the choices 10, 15, and 20 percent.",
+    "The number of people is a whole number of at least 1."
+  ],
+  "ideaCoverage": [
+    {
+      "sentence": 1,
+      "features": [],
+      "outsideFeatures": "product"
+    },
+    {
+      "sentence": 2,
+      "features": [
+        "Split bill calculator"
+      ],
+      "outsideFeatures": "none"
+    },
+    {
+      "sentence": 3,
+      "features": [],
+      "outsideFeatures": "constraint"
+    }
+  ]
+}

@@ -1,0 +1,168 @@
+{
+  "productName": "Disk Free",
+  "summary": "A Waybar module that shows the free space of the root file system in gigabytes with one decimal, marks the label critical when less than 10 GB are free, and shows the used percentage in the tooltip. The reading is refreshed every 60 seconds by the service loop and cached for the bar to re-read.",
+  "targetUsers": [
+    "Waybar users who want root file system free space visible in their status bar",
+    "Linux desktop users monitoring disk headroom"
+  ],
+  "goals": [
+    "Show root file system free space in GB with one decimal in the Waybar label",
+    "Mark the label critical when free space is below 10 GB",
+    "Refresh the reading every 60 seconds",
+    "Show the used percentage in the tooltip"
+  ],
+  "nonGoals": [
+    "Monitoring file systems other than the root file system",
+    "Historical charts or trends of disk usage",
+    "Notifications or alerts beyond the label class",
+    "Detecting that a reading is only valid for one calendar day"
+  ],
+  "features": [
+    {
+      "name": "Show root free space",
+      "userOutcome": "The user sees the root file system free space in gigabytes with one decimal in the Waybar label and the used percentage in the tooltip.",
+      "trigger": "The Waybar module command re-reads the cached label; the service loop refreshes the cache every 60 seconds.",
+      "behavior": "Each refresh reads the free, used, and total space of the root file system, computes free space in GB with one decimal (1 GB = 1,000,000,000 B, rounded half away from zero) and the used percentage, and writes the label text and tooltip text to the cache. The module command with no action or --once only re-reads the cached label and renders it with class normal, or class critical when free space is below 10 GB. The tooltip shows the used percentage. When no reading was ever stored the label is --.",
+      "failureOutcome": "When the measurement fails the cache keeps the last good label text with class stale, and the module output rendered from that cache is that text with STALE_SUFFIX appended and class stale; nothing stored changes.",
+      "failureRecovery": "fallback",
+      "surface": "main",
+      "acceptanceSignals": [
+        "With 3,670,016,000 bytes free the label text is 3.7 GB and the class is normal.",
+        "With 9,000,000,000 bytes free the label text is 9.0 GB and the class is critical.",
+        "With 10,000,000,000 bytes free the class is normal.",
+        "The tooltip text states the used percentage of the root file system.",
+        "With no stored reading the module output label is --.",
+        "After a failed refresh the module output is the last good label text with STALE_SUFFIX appended and class stale."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Disk reading"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [],
+      "buildsOn": [],
+      "dataOperations": [
+        {
+          "data": "Disk reading",
+          "operations": [
+            "create",
+            "read"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "schedule",
+      "runsEverySeconds": 60,
+      "runsDailyAt": null,
+      "systemSource": "disk-space",
+      "thresholds": [
+        {
+          "state": "critical",
+          "comparison": "below",
+          "value": 10000000000
+        }
+      ],
+      "labelTemplate": "{value} GB",
+      "unit": "GB",
+      "valueDecimals": 1,
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    }
+  ],
+  "dataObjects": [
+    {
+      "name": "Disk reading",
+      "purpose": "Keeps the latest root file system free, used, and total space so the label and tooltip can be rendered from the cache.",
+      "sensitivity": "internal",
+      "retentionIntent": "Only the latest reading is kept; each refresh replaces the single stored row.",
+      "storage": "records",
+      "writeMode": "direct",
+      "fields": [
+        {
+          "name": "free bytes",
+          "valueType": "whole-number",
+          "optional": false,
+          "min": 0,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "used bytes",
+          "valueType": "whole-number",
+          "optional": false,
+          "min": 0,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "total bytes",
+          "valueType": "whole-number",
+          "optional": false,
+          "min": 0,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "sampled at",
+          "valueType": "date-time",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        }
+      ],
+      "singleRecord": true,
+      "entryCount": null
+    }
+  ],
+  "externalServices": [],
+  "platformNeeds": [
+    "local-storage"
+  ],
+  "qualityRequirements": [
+    "Free space is shown in GB with exactly one decimal, rounded half away from zero.",
+    "Sizes use decimal SI units: 1 GB = 1,000,000,000 B.",
+    "The label class is one of normal, critical, stale, or empty."
+  ],
+  "productConstraints": [
+    "The module runs as a Waybar module command and re-reads only the cached label.",
+    "The service loop refreshes the reading every 60 seconds.",
+    "The critical threshold is strictly below 10 GB free."
+  ],
+  "ideaCoverage": [
+    {
+      "sentence": 1,
+      "features": [
+        "Show root free space"
+      ],
+      "outsideFeatures": "none"
+    },
+    {
+      "sentence": 2,
+      "features": [
+        "Show root free space"
+      ],
+      "outsideFeatures": "none"
+    },
+    {
+      "sentence": 3,
+      "features": [
+        "Show root free space"
+      ],
+      "outsideFeatures": "none"
+    }
+  ]
+}

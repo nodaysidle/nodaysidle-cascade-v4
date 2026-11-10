@@ -282,6 +282,8 @@ no verdict yet.
 | Astro Corner Cafe | 1 | not agent-ready |
 | Android Lift Log | 2 | not agent-ready |
 | Astro Studio Folio | 0 (8 polish) | **agent-ready** |
+| Astro Town Events | 3, one cause | not agent-ready |
+| Tauri Budget Book (second run), Meeting Clock, Day Journal, Clip Keeper; Android Days Until | - | **no verdict**: Alan said "stop the agents" while these five audits ran |
 
 - **Battery Watch.** `runsEverySeconds` 1800 for "every 30 seconds": TRD schedule line, the acceptance
   criterion, kit `config.rs` default and kit `contract_tests.rs` all enforce 1800 while PRD goals say 30.
@@ -366,6 +368,41 @@ no verdict yet.
   "Sample text" (the link too); `npm test` before `npm run build`; the `/teas/` example; the link field is
   plain text in the kit shell while the acceptance needs an `a`; docs say "markdown or MDX" and the kit has no
   MDX integration.
+
+- **Town Events** (build-time date filter). (1) The one seed entry is dated 2026-01-01 and "keep its sample
+  entry unchanged", so the built home page is empty today, against "lists are not empty" and the
+  count-the-files test rule; nothing says what the page shows with no upcoming event. (2) "A page exists for
+  each event in the content, and its address is reachable from the home page listing" against "Events whose
+  date is before the build day are omitted". (3) No document says which clock gives the build day (the only
+  time-zone sentence is about a time-of-day field), the day cannot be injected, and the filter and sort have
+  no testable owner (tests may not import `.astro` files).
+
+**Round-12 totals (25 ideas).** Generated: 23 packets from 26 live runs (Budget Book failed once and passed
+once; Drink Reminder failed). Kits: 23 of 24 built packets pass every command (Net Rate fails). Audited: 19
+packets. **Agent-ready: 3** (Tip Split, Green Kitchen, Studio Folio). **Not agent-ready: 16.** No verdict: 5.
+By preset: GTK 0 of 5; Waybar 0 of 5; Astro 2 of 5; Android 1 of 3 audited (Drink Reminder no packet, Days
+Until no verdict); Tauri 0 of 1 audited (4 no verdict).
+
+**Where the session stopped (Alan's words, 2026-11-10): "this app approach of making the documents has flaws,
+it's not intelligent to repeat the same thing", then "stop the agents".** Nothing was fixed after the round.
+The lead's reading of the evidence, given to Alan and not yet decided by him:
+1. The compiler infers a screen shape from operations and falls back to "a list with an add form" when the
+   idea does not fit, silently. Patching one shape per round does not converge.
+2. Provider prose and provider-computed numbers are printed beside the compiler's own rules and contradict
+   them (bits against bytes, "0.0 kB/s", `--set Latitude`, 1800 seconds, one decimal against two).
+3. Kits are narrower than the documents promise (5-second floor, one-value reader, no per-author route, no
+   URL opener) and no check ties a declared need to what the kit ships.
+Proposed direction (not approved): **fail closed.** Each preset declares the building blocks its kit really
+supports; the provider picks a block per feature as a declared field and fills that block's fields; the
+compiler renders only declared blocks and rejects the rest with one clear sentence; provider prose is not
+printed where a declared field or compiler rule exists; the kept answers become a free
+regression set. They are saved in the repo: `tests/fixtures/round12-answers/` (one folder per run of the
+22-idea round with `answer-1.json` and, after a repair, `answer-2.json`; plus `step1-*.json` for Disk Free,
+Green Kitchen and Tip Split). The packets themselves are only in `/tmp/v4-round12e` and `/tmp/v4-round12f`
+(a RAM disk); recompile from the answers with `npm run -s cascade -- compile`.
+
+Alan's last word (2026-11-10): "its all non agent ready with flaws, lets talk about a different approach with
+the outcome I asked." The next step is that conversation, not more fixes.
 
 Kit builds, final: **20 of 21 pass every command** (GTK 5, Waybar 3 of 4, Tauri 5, Astro 4, Android 3). Only
 Net Rate fails.
