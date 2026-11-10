@@ -88,6 +88,22 @@ Alan plainly). Ideas are the five g lines in scripts/agent-ready/run-round.fish.
 Watch: does the provider now declare a choice list for a fixed stored value (Reading List status, Board Game weight)?
 Does the export button get the "actions" host on GTK and Tauri? Does the goal mount in the Android actions area?
 
+**Round 11 closed: 1 of 5 agent-ready (Board Game Club).** The round found systematic compiler classes, so the stop
+rule is not met. Fix order (each with a failing test first, then typecheck, `npm test`, `npm run kit:check` if a kit
+changed, commit, `scripts/install-linux-app.sh`, then round 12):
+1. **No list on screen** (Step Goal, all presets): when records are create/read only and no feature shows a list,
+   the first main task builds no list, empty-state, Add toggle or edit host. It exposes one named slot per feature
+   (goal, steps entry, today summary), its focused test drives its own acceptance, and a create form the PRD keeps
+   on screen is always visible with its quoted confirm label (Save clears the field instead of closing the form).
+   Also check the first main owner being a settings feature.
+2. **Settings-setting form contract** (Step Goal, Android): Form / Field rules / Rejection plus testTags for a
+   setting edited on the main screen; the DataStore key type, the value before the first save, and what shows with none.
+3. **Initial value vs choice vs app-set** (Reading List status, Book Shelf favorite).
+4. **GTK document-export path** (Book Shelf) and **GTK numeric choice list as a picker** (rating 1..5).
+5. **Waybar peak/max note contradiction**, refresh read access, rounding vs thresholds (Temp Watch).
+6. Status-only change vs full edit (Reading List), then the polish batch (/teas/ route, boilerplate for
+   WorkManager/denied/cancelled/launch-check cleanup on create-only records, CSV line endings, "12.0 stays 12.0").
+
 ### Live round 10 (closed) (updated 2026-11-10)
 
 **Where we stopped:** Alan is running round 10 live *from the installed app*, one prompt per preset,
