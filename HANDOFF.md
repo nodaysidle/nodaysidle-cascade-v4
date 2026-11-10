@@ -104,6 +104,16 @@ changed, commit, `scripts/install-linux-app.sh`, then round 12):
 6. Status-only change vs full edit (Reading List), then the polish batch (/teas/ route, boilerplate for
    WorkManager/denied/cancelled/launch-check cleanup on create-only records, CSV line endings, "12.0 stays 12.0").
 
+**In flight (2026-11-10, Alan asked to speed up with subagents):** four background agents, each in its own git
+worktree branch, fixing classes in parallel: A = no list on screen + main-screen setting (Android, fixture
+android-step-goal.json), B = initial value vs choice vs app-set + status-only change (fixtures tauri-reading-list.json,
+gtk-book-shelf.json), C = GTK document export + numeric choice picker, D = Waybar peak/reset/rounding (fixture
+waybar-temp-watch.json). Each commits on its branch with a failing-first test and a fixture-snapshot diff. Lead then:
+merge branches into main one at a time (resolve conflicts, full `npx vitest run` after each), `npm run check`,
+`npm run kit:check` (>= 2 GB free in /tmp), `scripts/install-linux-app.sh`, then **recompile the five round-11
+blueprints by CLI and audit all five in parallel** (no live round needed to prove the fixes). If the session dies,
+`git worktree list` / `git branch` shows the agent branches.
+
 ### Live round 10 (closed) (updated 2026-11-10)
 
 **Where we stopped:** Alan is running round 10 live *from the installed app*, one prompt per preset,
