@@ -145,6 +145,39 @@ Test data: `tests/fixtures/waybar-disk-free.json`, `android-tip-split.json`, `ta
 helpers in `tests/round12-docs.test.ts`. The packets were in `/tmp/v4-round12b`, `12c`, `12d` (a RAM disk;
 gone after a reboot; recompile with `npm run -s cascade -- compile --preset <id> --blueprint <file> --out <dir>`).
 
+### 5.4 Next session (2026-11-10, later): the four ideas run live again
+
+Start state was green (`npm run check`, 467 tests). Alan said yes to the four live runs (CLI, packets in
+`/tmp/v4-round12e`, a RAM disk).
+
+| Idea | Live result | Verify | Kit build | Audit |
+|---|---|---|---|---|
+| Disk Free (Waybar) | Gate Clean | pass | all commands 0 | see below |
+| Green Kitchen (Astro) | Gate Clean | pass | all commands 0 | see below |
+| Tip Split (Android) | Gate Clean | pass | all commands 0 | see below |
+| Budget Book (Tauri) | **`capability-rejected`, no packet** | - | - | - |
+
+**Budget Book live failure (a repair cascade).** The first answer invented an "Edit expense" feature. The one
+repair (`semantic.feature-not-requested`) removed it. The repaired answer then failed
+`capability.tauri-no-detail-view` on "Expense list" and "Delete expense": their text about a read-only view was
+right while an edit feature existed and wrong once it was removed. No repair was left. Likely trigger: the
+Tauri provider note now opens with "When some feature edits a record ..." (the earlier live run, before that
+rewording, invented no edit feature). Cause in the pipeline: the repair request lists only the stage that
+failed (intake), so the provider never sees the capability check that removing the feature will trip.
+Not fixed yet; neither answer was kept, so the next live run of Budget Book (with `--keep-answers`) supplies
+the fixture.
+
+No `provider.http-error` appeared in the four runs.
+
+Changed (`c183599`): `generate --keep-answers <folder>` writes `answer-1.json` (and `answer-2.json` after a
+repair) with credential-like text removed; a Gate Clean run prints `Repaired once: <rules>`;
+`run-round.fish` keeps full output and answers per run under `<round>/_logs/` and `<round>/_answers/`.
+Before this the CLI did not record a repair, so **whether Disk Free needed its repair in this run is unknown.**
+
+Confirmed against a real packet (Tip Split), not fixed yet: the Android storage boilerplate in a no-storage
+packet (6.3, first Must), and the build-tools version: the docs say 37.0.0, the kit sets no
+`buildToolsVersion`, and this machine builds the kit with only build-tools 36.0.0 installed.
+
 ## 6. What must be done to make the four stacks agent-ready
 
 "Agent-ready" was shown for one idea per stack. The work left is to prove it on more idea shapes and
@@ -163,7 +196,12 @@ close the known gaps. Do the cross-stack steps first; they decide what else is r
    anything for them. Do not lower `JEV_VIABILITY_THRESHOLD` (src/jev.ts) without his explicit yes.
    Suspect to check with the score in hand: the viability question asks for "one coherent application"
    and the Astro ideas are websites.
-5. **Decide with Alan: prose checks.** Three new checks read provider text with a pattern
+5. **Alan's own live check (his instruction, 2026-11-10).** After the 25-idea round and its fixes: rebuild
+   and install the app (`bash scripts/install-linux-app.sh`) so it has the fixes, then give Alan **five new
+   ideas, one per preset, none used in any earlier round**. Alan runs them alone in the app and exports.
+   Then verify each exported packet, build its kit from a temporary copy, audit it with one fresh read-only
+   agent, and tell Alan per packet whether it is agent-ready. His exported folders are read-only.
+6. **Decide with Alan: prose checks.** Three new checks read provider text with a pattern
    (`waybar-label-decimals`, `waybar-class-example`, `tauri-no-detail-view`). They only send text back
    for repair and never shape output, like the older Waybar text checks, but the old rule said "no new
    prose regexes". Keep, or replace with declared fields.
