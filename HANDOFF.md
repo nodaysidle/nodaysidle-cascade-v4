@@ -71,7 +71,26 @@ all five presets.** Done means all of these hold:
 
 ## 4. State of the repo
 
-### RESUME HERE — live round 11 (started 2026-11-10)
+### RESUME HERE — round 12 (25 ideas, 5 per preset)
+
+**Round 11 closed (2026-11-10): all 5 packets agent-ready after the class fixes.** Four parallel worktree agents fixed
+the classes (merged dc3d950, b7bc019, a0ff347, a44975d); re-audits found 5 more blocking defects, all fixed (f241482,
+7134db7): kit refresh_with writes the severity class, capability.waybar-reset-at-start, semantic.choice-not-entered,
+bare Astro enum seed, Tauri filter query value stated in both tasks, Waybar kit cache test uses refresh_with hooks.
+Final state: Book Shelf 0, Step Goal 0, Board Game Club 0, Reading List 0, Temp Watch 0 blocking. Reading List and Temp
+Watch passed on blueprints repaired by hand exactly as the new checks' messages ask; a live run must confirm the provider
+makes the same repair. 441 tests pass, npm run check green, kit:check 18/18 + Waybar kits rebuilt after the kit change.
+
+**Round 12:** `fish scripts/agent-ready/run-round.fish /tmp/v4-round12` (25 g lines, five per preset, each a new screen or
+data shape: due lists, streaks, file import, countdown + notification, settings only, battery/disk/net/load sources,
+weather API, monthly totals, tags + open link, tray countdown, one entry per day, clipboard watch, grouped and dated
+Astro pages, two linked collections, check-off + bulk clear, scheduled notification, a calculator with no storage).
+Audit with parallel agents (one per packet, scripts/agent-ready/audit-brief.md), verify blocking claims, group classes,
+fix classes with parallel worktree agents (one class per agent, scoped files), merge, re-audit only the failing packets.
+Expect rejections for ideas the presets cannot express (clipboard watch, tray on some presets): a clear rejection
+message is a pass, a contradictory packet is a fail. Keep >= 2 GB free in /tmp before Android kit builds.
+
+### Live round 11 (closed) (started 2026-11-10)
 
 Round 10 is closed (results below). Round 11 runs from the app rebuilt at e406560 with new ideas, same per-packet
 steps as round 10 (verify, copy to /tmp/v4-round11/<preset-id>/, build-round-kits.sh, one read-only audit agent, tell
