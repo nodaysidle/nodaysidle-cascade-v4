@@ -3,7 +3,7 @@ import { DOCUMENT_NAMES, type CompiledPacket, type DocumentHashes, type Document
 import type { PresetId } from "./presets"
 
 export const REVIEW_MODEL = "claude-sonnet-5-5" as const
-export const DEFAULT_REVIEW_ROUNDS = 2
+export const DEFAULT_REVIEW_ROUNDS = 3
 export const MAX_KIT_FILE_BYTES = 60_000
 
 const REQUIRED_DOCS = new Set<string>(DOCUMENT_NAMES)

@@ -10,6 +10,7 @@ import { generatePacket, type ProgressStage } from "../src/pipeline"
 import { canExport, canGenerate, createInitialState, reduceAppState } from "../src/state"
 import {
   applyEditsToCompiledPacket,
+  DEFAULT_REVIEW_ROUNDS,
   filterVerifiedFindings,
   Fix,
   FIX_JSON_SCHEMA,
@@ -352,5 +353,32 @@ describe("pipeline review, repair, kit build, and manifest replay", () => {
     })
     expect(kitResult.ok).toBe(true)
     expect(sentCommands[1]?.command).toBe("build_packet_kit")
+  })
+
+  it("defaults to 3 repair rounds so packets needing a third pass reach agent-ready", async () => {
+    expect(DEFAULT_REVIEW_ROUNDS).toBe(3)
+    const base = await compilePacket(fileOrganizerBlueprint, "linux-wayland-gtk4-desktop")
+    let reviews = 0
+    const threeRoundResult = await runReviewAndRepairLoop({
+      packet: base,
+      idea: "Harbor Sort organizes downloads.",
+      presetId: "linux-wayland-gtk4-desktop",
+      requestId: "req-3-rounds",
+      apiKey: "mem-key",
+      reviewProvider: {
+        review: async () => {
+          reviews += 1
+          return reviews <= 3
+            ? { slug: base.projectSlug, blocking: [{ where: "PRD.md", quote: "# Product Requirements Document", why: `Round ${reviews}`, fix: "Keep heading." }], polish: [], verdict: "FAIL" }
+            : { slug: base.projectSlug, blocking: [], polish: [], verdict: "PASS" }
+        },
+        fix: async () => ({
+          edits: [{ finding: 1, file: "PRD.md", find: "# Product Requirements Document", replace: "# Product Requirements Document", all: false }],
+          notes: "No-op round edit.",
+        }),
+      },
+    })
+    expect(threeRoundResult.repair.rounds).toBe(3)
+    expect(threeRoundResult.repair.agentReady).toBe(true)
   })
 })

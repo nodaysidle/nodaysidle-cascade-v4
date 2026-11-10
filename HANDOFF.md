@@ -235,8 +235,16 @@ end in two rounds: each round fixed what was flagged and the reviewer then raise
    desktop app (`claude_complete` with memory-only `Zeroizing` key, `build_packet_kit` in a temporary directory,
    the Anthropic key input field, the `Review`/`Repair`/`Review again` progress stages, and the `#verdict-panel`
    showing **Agent-ready (reviewed, 0 blocking)** or **Not ready** with blocking reasons and minor notes).
-5. **Decide the round limit with data.** Run the loop on all 16 broken packets (free to rebuild, a few
-   dollars of API). Count how many reach 0 blocking with a passing kit build in 2 rounds and in 3.
+5. **Decide the round limit with data (done).** Rebuilt all 16 broken round-12 packets with the Step 3 compiler
+   fixes and ran the full review-repair-build-review loop up to 3 repair rounds (64 Claude Sonnet 5.5 calls,
+   all kit builds and `verifyPacketFolder` checks passing):
+   - **2 repair rounds:** **14 of 16** reached `0 blocking + passing kit build` (`corner-cafe` in 0 rounds;
+     `load-meter`, `quiet-hours`, `habit-streak`, `plant-care`, `field-notes`, `town-events`, `lift-log`, and
+     `link-shelf` in 1 round; `battery-watch`, `weather-bar`, `focus-timer`, `word-bank`, and `shopping-list`
+     in 2 rounds).
+   - **3 repair rounds:** **16 of 16** reached `0 blocking + passing kit build` (`disk-free` and `net-rate`
+     reached 0 blocking in round 3).
+   - Set `DEFAULT_REVIEW_ROUNDS = 3` in `src/review.ts` (packets that reach 0 blocking earlier stop immediately).
 6. **Rebuild and install** (`bash scripts/install-linux-app.sh`), take a screenshot, then give Alan five new
    ideas, one per preset. He runs them in the app; verify, build the kits and audit what he exports.
 7. Still wanted, lower priority: Waybar examples written by the compiler; "daily at a user-chosen time" for
@@ -306,9 +314,11 @@ end in two rounds: each round fixed what was flagged and the reviewer then raise
   Keeper, Days Until.
 - All 8 plain deterministic compiler bugs from section 6 item 3 are fixed and tested, and `npm run kit:check`
   passed across all 5 preset kits.
-- Step 4 (pipeline, manifest replay, CLI, and desktop app review/repair integration) is implemented and
-  unit-tested (`npm run check` green). Step 5 (live benchmark loop on the 16 broken round-12 packets) and
-  Step 6 (rebuild/install app, screenshot, 5 new ideas) are next.
+- Step 4 (pipeline, manifest replay, CLI, and desktop app review/repair integration) and Step 5 (live
+  benchmark on all 16 broken round-12 packets: 14/16 in 2 rounds, 16/16 in 3 rounds; `DEFAULT_REVIEW_ROUNDS = 3`)
+  are complete. Note that "0 blocking by Sonnet 5.5 + passing kit build" on the remaining 14 packets has not
+  had a separate subagent audit beyond the 2 independent audits in Step 1 (`focus-timer`, `net-rate`).
+- Step 6 (rebuild/install app, screenshot, 5 new ideas) is next.
 - The installed app is the build of 2026-11-10 15:09, before this session. No screenshot, no packet exported
   from the app.
 - Nothing was recorded in the vault or in Supermemory.
