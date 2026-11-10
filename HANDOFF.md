@@ -148,6 +148,11 @@ messages ask (scratchpad copies; the fixtures in tests/fixtures are the unrepair
 confirm the provider makes those repairs in its one repair request**: Disk Free can need three kinds of fix at once
 (decimals, class) and Budget Book two features.
 
+Verified at 6938595: `npm run check` green (467 tests, clippy, cargo test), `npm run kit:check` 18/18, all four recompiled
+kits build with their own commands (`build-round-kits.sh /tmp/v4-round12c`, every step 0), `verify --packet` Verified on
+each, app rebuilt and installed with `scripts/install-linux-app.sh` (15:09; a window opened earlier is the old build).
+Nothing pushed.
+
 Polish backlog from these audits (not fixed): Android no-data boilerplate (Room in Locked Stack/kit, "Room database
 opens on first use", SavedStateHandle vs "nothing survives", relaunch check "data the app saved", "shared view state
 (the loaded records ...)" for one feature), no rounding rule for a calculator; Tauri money rule (two decimals, cents,
