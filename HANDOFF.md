@@ -111,6 +111,29 @@ Not done / open:
    field tells a label feature from a tooltip feature). Watch for it in the Disk Free and Load Meter audits.
 5. Not built: showing in the UI that a copy was settled; the Jev transport failure still hides its HTTP status.
 
+**Live check of the intake fixes (2026-11-10, CLI, 4 paid runs, Alan said yes):** all four reached Gate Clean on the
+first try, `verify --packet` says Verified, and every kit builds (`build-round-kits.sh /tmp/v4-round12b`, all steps 0).
+**0 of 4 are agent-ready.** Audits by one read-only agent per packet; every blocking item below was confirmed by the
+lead against the packet files. All are document-stage classes on new idea shapes, none from the intake fixes.
+
+| Packet (`/tmp/v4-round12b/<preset>/<slug>`, tmpfs: gone after a reboot) | Blocking | Class |
+|---|---|---|
+| Waybar Disk Free | 1 | **Label decimals vs acceptance text**: valueDecimals 1 (label line, kit `format_in_unit(.., "GB", 1)`) but the three label acceptance signals say "3.67 GB" / "10.00 GB", and the Units rule says "a size is shown with 2 decimals ... no acceptance criterion changes them". Fix: a check that sends back a label example whose decimals differ from valueDecimals, and a Units rule that yields to a declared valueDecimals (the "3.67 GB" example in the provider note is the likely source). The AI returned ONE feature, so `settleWaybarLabel` was not exercised live. |
+| Android Tip Split | 2, one cause | **No data object at all still gets the list prompt**: `noListOnScreen` (src/compiler.ts:1333) needs a feature that creates records, so with zero dataObjects TASK-03 is told "your focused test seeds records through the repository and asserts only the list" and to build status / empty-state / write-error slots. Fix: zero data objects is "no list"; the first main task builds its own screen and its test drives its own acceptance. Polish: Room in kit and Locked Stack, "Room database opens on first use", SavedStateHandle vs "nothing survives", no rounding rule, no field contract for entered values that belong to no data object. |
+| Tauri Budget Book | 3, two classes | (a) **Read-only view on row selection has no owner**: PRD/TRD and ACC-EXPENSE-LIST-02 say "Selecting a row shows that expense read-only with a Delete button"; TASK-04 says "No detail view is built" and TASK-06 mounts Delete per row. (b) **A derived-totals feature is compiled as a list filter**: "Monthly category totals" (read only, narrowsListBy none) is told to mount in "the filter area or the list region", to "narrow or reorder" with store.set, and "has no failure path" while PRD/TRD require a totals-could-not-be-loaded message; TASK-04 gets a phantom query + match rule. Polish: money rule (two decimals, cents), current month must name the `date` field not created_at, number/date inputs unstyled in kit style.css. |
+| Astro Green Kitchen | 3 | **Tag-page surface has no rules**: (a) no page links to /recipes/tags/<type> and TASK-04 says "Modify no existing file" while kit README says the nav links every route; (b) nothing says what a meal-type page with no recipes shows (seed has one breakfast entry; the three-page set itself is stated); (c) **text-list fields** render as one comma-joined line in kit `[slug].astro` while the PRD asks for an ingredients list and ordered steps, with no test rule for a list. Polish: final validation runs `npm test` before `npm run build`. |
+
+Still unknown after this run: the Tauri HTTP status (Budget Book got no HTTP error, so it was not the request) and the
+Jev score of the rejected Astro idea (Green Kitchen passed Jev). Alan never said which Tauri/Astro ideas failed; Budget
+Book and Green Kitchen (first of each) were used. The other 21 round-12 ideas have not been run.
+
+Suggested fix order (each: failing test first with a fixture from the packet's blueprint.json, then the shared code):
+1. Tip Split: zero data objects = no list (small, one predicate plus the prompt branch).
+2. Disk Free: decimals check + Units rule.
+3. Budget Book (b): derived read-only feature gets its own host, not the filter area.
+4. Budget Book (a): row-selection read-only view (decide: build it, or send the prose back for repair).
+5. Green Kitchen: tag-page nav link + empty state, list-field rendering (kit change: needs `npm run kit:check`).
+
 **Original brief.** The next session's job is to make the *intake stage* (Jev check, AI provider call, blueprint
 checks + the one repair) stop failing on ordinary ideas. The *document stage* is in good shape: round 11 ended 5/5
 agent-ready (see the next block). Repo state: `main` at the commit after 7c8b06e, clean, 441 tests pass, `npm run check`

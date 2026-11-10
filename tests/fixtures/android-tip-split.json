@@ -1,0 +1,101 @@
+{
+  "productName": "Tip Split",
+  "summary": "Tip Split is a calculator that splits a bill: the user enters a bill amount, picks a tip of 10, 15, or 20 percent, and enters the number of people, and the screen shows the tip, the total, and the amount per person rounded to two decimals. Nothing is stored.",
+  "targetUsers": [
+    "People splitting a restaurant or shared bill who want a quick tip and per-person amount",
+    "Groups who need to divide a total evenly among a chosen number of people"
+  ],
+  "goals": [
+    "Compute the tip amount from the bill amount and the selected tip percentage",
+    "Show the total of bill plus tip",
+    "Show the amount each person owes, rounded to two decimals",
+    "Keep the calculation entirely in memory with nothing stored"
+  ],
+  "nonGoals": [
+    "Storing bills, calculations, or history",
+    "Recording payments or settling debts between people",
+    "Custom tip percentages beyond 10, 15, and 20 percent",
+    "Uneven splits or per-person item assignment"
+  ],
+  "features": [
+    {
+      "name": "Split calculator",
+      "userOutcome": "The user sees the tip, the total, and the amount per person for the entered bill, selected tip percentage, and number of people.",
+      "trigger": "The user enters a bill amount, picks a tip percentage, or changes the number of people.",
+      "behavior": "The screen shows a 'Bill amount' number field, a 'Tip percentage' choice list with options 10, 15, and 20 percent, a 'Number of people' whole-number field, and a 'Calculate' button. The 'Tip percentage' list starts at 15 percent. The 'Bill amount' field accepts at most 2 decimal places and starts empty; the 'Number of people' field starts at 1. Pressing 'Calculate' computes the tip as bill amount times the selected percentage divided by 100, the total as bill amount plus tip, and the amount per person as total divided by the number of people, each shown rounded to two decimals with labels 'Tip', 'Total', and 'Per person'. If the bill amount is empty or the number of people is less than 1, nothing is computed and the user sees the field problem. All values live only in memory for the current session.",
+      "failureOutcome": "If the bill amount is empty or the number of people is less than 1, no results are shown and the user sees which field needs a valid value.",
+      "failureRecovery": "retry",
+      "surface": "main",
+      "acceptanceSignals": [
+        "With a bill amount of 100.00, tip percentage 15, and 2 people, pressing 'Calculate' shows 'Tip' 15.00, 'Total' 115.00, and 'Per person' 57.50.",
+        "With a bill amount of 84.50, tip percentage 20, and 3 people, pressing 'Calculate' shows 'Tip' 16.90, 'Total' 101.40, and 'Per person' 33.80.",
+        "The 'Tip percentage' list offers exactly 10, 15, and 20 percent and starts at 15 percent.",
+        "Pressing 'Calculate' with an empty 'Bill amount' shows no 'Tip', 'Total', or 'Per person' values and indicates the bill amount field problem.",
+        "Pressing 'Calculate' with 'Number of people' set to 0 shows no results and indicates the number of people field problem.",
+        "After entering values and pressing 'Calculate', restarting the app shows empty 'Bill amount', 'Tip percentage' 15, 'Number of people' 1, and no results."
+      ],
+      "usesPlatformNeeds": [],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [
+        {
+          "name": "Tip percentage",
+          "options": [
+            "10",
+            "15",
+            "20"
+          ],
+          "initial": "15"
+        }
+      ],
+      "buildsOn": [],
+      "dataOperations": [],
+      "narrowsListBy": "none",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    }
+  ],
+  "dataObjects": [],
+  "externalServices": [],
+  "platformNeeds": [],
+  "qualityRequirements": [
+    "Tip, total, and per-person results are displayed rounded to exactly two decimals.",
+    "The calculation uses the bill amount, the selected tip percentage, and the number of people from the current screen state at the moment 'Calculate' is pressed."
+  ],
+  "productConstraints": [
+    "Nothing is stored: no bill, calculation, or history is written to disk or kept after the app closes.",
+    "Tip percentages are limited to 10, 15, and 20 percent.",
+    "The bill amount accepts at most 2 decimal places.",
+    "The number of people must be at least 1."
+  ],
+  "ideaCoverage": [
+    {
+      "sentence": 1,
+      "features": [],
+      "outsideFeatures": "product"
+    },
+    {
+      "sentence": 2,
+      "features": [
+        "Split calculator"
+      ],
+      "outsideFeatures": "none"
+    },
+    {
+      "sentence": 3,
+      "features": [],
+      "outsideFeatures": "constraint"
+    }
+  ]
+}
