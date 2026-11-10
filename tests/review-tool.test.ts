@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
+import { applyEdits, buildFixPrompt } from "../scripts/agent-ready/fix"
 import { buildReviewPrompt, quoteFound, readPacket } from "../scripts/agent-ready/review"
 
 const roots: string[] = []
@@ -42,5 +43,29 @@ describe("packet review tool", () => {
     expect(quoteFound("The list shows every tea.", files)).toBe(true)
     expect(quoteFound("The list shows every coffee.", files)).toBe(false)
     expect(quoteFound("  ", files)).toBe(false)
+  })
+})
+
+describe("packet repair tool", () => {
+  const files = [{ path: "PRD.md", text: "The class is normal. The class is normal." }, { path: "kit/a.rs", text: "let floor = 5;" }]
+  const edit = (file: string, find: string, replace: string, all = false) => ({ finding: 1, file, find, replace, all })
+
+  it("replaces exact text, once or everywhere as the edit says", () => {
+    const result = applyEdits(files, [edit("kit/a.rs", "floor = 5", "floor = 2"), edit("PRD.md", "is normal", "is critical", true)])
+    expect(result.failed).toEqual([])
+    expect(result.files).toEqual([{ path: "PRD.md", text: "The class is critical. The class is critical." }, { path: "kit/a.rs", text: "let floor = 2;" }])
+  })
+
+  it("reports an edit that does not match as it says and leaves the file alone", () => {
+    const result = applyEdits(files, [edit("PRD.md", "is normal", "is critical"), edit("PRD.md", "is stale", "x"), edit("TRD.md", "a", "b"), edit("kit/a.rs", "", "x")])
+    expect(result.failed.map(item => item.reason)).toEqual(["the find text occurs 2 times and all is false", "the find text is not in the file", "no such file in the packet", "the find text is not in the file"])
+    expect(result.files).toEqual(files)
+  })
+
+  it("gives the model the files, the idea and each numbered finding", () => {
+    const prompt = buildFixPrompt("Disk Free shows free space.", "linux-hyprland-waybar-module", files, [{ where: "PRD.md", quote: "The class is normal.", why: "It is below the limit.", fix: "Say critical." }])
+    expect(prompt).toContain('<file path="kit/a.rs">\nlet floor = 5;')
+    expect(prompt).toContain('The user\'s idea: "Disk Free shows free space."')
+    expect(prompt).toContain("1. Where: PRD.md\n   Quote: The class is normal.")
   })
 })

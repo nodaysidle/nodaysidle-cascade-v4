@@ -42,7 +42,7 @@ export function readPacket(packet: string): { files: PacketFile[]; notShown: str
 }
 
 // The idea text of a round packet, looked up by preset folder and product slug in run-round.fish.
-function ideaFromRoundScript(packet: string): string | undefined {
+export function ideaFromRoundScript(packet: string): string | undefined {
   const preset = basename(dirname(packet))
   const slug = basename(packet)
   for (const line of readFileSync(join(here, "run-round.fish"), "utf8").split("\n")) {
