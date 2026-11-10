@@ -234,6 +234,22 @@ function waybarValueIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
     issues.push({ path: `features[${limited[1]!.index}].thresholds`, rule: "capability.waybar-thresholds-owner", message: "One module has one severity: declare thresholds on the single feature that shows the reading, not on several." })
   }
   for (const { feature, index } of limited) {
+    // An example that states its reading and a class must agree with the declared limits (critical wins over warning).
+    // shortcut: the reading is known only as "N bytes" for a size, or as the one number of the signal when it is shown
+    // directly before a unit that does not scale ("25%"); a rate example is not checked. Extend when an audit finds a wrong rate example.
+    const unit = (feature.unit ?? "").trim()
+    const scales = unit === "" || /^(?:[kMGT]?B|[kMG]?b)(?:\/s)?$/.test(unit)
+    feature.acceptanceSignals.forEach((signal, signalIndex) => {
+      const stated = new Set([...signal.matchAll(/\bclass (normal|warning|critical)\b/g)].map(match => match[1]!))
+      const bytes = [...signal.matchAll(/(?<![\d.,])(\d[\d,]*(?:\.\d+)?)\s+(?:[a-z]+\s+)?bytes\b/gi)].map(match => match[1]!)
+      const numbers = new Set([...signal.matchAll(/(?<![\d.,A-Za-z])\d[\d,]*(?:\.\d+)?/g)].map(match => Number(match[0].replaceAll(",", ""))))
+      // Without "N bytes", the reading is the one number of the signal, and only when the signal shows it with the label's unit.
+      const reading = bytes.length === 1 ? Number(bytes[0]!.replaceAll(",", "")) : bytes.length === 0 && !scales && numbers.size === 1 && signal.replaceAll(",", "").includes(`${[...numbers][0]}${unit}`) ? [...numbers][0]! : undefined
+      if (stated.size !== 1 || reading === undefined) return
+      const reached = (state: string) => (feature.thresholds ?? []).some(item => item.state === state && (item.comparison === "above" ? reading > item.value : reading < item.value))
+      const expected = reached("critical") ? "critical" : reached("warning") ? "warning" : "normal"
+      if (!stated.has(expected)) issues.push({ path: `features[${index}].acceptanceSignals[${signalIndex}]`, rule: "capability.waybar-class-example", message: `Feature '${feature.name}' states class ${[...stated][0]} for a reading of ${reading}, but its declared thresholds make that reading class ${expected} (the comparison is strict and critical wins over warning). Correct the class in this acceptance signal to class ${expected}, or pick an example reading that has the class you state.` })
+    })
     const seen = new Set<string>()
     for (const threshold of feature.thresholds ?? []) {
       const key = `${threshold.state}/${threshold.comparison}`

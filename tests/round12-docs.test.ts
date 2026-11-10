@@ -39,15 +39,25 @@ describe("Waybar: label examples use the declared number of decimals (round 12)"
   const repaired = (): SemanticBlueprint => {
     const blueprint = load("waybar-disk-free.json")
     const feature = blueprint.features[0]!
-    feature.acceptanceSignals = feature.acceptanceSignals.map(signal => signal.replace("3.67 GB", "3.7 GB").replaceAll("10.00 GB", "10.0 GB"))
+    feature.acceptanceSignals = feature.acceptanceSignals.map(signal => signal.replace("3.67 GB with class normal", "3.7 GB with class critical").replaceAll("10.00 GB", "10.0 GB"))
     return blueprint
   }
 
   it("sends a label example with other decimals back for repair, and names the signal", () => {
     const issues = auditCapabilities(load("waybar-disk-free.json"), PRESETS[WAYBAR])
-    expect(issues.map(issue => issue.rule)).toEqual(["capability.waybar-label-decimals", "capability.waybar-label-decimals", "capability.waybar-label-decimals"])
+    expect(issues.filter(issue => issue.rule === "capability.waybar-label-decimals")).toHaveLength(3)
     expect(issues[0]!.path).toBe("features[0].acceptanceSignals[0]")
     expect(issues[0]!.message).toContain("3.67 GB")
+  })
+
+  // Re-audit: "With 3,670,016,000 free bytes the label text is 3.67 GB with class normal" although red is below 10 GB.
+  it("sends back an example whose class disagrees with the declared thresholds for its reading", () => {
+    const wrong = auditCapabilities(load("waybar-disk-free.json"), PRESETS[WAYBAR]).filter(issue => issue.rule === "capability.waybar-class-example")
+    expect(wrong.map(issue => issue.path)).toEqual(["features[0].acceptanceSignals[0]"])
+    expect(wrong[0]!.message).toContain("class critical")
+    const percent = repaired()
+    Object.assign(percent.features[0]!, { labelTemplate: "{value}%", unit: "%", valueDecimals: 0, thresholds: [{ state: "warning", comparison: "below", value: 30 }, { state: "critical", comparison: "below", value: 15 }], acceptanceSignals: ["With a charge of 25 the label text is 25% with class warning.", "With a charge of 12 the label text is 12% with class warning."] })
+    expect(auditCapabilities(percent, PRESETS[WAYBAR]).filter(issue => issue.rule === "capability.waybar-class-example").map(issue => issue.path)).toEqual(["features[0].acceptanceSignals[1]"])
   })
 
   it("accepts the repaired signals and leaves the tooltip percent alone", () => {
