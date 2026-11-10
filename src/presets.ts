@@ -1011,11 +1011,13 @@ const androidCompose: PresetContract = {
   packagingRules: ["Use Gradle Kotlin DSL and a version catalog.", "Build an Android-only APK with the locked applicationId.", "Declare only required permissions and test denied paths.", "When an adb device is attached, install the debug APK on it for launch smoke; otherwise report PARTIAL."],
   specialize: (preset, blueprint) => {
     const needs = androidKitNeeds(blueprint)
+    const noData = blueprint.domainData.length === 0
     const clean = (rule: string) => rule
       .replace("a command with nothing to act on is disabled until it has a target; ", "")
       .replace("an empty list shows one centered message saying how to fill it;", "an empty list shows one centered message, which is the owning feature's own empty-state text when its behavior gives one and otherwise says how to fill the list;")
       .replace("settings are grouped rows with the label on the left and the control on the right, a switch or checkbox on the same line as its label, and a short note under each group; ", needs.settingsData ? "settings are grouped rows with the label on the left and the control on the right, a switch or checkbox on the same line as its label, and a short note under each group; " : "")
       .replace("it restores every setting it changed to its previous value and removes", needs.settingsData ? "it restores every setting it changed to its previous value and removes" : "it removes")
+      .replace("confirm that the data the app saved is still present", noData ? "confirm that the screen starts from its initial state with nothing stored" : "confirm that the data the app saved is still present")
     const external = blueprint.externalServices.length > 0
     const permissions = blueprint.permissionNeeds.length > 0
     return {

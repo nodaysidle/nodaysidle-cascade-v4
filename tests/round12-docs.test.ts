@@ -28,6 +28,8 @@ describe("Android: a product with no data object builds no list (round 12)", () 
     expect(task).toContain("stores nothing")
     expect(task).toContain('"Split calculator" (testTag "section-split-calculator"), yours: build its content in this task')
     expect(task).toContain("your focused test drives your own acceptance criteria through the real screen")
+    expect(packet.documents["TRD.md"]).not.toContain("confirm that the data the app saved is still present")
+    expect(packet.documents["TRD.md"]).toContain("confirm that the screen starts from its initial state with nothing stored")
   })
 })
 
