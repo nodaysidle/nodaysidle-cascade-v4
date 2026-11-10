@@ -110,6 +110,16 @@ blueprints were recompiled into the session scratchpad `r11b/` (Temp Watch neede
 capability.waybar-process-memory check asks for; applied by hand as the repair would) and five parallel audits are
 running. Next: verify blocking claims, fix, re-audit; then rebuild the app and run round 12 live.
 
+**Re-audit of the merged compiler (r11b):** Book Shelf 0 blocking (was 8), Step Goal 0 (was 6), Board Game Club 0,
+Reading List 1 (stale provider prose "status is not entered"), Temp Watch 2 (kit refresh never wrote the severity class
+into the cache; Retention said the peak resets at process start). Fixed in f241482 (kit refresh_with sets class;
+capability.waybar-reset-at-start; semantic.choice-not-entered sends the prose contradiction back for repair; Astro seed
+`weight: light` unquoted). Final audits of the two repaired packets running. Waybar kit changed: kit:check must be rerun.
+Polish backlog from the re-audit: Step Goal no-goal rule not repeated in TASK-05's contract, total/goal-status testTags
+unnamed, DataStore reopen + reset() note, unused Time rule in GTK mark/export tasks, GTK metainfo summary cut at a comma,
+Tauri existing_file helper unused, Astro /teas/ example route, Signing vs Installation, launch-check list/cleanup and
+denied/cancelled/migration boilerplate for create-only apps, Waybar refreshSeconds 15 vs 5 s cadence.
+
 **Earlier plan (done):** four background agents, each in its own git
 worktree branch, fixing classes in parallel: A = no list on screen + main-screen setting (Android, fixture
 android-step-goal.json), B = initial value vs choice vs app-set + status-only change (fixtures tauri-reading-list.json,
