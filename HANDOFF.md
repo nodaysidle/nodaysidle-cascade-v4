@@ -279,6 +279,9 @@ no verdict yet.
 | Waybar Weather Bar | 1 | not agent-ready |
 | Android Shopping List | 2, one cause | not agent-ready |
 | Tauri Link Shelf | 2 | not agent-ready |
+| Astro Corner Cafe | 1 | not agent-ready |
+| Android Lift Log | 2 | not agent-ready |
+| Astro Studio Folio | 0 (8 polish) | **agent-ready** |
 
 - **Battery Watch.** `runsEverySeconds` 1800 for "every 30 seconds": TRD schedule line, the acceptance
   criterion, kit `config.rs` default and kit `contract_tests.rs` all enforce 1800 while PRD goals say 30.
@@ -348,6 +351,21 @@ no verdict yet.
   an Open button in every row. (2) Nothing can open a web address: no opener plugin in the kit's Cargo.toml,
   package.json or capabilities, no command, no platform need declared, and TRD 218 says no permission is
   required.
+
+- **Corner Cafe.** The general seed rule "Every field value is rendered as the stored value alone ... never a
+  reformatted one" (PRD 63, TRD 53, TASKS 33) against the feature's "price formatted in euros with exactly two
+  decimals (6.50 €)" and "a vegetarian mark shown only when the flag is true" (PRD 79, TASKS 116). The TASK-04
+  prompt names neither. The seed is `price: 0`, `vegetarian: true`. Polish: an empty group has no stated
+  rendering; "one element for a single entry" for a multi-record list.
+- **Lift Log.** (1) Weight is rendered with the default rule `^[0-9]+([.][0-9]{1,2})?$` ("at most 2 decimal
+  places ... unless the behavior states another count") while the behavior says "at most one decimal place"
+  and the acceptance says 82.55 must be rejected. A data field has no declared decimals; the count lives in
+  prose. (2) Edit contract: "Date, Created at ... is not in the form" against the acceptance "The edit form
+  shows the set's date as read-only". Polish: no field slug is printed, so testTags are a guess.
+- **Studio Folio: 0 blocking.** Polish: one seed entry cannot prove the year sort; every seed field holds
+  "Sample text" (the link too); `npm test` before `npm run build`; the `/teas/` example; the link field is
+  plain text in the kit shell while the acceptance needs an `a`; docs say "markdown or MDX" and the kit has no
+  MDX integration.
 
 Kit builds, final: **20 of 21 pass every command** (GTK 5, Waybar 3 of 4, Tauri 5, Astro 4, Android 3). Only
 Net Rate fails.
