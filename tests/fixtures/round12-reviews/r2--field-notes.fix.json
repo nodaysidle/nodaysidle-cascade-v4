@@ -1,0 +1,37 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 47475,
+    "output_tokens": 986
+  },
+  "fix": {
+    "edits": [
+      {
+        "finding": 1,
+        "op": "replace",
+        "file": "TRD.md",
+        "find": "2. `npm test`\n3. `npm run build`",
+        "replace": "2. `npm run build`\n3. `npm test`",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "op": "replace",
+        "file": "TASKS.md",
+        "find": "2. `npm test`\n3. `npm run build`",
+        "replace": "2. `npm run build`\n3. `npm test`",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "op": "replace",
+        "file": "AGENTS.md",
+        "find": "2. Run `npm test` and require exit status zero.\n3. Run `npm run build` and require exit status zero.",
+        "replace": "2. Run `npm run build` and require exit status zero.\n3. Run `npm test` and require exit status zero (it follows the build because the page-level tests read dist/).",
+        "all": false
+      }
+    ],
+    "notes": "I reordered the final gates in TRD, TASKS and AGENTS to check, build, test, test:a11y, audit:performance. The page-level tests read dist/, so the build now runs before npm test, which matches the per-task validation lists. AGENTS also says why npm test follows the build. Nothing else changed."
+  },
+  "failed": []
+}

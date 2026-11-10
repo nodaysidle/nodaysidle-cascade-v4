@@ -1,63 +1,64 @@
 {
   "usage": {
     "model": "claude-sonnet-5-5",
-    "input_tokens": 47573,
-    "output_tokens": 7691
+    "input_tokens": 47363,
+    "output_tokens": 6447
   },
   "review": {
     "slug": "field-notes",
-    "blocking": [],
+    "blocking": [
+      {
+        "where": "TRD.md Validation Commands (same order in TASKS.md Final Validation Commands and AGENTS.md Validation Gates)",
+        "quote": "2. `npm test`",
+        "why": "The final gate order runs npm test before npm run build. The page-level tests (homepostlist, authorpage, postpage, packaging) read dist/ and fail when it is missing, as TRD CON-RUNTIME-WIRING says. A fresh checkout following the final gates in order therefore fails at step 2. Per-task validation lists the build first, so the documents contradict each other on the order. The same applies to a stale dist/.",
+        "fix": "Reorder the final gates to check, build, test, test:a11y, audit:performance, in TRD, TASKS and AGENTS. Alternatively state that npm test must follow npm run build.",
+        "quoteFound": true
+      }
+    ],
     "polish": [
       {
-        "where": "kit/src/lib/contentcatalog.ts (listPostsEntries) vs TRD.md CON-DATA-POSTS",
-        "quote": "src/content/posts/${post.id}: field \"author\" is \"${post.data.author}\"",
-        "why": "TRD's example error is `src/content/posts/02-x.md field author`, with the .md extension and an unquoted field name. The kit message uses post.id, which has no extension, and quotes the field name. A test written from the TRD example would fail against the kit code the task says to keep.",
-        "fix": "State in TASK-02 that the test asserts only that the message contains the post id and the word author, or change the kit message to use `${post.id}.md`.",
+        "where": "PRD.md UX Requirements",
+        "quote": "Every post page and author page is reachable by a link from the home page.",
+        "why": "The home page links authors only through post entries. An author with no posts has a page but no link from the home page, and no task or test covers this case.",
+        "fix": "Either restrict the sentence to authors that have posts, or add an authors list to the home page component and name its owner.",
         "quoteFound": true
       },
       {
-        "where": "TRD.md Information Architecture and Routes",
-        "quote": "Only a collection behind an item-page feature has [slug] detail routes",
-        "why": "Authors is a collection with an /author/[slug] route, but the Screen Map calls FEAT-AUTHOR-PAGE a plain `page`, not an `item-page`. The generic rule that a detail-route-less collection lists every field and links nowhere then looks as if it covers authors. The rule and the routes contradict each other.",
-        "fix": "Mark the Author page as an item-page in the Screen Map, or reword the rule to cover any collection with a declared [slug] route.",
+        "where": "TASKS.md TASK-03-HOME-POST-LIST",
+        "quote": "sorts the posts by data.published descending",
+        "why": "The tie-break for posts with the same publication date is unspecified. The home page and author pages could order them differently, and a test cannot assert a stable order.",
+        "fix": "Add a tie-break to the contract, such as the entry id descending, for both the home and author lists.",
         "quoteFound": true
       },
       {
-        "where": "TRD.md Content Seed Requirements",
-        "quote": "Every field value is rendered as the stored value alone, in its own element next to the declared field name as its label",
-        "why": "The home list entries and author-page list items render the title, author and date with no field-name label. The author page renders the name as the h1 with no label. The post-page task follows the label rule, so the tests an agent writes for each page could be inconsistent.",
-        "fix": "Scope the labelled-field rule to detail pages, or exempt list pages and the author h1 explicitly.",
-        "quoteFound": true
-      },
-      {
-        "where": "PRD.md FEAT-HOME-POST-LIST Behavior",
-        "quote": "ordered by publication date with the newest post first",
-        "why": "Posts published on the same day have no tie-break. The kit sorts by id and then by published, which depends on a stable sort, and the PRD does not say how ties should come out. Tests that compare orders may flake.",
-        "fix": "Add: ties on published are broken by ascending entry id, on the home page and on author pages.",
+        "where": "TRD.md CON-DATA-POSTS",
+        "quote": "published (calendar day (local, no time))",
+        "why": "The kit schema uses z.coerce.date(), which gives a UTC Date, and the post page formats it with toISOString(). The 'local calendar day' wording does not match this and invites timezone drift.",
+        "fix": "State that published is a YYYY-MM-DD string or UTC date rendered with toISOString().slice(0,10) everywhere.",
         "quoteFound": true
       },
       {
         "where": "TASKS.md TASK-05-POST-PAGE",
-        "quote": "Depend only on OWN-DATA-STORE, OWN-HOME-POST-LIST",
-        "why": "The post page uses nothing the home list creates, since HomePostList.astro is not imported. The dependency only forces an ordering and suggests shared code that does not exist. TASK-04 has the same issue.",
-        "fix": "Drop the OWN-HOME-POST-LIST dependency from TASK-04 and TASK-05, or say what they consume from it.",
+        "quote": "a list field as one ol with one li per item in stored order",
+        "why": "Neither collection has a list field, so this is generic boilerplate that does not apply.",
+        "fix": "Remove the list-field clause from the TASK-05 prompt.",
         "quoteFound": true
       },
       {
-        "where": "PRD.md Target Users",
-        "quote": "Authors who publish posts under their own name",
-        "why": "No journey, feature or acceptance outcome serves authors as actors. Every journey is for readers, and publishing is a non-goal. This persona is unused.",
-        "fix": "Remove it, or describe authors as the subjects of author pages.",
+        "where": "TASKS.md TASK-04-AUTHOR-PAGE",
+        "quote": "render them as one ul with one li per post",
+        "why": "The behavior for an author with zero posts is unspecified. It could be an empty ul, which is bad accessibility, or an omitted list, and a test cannot assert either.",
+        "fix": "Specify that an author with no posts renders no ul and shows no empty-state text, or add an empty-state line.",
         "quoteFound": true
       },
       {
-        "where": "kit/README.md",
-        "quote": "src/pages/author.astro (its content is written for src/pages/author/[slug].astro)",
-        "why": "kit/src/pages/author.astro imports \"../../layouts/BaseLayout.astro\", which does not resolve from its kit location. If kit/ stays in the project root, astro check may try to type-check it and fail.",
-        "fix": "Tell the agent to delete or move the kit/ directory after copying, or confirm that astro check ignores it.",
+        "where": "PRD.md Non-Goals",
+        "quote": "Reader accounts, comments, or subscriptions",
+        "why": "The idea never mentions these, so the compiler added scope-exclusion text that pads the Problem Statement and Success framing without any task consequence.",
+        "fix": "Drop the invented non-goals, or reduce them to the single constraint that the site has no forms.",
         "quoteFound": true
       }
     ],
-    "verdict": "No blocking defects. Every idea sentence maps to one feature with testable acceptance criteria. The data contract, task order, owner map, kit files and the build, test and a11y commands are consistent, and each command can pass at the point where the tasks run it. The remaining items are polish: an error-message mismatch with the kit, an item-page wording conflict, an undefined tie-break for equal dates, and a few unused dependencies and personas."
+    "verdict": "Nearly buildable. One blocking defect: the final validation order runs npm test before npm run build, so the dist-dependent tests fail on a clean tree. Fix that and the packet is coherent. Features, ownership, file creation and modification order, the data interface and the kit all agree, and the remaining items are polish."
   }
 }

@@ -198,13 +198,16 @@ end in two rounds: each round fixed what was flagged and the reviewer then raise
    the local calendar-day rule (`day_bounds`, `count_today`, `local_utc_offset_millis`), and `Notifier` on
    `OWN-PERMISSION-COORDINATOR`; Net Rate fixes the `100.0`/`1250.0 kB/s` 2-second examples, byte-rate rule,
    first-sample rule, `baseline_bytes`, and the kit interval floor.
-2. **Close the gap Field Notes showed (code done; awaiting Alan's API approval for Field Notes re-repair and
-   desktop-app build decision).** `scripts/agent-ready/fix.ts` now supports file operations (`op`: `replace`,
+2. **Close the gap Field Notes showed (done).** `scripts/agent-ready/fix.ts` now supports file operations (`op`: `replace`,
    `create`, `move`, `delete`, and `to`), updates the packet folder on disk (`writePacketEdits`), and builds
-   the kit (`buildKit`) after any repair that touches `kit/`, discarding a repair that breaks the kit. Next:
-   repair Field Notes again and review it (2 Anthropic calls, about $0.40), and decide with Alan what the
-   desktop app does where no build can run: refuse kit edits and report "not ready", or run the build when the
-   tools are installed.
+   the kit (`buildKit`) after any repair that touches `kit/`, discarding a repair that breaks the kit.
+   Re-repaired `astro-web/field-notes`: round 1 (`38` edits, `0` failed) moved `kit/src/pages/author.astro` to
+   `kit/src/pages/author/[slug].astro`, updated `kit/tests/contract.test.ts` and `kit/src/layouts/BaseLayout.astro`,
+   passed the kit build (`check`, `test`, `build`, `test:a11y`, `audit:performance`), and left 1 blocking
+   finding (`npm test` before `npm run build` in the final validation order); round 2 (`3` edits, `0` failed)
+   fixed that gate order and reached **0 blocking** (`8` polish) with a passing kit build. For the desktop app,
+   when a repair touches `kit/`, the Tauri backend will run the kit build in a temporary folder and, if the
+   build fails or the toolchain is missing, discard the kit repair and report **Not ready** with the reason.
 3. **Fix the plain compiler bugs the reviewer keeps finding** (deterministic, one failing test first each),
    so the repair loop has less to do: the kit's 5-second interval floor against a declared shorter interval;
    final validation runs `npm test` before `npm run build` (Astro); the TASK-01 marker criterion reads a file

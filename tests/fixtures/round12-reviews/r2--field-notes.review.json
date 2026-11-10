@@ -1,0 +1,70 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 47380,
+    "output_tokens": 5214
+  },
+  "review": {
+    "slug": "field-notes",
+    "blocking": [],
+    "polish": [
+      {
+        "where": "PRD.md — UX Requirements",
+        "quote": "Every post page and author page is reachable by a link from the home page.",
+        "why": "The home page only links to authors who have at least one post, but FEAT-AUTHOR-PAGE builds a page for every author. An author with no posts has a page that nothing on the home page links to. No task or test handles this case, so the agent has to guess.",
+        "fix": "Reword to 'Every post page and every author page of an author with posts is reachable from the home page', or add an authors link list to the home page.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-AUTHOR-PAGE",
+        "quote": "Depend only on OWN-DATA-STORE, OWN-HOME-POST-LIST",
+        "why": "The author page uses nothing from HomePostList; it reads only the catalog. The ordering dependency on TASK-03 is spurious, and the phrase 'depend only on' is misleading. The same applies to TASK-05.",
+        "fix": "Drop OWN-HOME-POST-LIST from the 'depend only on' sentence in TASK-04 and TASK-05, or note that it is an ordering dependency only.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-03-HOME-POST-LIST",
+        "quote": "sorts the posts by data.published descending",
+        "why": "Two posts with the same published day have no stated tie-break. Tests that compare against the content files could be flaky or disagree with the page.",
+        "fix": "State the tie-break: published descending, then entry id ascending (a stable sort over the id-ascending list).",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-DATA-POSTS",
+        "quote": "published (calendar day (local, no time))",
+        "why": "The kit schema uses z.coerce.date(), which yields a UTC-midnight Date, and the pages print toISOString().slice(0,10). 'Local' conflicts with the UTC rendering, which is only safe because of how the date is rendered.",
+        "fix": "Say 'calendar day (YYYY-MM-DD, rendered from the UTC date)' or tell pages to render with timeZone UTC.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md — Post page outcome",
+        "quote": "its full body text",
+        "why": "There are two body sources: the single-line frontmatter 'body' field and the markdown file body. The kit page renders both. It is not stated which one the 'shows body text' test must assert on.",
+        "fix": "State that the post page shows the frontmatter body field in its own element and the markdown body after it, and that the test asserts the frontmatter value.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md — Shared End-to-End Acceptance",
+        "quote": "No shared acceptance criterion requires the final integration and packaging gate.",
+        "why": "This is boilerplate that adds nothing.",
+        "fix": "Omit the section when empty.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-RUNTIME-WIRING",
+        "quote": "for example /teas/01-sample-entry/",
+        "why": "The example comes from a different product (teas), and the flow-list and no-detail-route rules in the same item do not apply here. Every collection has a detail route and no list fields exist.",
+        "fix": "Use /posts/01-sample-entry/ as the example and drop the list-field and no-detail-route sentences for this packet.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md — Problem Statement",
+        "quote": "need a focused way to show all posts on the home page ordered newest first without reader accounts, comments, or subscriptions",
+        "why": "The sentence is garbled: it restates a goal as a problem and mixes in non-goals. It is harmless but unclear.",
+        "fix": "Rewrite as: 'Readers cannot easily find recent posts across several writers; they need one page listing all posts newest first.'",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "No blocking defects. Every idea sentence maps to a feature with testable acceptance criteria. Task order is dependency-safe, because the kit supplies the shells and the catalog throws on an unknown author before any page uses it. The AGENTS owner map and the TASKS create/modify lists agree, the kit files named in TASKS exist, and the astro-web build and test path is coherent at each task. Only polish items remain."
+  }
+}
