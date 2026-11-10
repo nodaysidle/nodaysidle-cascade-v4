@@ -7,7 +7,7 @@ import { ANDROID_DELETE_PROMPT, androidChoiceMatchesPicker, androidFormRules } f
 import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
 import { appSetInitial, clockInitial, featureDataUses, fieldChoiceList, offeredOnCreate, featureReferenceIssues, nameKey, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
-import { gtkStoreInterface, refineGtkContracts, refineGtkPhases } from "./gtkContracts"
+import { gtkDocumentInterface, gtkSavedDocument, gtkStoreInterface, refineGtkContracts, refineGtkPhases } from "./gtkContracts"
 import { kitProjectPaths, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarRoles, waybarTaskNotes } from "./kits"
 import { waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarResponseDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarKeptExtremeRule, waybarSourceDetail } from "./waybarContracts"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
@@ -1089,6 +1089,8 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
   const users = features.filter(feature => dataFeatureIds(item.name, features).includes(feature.id))
   const tauri = presetId === "tauri2-rust-typescript-desktop"
   if (tauri && item.storage === "document") return [tauriDocumentInterface(tauriData(item), users)]
+  // GTK: a document a feature saves is a file written whole, never a table (round 11, Book Shelf).
+  if (presetId === "linux-wayland-gtk4-desktop" && item.storage === "document" && users.some(feature => gtkSavedDocument(allData, feature)?.name === item.name)) return [...(item.fields.length ? [`Columns, in this order: ${item.fields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${field.optional ? ", optional" : ""})`).join("; ")}.`] : []), gtkDocumentInterface(item, users, allData)]
   const documentResources = new Set(allData.filter(other => other.storage === "document").flatMap(other => dataResourceIds(other.name)))
   // A Tauri feature that saves a document writes only that file; its records are read, not created.
   const operationsOf = (feature: GraphFeature): readonly DataOperation[] => tauri ? tauriFeatureOps(item.storage, opsOn(feature, item.name), feature, documentResources) : opsOn(feature, item.name)
