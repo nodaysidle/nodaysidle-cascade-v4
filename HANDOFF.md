@@ -71,7 +71,24 @@ all five presets.** Done means all of these hold:
 
 ## 4. State of the repo
 
-### RESUME HERE — live round 10 in progress (updated 2026-11-10)
+### RESUME HERE — live round 11 (started 2026-11-10)
+
+Round 10 is closed (results below). Round 11 runs from the app rebuilt at e406560 with new ideas, same per-packet
+steps as round 10 (verify, copy to /tmp/v4-round11/<preset-id>/, build-round-kits.sh, one read-only audit agent, tell
+Alan plainly). Ideas are the five g lines in scripts/agent-ready/run-round.fish.
+
+| # | Preset | Idea | Exercises | Export path | Status |
+|---|--------|------|-----------|-------------|--------|
+| 1 | linux-wayland-gtk4-desktop | Book Shelf | export button on GTK (fix #1 untested there), rating 1-5 | | pending |
+| 2 | linux-hyprland-waybar-module | Temp Watch | temperature source, max-since-start state, provider notes (5be0c05) | | pending |
+| 3 | tauri2-rust-typescript-desktop | Reading List | export actions host, status choice set, filter, SubmitResult | | pending |
+| 4 | astro-web | Board Game Club | weight light/medium/heavy as z.enum, Design System tokens | | pending |
+| 5 | android-kotlin-compose | Step Goal | daily goal setting in the actions area, entry form | | pending |
+
+Watch: does the provider now declare a choice list for a fixed stored value (Reading List status, Board Game weight)?
+Does the export button get the "actions" host on GTK and Tauri? Does the goal mount in the Android actions area?
+
+### Live round 10 (closed) (updated 2026-11-10)
 
 **Where we stopped:** Alan is running round 10 live *from the installed app*, one prompt per preset,
 and pastes each export folder path. The agent audits each one. 1 of 5 is done.
