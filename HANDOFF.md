@@ -411,6 +411,40 @@ Class forming across presets: **the main-screen task prompt assumes "a list with
 declared shape is. Seen for no data (Android Tip Split, fixed last session), app-stamped records (Focus
 Timer), a single settings record (Quiet Hours), and a row toggle stored as child records (Habit Streak).
 
+### 5.7 New direction (Alan's decision, 2026-11-10 evening): review and repair with a stronger model
+
+Alan: "My decision is that you do what you think will solve my problem ... non agent-ready docs." He has an
+Anthropic API key in the fish environment (`ANTHROPIC_API_KEY`; never print it) and asked whether Haiku 5.5 or
+Sonnet 5.5 is strong enough. The UI stays: write an idea, pick a preset, Generate.
+
+**The plan the lead chose.** Keep the compiler and its skeleton (task order, owners, files, commands and kits
+held up in every audit). After compile, add two steps by a Claude model: an independent **review** of the
+whole packet (the audit brief, one request), then a **repair** that returns exact text edits for the blocking
+findings, then a second review. Export shows the verdict: agent-ready (0 blocking) or not ready with the
+reasons. The edits must be recorded in `blueprint.json` so compile + edits reproduces the exported bytes
+(otherwise `verify --packet` fails). Compiler fixes for plain compiler bugs continue as a backlog fed by the
+review findings, so the repair step has less to do over time.
+
+**Tools (committed):** `scripts/agent-ready/review.ts` (one packet, one request, typed findings, every quote
+checked against the files) and `scripts/agent-ready/fix.ts` (edits applied to a copy; a non-matching edit is
+reported). Tests: `tests/review-tool.test.ts`. `@anthropic-ai/sdk` 1.7.0 is a dev dependency. Models:
+`claude-haiku-5-5` ($0.10 / $0.50 per million tokens), `claude-sonnet-5-5` ($2 / $10). A packet is 27k to 49k
+tokens. No fallback model in these tools on purpose (they measure the named model); add the server-side
+fallback when this becomes a product step.
+
+**Approved spend:** up to 40 Anthropic calls, about $5, stop and tell Alan before $8. Step A: both models
+review 9 packets with known truth (broken: Focus Timer, Quiet Hours, Net Rate, Field Notes, Link Shelf, Lift
+Log; clean: Studio Folio, Tip Split, Green Kitchen). Step B: the better model repairs 3 broken packets
+(planned: Focus Timer, Field Notes, Net Rate) and reviews them again, at most 2 rounds each; build the repaired
+kits with `build-round-kits.sh`. Results go in 5.8.
+
+Ground truth for step A (confirmed blocking causes): Focus Timer 3 (Add button and list with no add task; the
+count has no slot; local or UTC day). Quiet Hours 4 (SQLite against JSON; nothing creates the record; list rows
+and a mark control; the empty-state text in the status area). Net Rate 5 (wrong example and bits against
+bytes; examples measured over 5 seconds; the kit's 5-second floor; two first-sample rules; no mechanism for
+the service start). Field Notes 3 (one /author page; no author link target; the seed reference). Link Shelf 2
+(the summary host; nothing opens a URL). Lift Log 2 (two decimals accepted; the date in the edit form).
+
 ## 6. What must be done to make the four stacks agent-ready
 
 "Agent-ready" was shown for one idea per stack. The work left is to prove it on more idea shapes and
