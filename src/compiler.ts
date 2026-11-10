@@ -12,6 +12,7 @@ import { kitProjectPaths, presetKit, rustKitHelpers, waybarHookSummary, waybarLa
 import { settleWaybarLabel, waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarResponseDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarKeptExtremeRule, waybarSourceDetail } from "./waybarContracts"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
+import type { PacketRepairRecord } from "./review"
 import { TAURI_WIRE_FORMAT, isCountdown, tauriAddHasForm, tauriDocumentInterface, tauriFeatureOps, tauriMainSlotsSentence, tauriStoreInterface, tauriTaskPrompt, type TauriData, type TauriFeatureUse } from "./tauriContracts"
 
 export const DOCUMENT_NAMES = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS.md"] as const
@@ -308,6 +309,7 @@ export interface CompiledPacket {
   readonly ledger: readonly AuditEntry[]
   readonly failures: readonly AuditFailure[]
   readonly exportable: boolean
+  readonly repair?: PacketRepairRecord
 }
 
 export interface KitExportFile {
@@ -2466,6 +2468,7 @@ export interface PacketManifest {
   readonly documents: Record<string, { readonly sha256: string }>
   readonly kit: readonly { readonly path: string; readonly sha256: string }[]
   readonly validation: { readonly status: "pass" | "fail"; readonly ledger: CompiledPacket["ledger"] }
+  readonly repair?: PacketRepairRecord
 }
 
 // One manifest shape for the CLI and the desktop app, so `cascade verify` accepts either export.
@@ -2480,6 +2483,7 @@ export function buildPacketManifest(packet: CompiledPacket, blueprint: SemanticB
     documents: Object.fromEntries(DOCUMENT_NAMES.map(name => [name, { sha256: packet.hashes[name]! }])),
     kit: packet.kit.map(file => ({ path: file.name, sha256: file.sha256 })),
     validation: { status: packet.exportable ? "pass" : "fail", ledger: packet.ledger },
+    ...(packet.repair ? { repair: packet.repair } : {}),
   }
 }
 

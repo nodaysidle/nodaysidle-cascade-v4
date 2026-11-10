@@ -23,6 +23,12 @@ import {
 } from "./jev"
 import { PRESETS, type PresetId } from "./presets"
 import {
+  runReviewAndRepairLoop,
+  type KitBuilder,
+  type PacketRepairRecord,
+  type ReviewProvider,
+} from "./review"
+import {
   auditIdeaCoverage,
   auditSemanticIntake,
   buildBlueprintInstructions,
@@ -45,7 +51,8 @@ export const PROVIDER_MODELS = [
 // The legacy "deepseek-v4-flash" transport alias stays accepted (state validation, the smoke
 // fixture path, and the Rust provider all accept it) without joining the selectable list.
 export type ProviderModel = (typeof PROVIDER_MODELS)[number]["id"] | "deepseek-v4-flash"
-export type ProgressStage = "jev-preflight" | "provider" | "provider-repair" | "blueprint-validation" | "jev-integrity" | "local-normalization" | LocalCompileStage
+export type ReviewStage = "review" | "repair" | "review-again"
+export type ProgressStage = "jev-preflight" | "provider" | "provider-repair" | "blueprint-validation" | "jev-integrity" | "local-normalization" | LocalCompileStage | ReviewStage
 export type ProviderFailureKind = "transport" | "timeout" | "http" | "incomplete" | "failed-response" | "invalid-wrapper" | "invalid-json" | "invalid-request" | "cancelled" | "unknown"
 
 export interface ProviderFailure {
@@ -85,6 +92,8 @@ export interface GeneratePacketInput {
   readonly apiUrl: string
   readonly apiKey: string
   readonly jevApiKey?: string
+  readonly anthropicApiKey?: string
+  readonly reviewRounds?: number
   readonly atomicAuditor?: boolean
   readonly presetOptions?: Readonly<Record<string, string | boolean | readonly string[]>>
   readonly signal?: AbortSignal
@@ -104,6 +113,8 @@ export interface GeneratePacketResult {
   readonly repairedIssues?: readonly SemanticIssue[]
   // The validated provider blueprint that compiled (after any repair and after Jev healing), for export.
   readonly blueprint?: SemanticBlueprint
+  // Present when the Claude Sonnet 5.5 review-and-repair loop ran on the compiled packet.
+  readonly repair?: PacketRepairRecord
 }
 
 const failureKinds = new Set<ProviderFailureKind>(["transport", "timeout", "http", "incomplete", "failed-response", "invalid-wrapper", "invalid-json", "invalid-request", "cancelled", "unknown"])
@@ -284,6 +295,8 @@ export async function generatePacket(
   provider: BlueprintProvider,
   compiler: PacketCompiler = compileNormalizedPacket,
   jevProvider?: JevProvider,
+  reviewProvider?: ReviewProvider,
+  kitBuilder?: KitBuilder,
 ): Promise<GeneratePacketResult> {
   if (cancelled(input)) {
     const failure = { kind: "cancelled", classification: "cancelled" } as const
@@ -348,6 +361,28 @@ export async function generatePacket(
 
     const result = await compileProviderText(providerText, input, compiler, jevProvider, presetMismatch)
     if (result.status === "gate-clean" || !REPAIRABLE_STATUSES.has(result.status) || repair) {
+      if (result.status === "gate-clean" && result.packet && reviewProvider) {
+        try {
+          const reviewed = await runReviewAndRepairLoop({
+            packet: result.packet,
+            idea: input.idea,
+            presetId: input.presetId,
+            requestId: input.requestId,
+            apiKey: input.anthropicApiKey ?? "",
+            maxRounds: input.reviewRounds,
+            signal: input.signal,
+            onProgress: stage => input.onProgress?.(stage),
+            reviewProvider,
+            kitBuilder,
+          })
+          return withRepair({ ...result, packet: reviewed.packet, repair: reviewed.repair }, repairedIssues)
+        } catch (error) {
+          const failure = cancelled(input)
+            ? { kind: "cancelled", classification: "cancelled" } as const
+            : normalizeProviderFailure(error)
+          return withRepair(failureResult(failure.kind === "cancelled" ? "cancelled" : "provider-failure", [providerIssue(failure)], failure, result.jev), repairedIssues)
+        }
+      }
       return withRepair(result, repairedIssues)
     }
     // One bounded repair: the provider sees exactly which deterministic checks its response failed.

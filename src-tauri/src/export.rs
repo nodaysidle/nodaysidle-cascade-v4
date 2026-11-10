@@ -36,6 +36,16 @@ pub struct ExportFailure {
     pub classification: &'static str,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KitBuildWireResult {
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+}
+
 impl ExportFailure {
     fn invalid_packet() -> Self {
         Self {
@@ -271,6 +281,149 @@ fn write_staging_packet(staging: &Path, files: &[ExportFile]) -> io::Result<()> 
         }
     }
     File::open(staging)?.sync_all()
+}
+
+fn kit_commands_for_preset(preset_id: &str) -> Option<&'static [&'static [&'static str]]> {
+    const GTK_WAYBAR: &[&[&str]] = &[
+        &["cargo", "fmt", "--check"],
+        &[
+            "cargo",
+            "clippy",
+            "--all-targets",
+            "--all-features",
+            "--",
+            "-D",
+            "warnings",
+        ],
+        &["cargo", "test"],
+    ];
+    const ASTRO: &[&[&str]] = &[
+        &["npm", "install", "--no-audit", "--no-fund"],
+        &["npm", "run", "check"],
+        &["npm", "run", "build"],
+        &["npm", "test"],
+        &["npm", "run", "test:a11y"],
+        &["npm", "run", "audit:performance"],
+    ];
+    const TAURI: &[&[&str]] = &[
+        &["npm", "install", "--no-audit", "--no-fund"],
+        &["npm", "run", "typecheck"],
+        &["npm", "test"],
+        &["npm", "run", "build"],
+        &["npm", "run", "tauri", "--", "icon", "app-icon.svg"],
+        &[
+            "cargo",
+            "fmt",
+            "--manifest-path",
+            "src-tauri/Cargo.toml",
+            "--",
+            "--check",
+        ],
+        &["cargo", "test", "--manifest-path", "src-tauri/Cargo.toml"],
+    ];
+    const ANDROID: &[&[&str]] = &[&["./scripts/gradle.sh", "assembleDebug", "testDebugUnitTest"]];
+
+    match preset_id {
+        "linux-wayland-gtk4-desktop" | "linux-hyprland-waybar-module" => Some(GTK_WAYBAR),
+        "astro-web" => Some(ASTRO),
+        "tauri2-rust-typescript-desktop" => Some(TAURI),
+        "android-kotlin-compose" => Some(ANDROID),
+        _ => None,
+    }
+}
+
+pub fn build_kit_in_temp(
+    preset_id: &str,
+    files: &[ExportFile],
+) -> Result<KitBuildWireResult, ExportFailure> {
+    use std::process::Command;
+
+    let Some(commands) = kit_commands_for_preset(preset_id) else {
+        return Err(ExportFailure::invalid_packet());
+    };
+    if files.is_empty() || files.len() > MAX_KIT_FILES {
+        return Err(ExportFailure::invalid_packet());
+    }
+    let mut names = HashSet::new();
+    for file in files {
+        if !valid_kit_path(&file.name) || !valid_content(file) || !names.insert(file.name.as_str())
+        {
+            return Err(ExportFailure::invalid_packet());
+        }
+    }
+
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    let cache_root = home.join(".cache").join("cascade-v4");
+    let cargo_target_dir = cache_root.join("target");
+    let cache_tmp_dir = cache_root.join("tmp");
+    fs::create_dir_all(&cargo_target_dir).map_err(|_| ExportFailure::write_failure())?;
+    fs::create_dir_all(&cache_tmp_dir).map_err(|_| ExportFailure::write_failure())?;
+    let work_dir = create_staging_directory(&cache_tmp_dir, "kit-build")?;
+
+    let result = (|| -> Result<KitBuildWireResult, ExportFailure> {
+        for file in files {
+            let relative = file.name.strip_prefix(KIT_PREFIX).unwrap_or(&file.name);
+            let target = work_dir.join(relative);
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).map_err(|_| ExportFailure::write_failure())?;
+            }
+            fs::write(&target, file.content.as_bytes())
+                .map_err(|_| ExportFailure::write_failure())?;
+            #[cfg(unix)]
+            if file.name.ends_with(".sh") {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&target, fs::Permissions::from_mode(0o755))
+                    .map_err(|_| ExportFailure::write_failure())?;
+            }
+        }
+        let android_home = std::env::var_os("ANDROID_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home.join("Android").join("Sdk"));
+        for args in commands {
+            let command_text = args.join(" ");
+            let output = Command::new(args[0])
+                .args(&args[1..])
+                .current_dir(&work_dir)
+                .env("CARGO_TARGET_DIR", &cargo_target_dir)
+                .env("TMPDIR", &cache_tmp_dir)
+                .env("ANDROID_HOME", &android_home)
+                .output();
+            match output {
+                Ok(out) if out.status.success() => continue,
+                Ok(out) => {
+                    let combined = format!(
+                        "{}\n{}",
+                        String::from_utf8_lossy(&out.stdout),
+                        String::from_utf8_lossy(&out.stderr)
+                    );
+                    let tail: Vec<&str> = combined.trim().lines().rev().take(15).collect();
+                    let tail_text = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
+                    return Ok(KitBuildWireResult {
+                        ok: false,
+                        command: Some(command_text),
+                        output: Some(tail_text),
+                    });
+                }
+                Err(err) => {
+                    return Ok(KitBuildWireResult {
+                        ok: false,
+                        command: Some(command_text),
+                        output: Some(err.to_string()),
+                    });
+                }
+            }
+        }
+        Ok(KitBuildWireResult {
+            ok: true,
+            command: None,
+            output: None,
+        })
+    })();
+
+    let _cleanup = fs::remove_dir_all(&work_dir);
+    result
 }
 
 #[cfg(test)]

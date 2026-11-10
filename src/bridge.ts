@@ -1,6 +1,14 @@
 import { invoke } from "@tauri-apps/api/core"
 import { blueprintExportFile, packetForExport, verifyPacketHashes, type CompiledPacket } from "./compiler"
 import type { PresetId, PresetOptionValue } from "./presets"
+import {
+  Fix,
+  FIX_JSON_SCHEMA,
+  Review,
+  REVIEW_JSON_SCHEMA,
+  type KitBuildResult,
+  type ReviewProvider,
+} from "./review"
 import type { SemanticBlueprint } from "./schema"
 import type { JevRequest } from "./jev"
 import type { ProviderRequest } from "./pipeline"
@@ -14,6 +22,48 @@ export function invokeBlueprintProvider(
   invokeCommand: CommandInvoker = tauriInvoker,
 ): Promise<string> {
   return invokeCommand<string>("deepseek_complete", { request })
+}
+
+export function invokeReviewProvider(
+  invokeCommand: CommandInvoker = tauriInvoker,
+): ReviewProvider {
+  return {
+    review: async request => {
+      const text = await invokeCommand<string>("claude_complete", {
+        request: {
+          requestId: request.requestId,
+          apiKey: request.apiKey,
+          model: request.model,
+          schema: REVIEW_JSON_SCHEMA,
+          prompt: request.prompt,
+        },
+      })
+      return Review.parse(JSON.parse(text))
+    },
+    fix: async request => {
+      const text = await invokeCommand<string>("claude_complete", {
+        request: {
+          requestId: request.requestId,
+          apiKey: request.apiKey,
+          model: request.model,
+          schema: FIX_JSON_SCHEMA,
+          prompt: request.prompt,
+        },
+      })
+      return Fix.parse(JSON.parse(text))
+    },
+  }
+}
+
+export function invokeKitBuilder(
+  packet: CompiledPacket,
+  presetId: PresetId,
+  invokeCommand: CommandInvoker = tauriInvoker,
+): Promise<KitBuildResult> {
+  return invokeCommand<KitBuildResult>("build_packet_kit", {
+    presetId,
+    files: packet.kit,
+  })
 }
 
 interface JevWireResponse {

@@ -4,10 +4,14 @@ pub mod export;
 pub mod jev;
 pub mod provider;
 
-use export::{write_packet_atomic, ExportFailure, ExportFile};
+use export::{
+    build_kit_in_temp, write_packet_atomic, ExportFailure, ExportFile, KitBuildWireResult,
+};
 use provider::{
-    build_responses_body, classify_http_failure, extract_completed_text, validate_provider_url,
-    CancellationRegistry, ProviderCommandRequest, ProviderFailure, ProviderRequestBody,
+    build_claude_messages_body, build_responses_body, classify_http_failure, extract_claude_text,
+    extract_completed_text, validate_provider_url, CancellationRegistry, ClaudeCommandRequest,
+    ProviderCommandRequest, ProviderFailure, ProviderRequestBody, ANTHROPIC_FALLBACK_BETA,
+    ANTHROPIC_MESSAGES_URL, ANTHROPIC_VERSION,
 };
 use std::{path::PathBuf, time::Duration};
 use tauri::{Manager, State};
@@ -64,6 +68,64 @@ async fn deepseek_complete(
     let result = execute_outbound(outbound, cancellation).await;
     cancellations.remove(&request.request_id);
     result
+}
+
+#[tauri::command]
+async fn claude_complete(
+    request: ClaudeCommandRequest,
+    cancellations: State<'_, CancellationRegistry>,
+) -> Result<String, ProviderFailure> {
+    let api_key = Zeroizing::new(request.api_key);
+    if !valid_request_id(&request.request_id)
+        || api_key.is_empty()
+        || api_key.len() > 4_096
+        || api_key.bytes().any(|byte| byte.is_ascii_control())
+    {
+        return Err(ProviderFailure::invalid_request());
+    }
+
+    let body = build_claude_messages_body(&request.model, &request.schema, &request.prompt)?;
+    let cancellation = cancellations.register(&request.request_id)?;
+    let client = reqwest::Client::builder()
+        .connect_timeout(PROVIDER_CONNECT_TIMEOUT)
+        .timeout(Duration::from_secs(600))
+        .redirect(reqwest::redirect::Policy::none())
+        .https_only(true)
+        .build()
+        .map_err(|_| ProviderFailure::transport())?;
+
+    let outbound = client
+        .post(ANTHROPIC_MESSAGES_URL)
+        .header("x-api-key", api_key.as_str())
+        .header("anthropic-version", ANTHROPIC_VERSION)
+        .header("anthropic-beta", ANTHROPIC_FALLBACK_BETA)
+        .json(&body);
+    drop(api_key);
+
+    let result = execute_claude_outbound(outbound, cancellation).await;
+    cancellations.remove(&request.request_id);
+    result
+}
+
+async fn execute_claude_outbound(
+    outbound: reqwest::RequestBuilder,
+    cancellation: tokio::sync::oneshot::Receiver<()>,
+) -> Result<String, ProviderFailure> {
+    let operation = async {
+        let response = outbound.send().await.map_err(classify_transport_error)?;
+        let status = response.status().as_u16();
+        let response_body = read_limited_body(response).await?;
+        if !(200..300).contains(&status) {
+            return Err(classify_http_failure(status, &response_body));
+        }
+        extract_claude_text(&response_body)
+    };
+
+    tokio::select! {
+        biased;
+        _ = cancellation => Err(ProviderFailure::cancelled()),
+        result = operation => result,
+    }
 }
 
 async fn execute_outbound(
@@ -135,6 +197,16 @@ async fn export_packet(
     Ok(destination.to_string_lossy().into_owned())
 }
 
+#[tauri::command]
+async fn build_packet_kit(
+    preset_id: String,
+    files: Vec<ExportFile>,
+) -> Result<KitBuildWireResult, ExportFailure> {
+    tauri::async_runtime::spawn_blocking(move || build_kit_in_temp(&preset_id, &files))
+        .await
+        .map_err(|_| ExportFailure::write_failure())?
+}
+
 #[cfg(feature = "fixture-smoke")]
 #[tauri::command]
 fn record_fixture_smoke(
@@ -185,16 +257,20 @@ pub fn run() {
     #[cfg(feature = "fixture-smoke")]
     let builder = builder.invoke_handler(tauri::generate_handler![
         deepseek_complete,
+        claude_complete,
         cancel_generation,
         export_packet,
+        build_packet_kit,
         jev::jev_decide,
         record_fixture_smoke
     ]);
     #[cfg(not(feature = "fixture-smoke"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         deepseek_complete,
+        claude_complete,
         cancel_generation,
         export_packet,
+        build_packet_kit,
         jev::jev_decide
     ]);
     builder

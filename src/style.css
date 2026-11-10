@@ -832,6 +832,44 @@ summary {
   overflow: hidden;
 }
 
+.verdict-panel {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.verdict-panel[data-verdict="agent-ready"] {
+  background: var(--success-soft);
+  border-color: rgb(74 222 128 / 32%);
+}
+
+.verdict-panel[data-verdict="not-ready"] {
+  background: var(--danger-soft);
+  border-color: rgb(248 113 113 / 36%);
+}
+
+.verdict-meta {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+
+.verdict-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.4;
+  max-height: 80px;
+  overflow: auto;
+}
+
+.verdict-polish {
+  margin-top: 6px;
+}
+
 .section-heading-row {
   justify-content: space-between;
   gap: 16px;

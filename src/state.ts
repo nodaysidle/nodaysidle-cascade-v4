@@ -13,6 +13,7 @@ export interface FormState {
   readonly apiUrl: string
   readonly apiKey: string
   readonly jevApiKey: string
+  readonly anthropicApiKey: string
   readonly idea: string
   readonly presetOptions: Readonly<Record<string, string | boolean | readonly string[]>>
 }
@@ -53,6 +54,7 @@ const defaultForm: FormState = {
   apiUrl: DEFAULT_API_URL,
   apiKey: "",
   jevApiKey: "",
+  anthropicApiKey: "",
   idea: "",
   presetOptions: {},
 }
@@ -76,6 +78,7 @@ export function canGenerate(state: AppState): boolean {
     && state.form.idea.length <= MAX_IDEA_CHARS
     && state.form.apiKey.length > 0
     && state.form.jevApiKey.length > 0
+    && state.form.anthropicApiKey.length > 0
     && isSafeProviderUrl(state.form.apiUrl)
     && validPreset(state.form.presetId)
     && validModel(state.form.model)
@@ -114,7 +117,7 @@ export function reduceAppState(state: AppState, action: AppAction): AppState {
     case "generation-failed":
       return { ...state, status: action.status, activeRequestId: undefined, packet: undefined, ledger: [], issues: action.issues, failure: action.failure, jev: action.jev, repairedIssues: action.repairedIssues }
     case "generation-succeeded":
-      return { ...state, form: { ...state.form, apiKey: "", jevApiKey: "" }, status: "gate-clean", progress: "export-gate", activeRequestId: undefined, packet: action.packet, ledger: action.packet.ledger, issues: [], failure: undefined, jev: action.jev, repairedIssues: action.repairedIssues, blueprint: action.blueprint }
+      return { ...state, form: { ...state.form, apiKey: "", jevApiKey: "", anthropicApiKey: "" }, status: "gate-clean", progress: action.packet.repair ? "review-again" : "export-gate", activeRequestId: undefined, packet: action.packet, ledger: action.packet.ledger, issues: [], failure: undefined, jev: action.jev, repairedIssues: action.repairedIssues, blueprint: action.blueprint }
     case "save-blueprint-changed":
       return { ...state, saveBlueprint: action.value }
     case "export-succeeded":

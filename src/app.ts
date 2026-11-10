@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog"
-import { cancelProviderRequest, exportPacketTo, invokeBlueprintProvider, invokeJevDecision } from "./bridge"
+import { cancelProviderRequest, exportPacketTo, invokeBlueprintProvider, invokeJevDecision, invokeKitBuilder, invokeReviewProvider } from "./bridge"
 import { DOCUMENT_NAMES, type DocumentName } from "./compiler"
 import {
   jevHealedNeedsDetail,
@@ -15,6 +15,7 @@ import {
   type ProgressStage,
 } from "./pipeline"
 import { PRESET_IDS, PRESETS } from "./presets"
+import type { KitBuilder, ReviewProvider } from "./review"
 import type { SemanticIssue } from "./schema"
 import {
   canExport,
@@ -41,6 +42,9 @@ const progressStages: ReadonlyArray<{ id: ProgressStage; label: string }> = [
   { id: "agent-readiness-audit", label: "Agent-readiness audit" },
   { id: "rendering", label: "Rendering" },
   { id: "export-gate", label: "Export gate" },
+  { id: "review", label: "Review" },
+  { id: "repair", label: "Repair" },
+  { id: "review-again", label: "Review again" },
 ]
 
 const statusCopy: Readonly<Record<AppState["status"], { label: string; detail: string; tone: string }>> = {
@@ -136,6 +140,11 @@ function appMarkup(): string {
                 <p id="jev-api-key-help" class="visually-hidden">Used for in-memory TypeSafe Jev decisions; never saved, logged, or exported.</p>
               </div>
             </div>
+            <div class="field-group">
+              <label for="anthropic-api-key">Anthropic API key</label>
+              <input id="anthropic-api-key" name="anthropic-api-key" type="password" autocomplete="off" spellcheck="false" aria-describedby="anthropic-api-key-help" />
+              <p id="anthropic-api-key-help" class="visually-hidden">Used for in-memory Claude Sonnet 5.5 review and repair; never saved, logged, or exported.</p>
+            </div>
             <p class="key-note" aria-hidden="true"><span class="memory-chip">MEMORY ONLY</span> Keys are never saved, logged, exported, or placed in the request body.</p>
           </div>
 
@@ -223,6 +232,20 @@ function appMarkup(): string {
         </article>
 
         <section class="validation-panel" aria-labelledby="validation-heading">
+          <div id="verdict-panel" class="verdict-panel" hidden>
+            <div class="section-heading-row dark">
+              <div>
+                <p class="eyebrow light">SONNET 5.5 VERDICT</p>
+                <h2 id="verdict-heading">Agent-ready (reviewed, 0 blocking)</h2>
+              </div>
+              <span id="verdict-meta" class="verdict-meta"></span>
+            </div>
+            <ul id="verdict-blocking" class="verdict-list verdict-blocking" hidden></ul>
+            <details id="verdict-polish-details" class="verdict-polish" hidden>
+              <summary id="verdict-polish-summary">Minor notes</summary>
+              <ul id="verdict-polish" class="verdict-list"></ul>
+            </details>
+          </div>
           <div class="section-heading-row dark">
             <div>
               <p class="eyebrow light">LOCAL PROOF</p>
@@ -250,6 +273,8 @@ function requiredElement<T extends Element>(root: ParentNode, selector: string):
 export function mountApp(
   provider: BlueprintProvider = invokeBlueprintProvider,
   jevProvider: JevProvider = invokeJevDecision,
+  reviewProvider: ReviewProvider = invokeReviewProvider(),
+  kitBuilder: KitBuilder = invokeKitBuilder,
 ) {
   const root = requiredElement<HTMLElement>(document, "#app")
   root.innerHTML = appMarkup()
@@ -261,6 +286,7 @@ export function mountApp(
   const apiUrl = requiredElement<HTMLInputElement>(root, "#api-url")
   const apiKey = requiredElement<HTMLInputElement>(root, "#api-key")
   const jevApiKey = requiredElement<HTMLInputElement>(root, "#jev-api-key")
+  const anthropicApiKey = requiredElement<HTMLInputElement>(root, "#anthropic-api-key")
   const idea = requiredElement<HTMLTextAreaElement>(root, "#idea")
   const intakeEvaluating = requiredElement<HTMLElement>(root, "#intake-evaluating")
   const intakeFeedback = requiredElement<HTMLElement>(root, "#intake-feedback")
@@ -286,6 +312,13 @@ export function mountApp(
   const previewContent = requiredElement<HTMLElement>(root, "#preview-content")
   const ledger = requiredElement<HTMLElement>(root, "#validation-ledger")
   const validationCount = requiredElement<HTMLElement>(root, "#validation-count")
+  const verdictPanel = requiredElement<HTMLElement>(root, "#verdict-panel")
+  const verdictHeading = requiredElement<HTMLElement>(root, "#verdict-heading")
+  const verdictMeta = requiredElement<HTMLElement>(root, "#verdict-meta")
+  const verdictBlocking = requiredElement<HTMLElement>(root, "#verdict-blocking")
+  const verdictPolishDetails = requiredElement<HTMLElement>(root, "#verdict-polish-details")
+  const verdictPolishSummary = requiredElement<HTMLElement>(root, "#verdict-polish-summary")
+  const verdictPolish = requiredElement<HTMLElement>(root, "#verdict-polish")
   const progressCount = requiredElement<HTMLElement>(root, "#progress-count")
   const notice = requiredElement<HTMLElement>(root, "#notice")
   const tabs = [...root.querySelectorAll<HTMLButtonElement>("[role=tab]")]
@@ -297,10 +330,13 @@ export function mountApp(
     apiUrl,
     apiKey,
     jevApiKey,
+    anthropicApiKey,
     idea,
   }
   let state = createInitialState()
   let activeJevProvider = jevProvider
+  const activeReviewProvider = reviewProvider
+  const activeKitBuilder = kitBuilder
   let activeDocument: DocumentName = "PRD.md"
   let abortController: AbortController | undefined
   let generation: Promise<AppState> | undefined
@@ -327,6 +363,7 @@ export function mountApp(
     apiUrl.value = state.form.apiUrl
     apiKey.value = state.form.apiKey
     jevApiKey.value = state.form.jevApiKey
+    anthropicApiKey.value = state.form.anthropicApiKey
     idea.value = state.form.idea
     renderPresetOptions()
     if (latestIntakeDecision) {
@@ -401,12 +438,61 @@ export function mountApp(
     `).join("")
   }
 
+  function updateVerdict(): void {
+    const repair = state.packet?.repair
+    if (!repair) {
+      verdictPanel.hidden = true
+      verdictBlocking.hidden = true
+      verdictBlocking.innerHTML = ""
+      verdictPolishDetails.hidden = true
+      verdictPolish.innerHTML = ""
+      return
+    }
+    verdictPanel.hidden = false
+    verdictPanel.dataset.verdict = repair.agentReady ? "agent-ready" : "not-ready"
+    verdictHeading.textContent = repair.agentReady
+      ? "Agent-ready (reviewed, 0 blocking)"
+      : "Not ready"
+    const roundsLabel = repair.rounds === 0
+      ? "0 repair rounds"
+      : `${repair.rounds} repair ${repair.rounds === 1 ? "round" : "rounds"} (${repair.edits.length} ${repair.edits.length === 1 ? "edit" : "edits"})`
+    verdictMeta.textContent = `${repair.model} · ${roundsLabel}`
+
+    const blockingItems: string[] = repair.review.blocking.map(
+      item => `<li><strong>${escapeHtml(item.where)}</strong> — ${escapeHtml(item.why)}</li>`,
+    )
+    if (repair.kitBuildPassed === false && repair.kitBuildError) {
+      blockingItems.push(`<li><strong>Kit build</strong> — ${escapeHtml(repair.kitBuildError)}</li>`)
+    }
+    if (blockingItems.length > 0) {
+      verdictBlocking.hidden = false
+      verdictBlocking.innerHTML = blockingItems.join("")
+    } else {
+      verdictBlocking.hidden = true
+      verdictBlocking.innerHTML = ""
+    }
+
+    if (repair.review.polish.length > 0) {
+      verdictPolishDetails.hidden = false
+      verdictPolishSummary.textContent = `Minor notes (${repair.review.polish.length})`
+      verdictPolish.innerHTML = repair.review.polish
+        .map(item => `<li><strong>${escapeHtml(item.where)}</strong> — ${escapeHtml(item.why)}</li>`)
+        .join("")
+    } else {
+      verdictPolishDetails.hidden = true
+      verdictPolish.innerHTML = ""
+    }
+  }
+
   function updateView(): void {
     const copy = statusCopy[state.status]
+    const repair = state.packet?.repair
     const busy = ["generating", "cancelling"].includes(state.status)
     shell.dataset.state = state.status
-    statusBadge.dataset.tone = copy.tone
-    statusLabel.textContent = copy.label
+    statusBadge.dataset.tone = repair && !repair.agentReady && state.status === "gate-clean" ? "error" : copy.tone
+    statusLabel.textContent = repair && state.status === "gate-clean"
+      ? (repair.agentReady ? "Agent-ready (reviewed, 0 blocking)" : "Not ready")
+      : copy.label
     statusDetail.textContent = statusDetailText(state.status, state.issues, (state.jev?.atomicAudits?.ideaReviewFeatures ?? []).map(feature => feature.featureName))
     generateButton.textContent = statusActionLabel(state)
     generateButton.disabled = !canGenerate(state)
@@ -418,6 +504,7 @@ export function mountApp(
     packetTitle.textContent = state.packet ? state.packet.graph.identity.projectName : "Five-document packet"
     updateProgress()
     updateTabs()
+    updateVerdict()
     updateLedger()
     updateTechnicalDetails()
   }
@@ -597,7 +684,7 @@ export function mountApp(
       requestId,
       signal: abortController.signal,
       onProgress: stage => dispatch({ type: "progressed", stage }),
-    }, provider, undefined, activeJevProvider).then(result => {
+    }, provider, undefined, activeJevProvider, activeReviewProvider, activeKitBuilder).then(result => {
       if (result.status === "gate-clean" && result.packet) {
         dispatch({ type: "generation-succeeded", packet: result.packet, jev: result.jev, repairedIssues: result.repairedIssues, blueprint: result.blueprint })
         syncControls()

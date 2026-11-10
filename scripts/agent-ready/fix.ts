@@ -139,8 +139,8 @@ const KIT_COMMANDS: Readonly<Record<string, readonly (readonly string[])[]>> = {
   "astro-web": [
     ["npm", "install", "--no-audit", "--no-fund"],
     ["npm", "run", "check"],
-    ["npm", "test"],
     ["npm", "run", "build"],
+    ["npm", "test"],
     ["npm", "run", "test:a11y"],
     ["npm", "run", "audit:performance"],
   ],

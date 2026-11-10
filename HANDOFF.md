@@ -221,16 +221,20 @@ end in two rounds: each round fixed what was flagged and the reviewer then raise
    (`src/waybarContracts.ts`); and the copied provider-note examples (`"30 minutes is 1800"`, `"6,250,000 bytes
    in 5 seconds is 10.0 Mb/s"`, `"84.50 means 2"`) were replaced with rule-based wording (`src/waybarContracts.ts`,
    `src/presets.ts`).
-4. **Build the review and repair steps into the pipeline** (section 4): `src/pipeline.ts` stages, the edits
-   recorded in the manifest and replayed by `verify`, the CLI `generate` path with the SDK, a Rust command
-   for the desktop app like `deepseek_complete` (keys in memory only), the third key field, the new progress
-   stages and the verdict panel in `src/app.ts`. Read the `claude-api` skill before writing Claude API code.
-   Facts already checked there: model id `claude-sonnet-5-5`; thinking cannot be disabled and is adaptive by
-   default; no forced `tool_choice`; structured output through `output_config.format`; set
-   `output_config.effort` (the tests used `high`; try `medium` for speed and cost); always check
-   `stop_reason` (`max_tokens`, `refusal`); the skill's default for product code is the server-side
-   `fallbacks: "default"` with the beta header `server-side-fallback-2026-07-01` (left out of the two tools
-   on purpose, because they measure the named model).
+4. **Build the review and repair steps into the pipeline (done).** `src/review.ts` implements the shared
+   browser/Node review and repair loop (`REVIEW_MODEL = "claude-sonnet-5-5"`, `REVIEW_JSON_SCHEMA`,
+   `FIX_JSON_SCHEMA` verified equal to `zodOutputFormat` schemas, quote verification, file operations
+   `replace`/`create`/`move`/`delete`, kit build gate, and `PacketRepairRecord`). `src/pipeline.ts` runs the
+   `review`, `repair`, and `review-again` stages after compile and attaches `repair` to `CompiledPacket` and
+   `blueprint.json`. `verifyPacketFolder` (`src/packet.ts`) and `cascade compile` (`src/cli.ts`) replay
+   `manifest.repair.edits` so repaired packets verify and rebuild byte-identically for free. `src/review-wire.ts`
+   wires the Node CLI (`@anthropic-ai/sdk` streaming with `output_config: { effort: "high", format }`,
+   `fallbacks: "default"`, `anthropic-beta: "server-side-fallback-2026-07-01"`, and `stop_reason` verification)
+   and local kit builds (`buildCompiledPacketKit`). `src-tauri/src/provider.rs`, `src-tauri/src/export.rs`,
+   `src-tauri/src/lib.rs`, `src/bridge.ts`, `src/state.ts`, `src/app.ts`, and `src/style.css` wire the Tauri
+   desktop app (`claude_complete` with memory-only `Zeroizing` key, `build_packet_kit` in a temporary directory,
+   the Anthropic key input field, the `Review`/`Repair`/`Review again` progress stages, and the `#verdict-panel`
+   showing **Agent-ready (reviewed, 0 blocking)** or **Not ready** with blocking reasons and minor notes).
 5. **Decide the round limit with data.** Run the loop on all 16 broken packets (free to rebuild, a few
    dollars of API). Count how many reach 0 blocking with a passing kit build in 2 rounds and in 3.
 6. **Rebuild and install** (`bash scripts/install-linux-app.sh`), take a screenshot, then give Alan five new
@@ -252,10 +256,12 @@ end in two rounds: each round fixed what was flagged and the reviewer then raise
 - The packets themselves are on a RAM disk and vanish on reboot: `/tmp/v4-round12e` (first four runs),
   `/tmp/v4-round12f` (the 22-idea round, with `_logs/` and `_answers/`), `/tmp/v4-round12g` (`r1/`, `r2/`
   repaired packets, `logs/`).
-- Repo map: `src/schema.ts` (provider schema, prompt, intake rules), `src/pipeline.ts` (flow, the one repair),
-  `src/jev.ts`, `src/capabilities.ts`, `src/compiler.ts` (settle, normalize, graph, task prompts),
-  `src/renderers.ts`, `src/audit.ts`, `src/presets.ts`, per-preset `*Contracts.ts` and `*Kit.ts`,
-  `src/cli.ts`, `src/packet.ts`, `src/app.ts`, `src-tauri/src/`, `tests/`, `scripts/agent-ready/`.
+- Repo map: `src/schema.ts` (provider schema, prompt, intake rules), `src/pipeline.ts` (flow, DeepSeek repair,
+  and post-compile Claude review/repair loop), `src/review.ts` (shared review/repair schemas, prompt builders,
+  quote verifier, file edits, and `runReviewAndRepairLoop`), `src/review-wire.ts` (Node Anthropic SDK streaming
+  client and local kit builder), `src/jev.ts`, `src/capabilities.ts`, `src/compiler.ts` (settle, normalize,
+  graph, task prompts), `src/renderers.ts`, `src/audit.ts`, `src/presets.ts`, per-preset `*Contracts.ts` and
+  `*Kit.ts`, `src/cli.ts`, `src/packet.ts`, `src/app.ts`, `src-tauri/src/`, `tests/`, `scripts/agent-ready/`.
 
 ## 8. How to work
 
@@ -298,8 +304,11 @@ end in two rounds: each round fixed what was flagged and the reviewer then raise
   (0 blocking, kit builds).
 - Five round packets have no audit verdict: Budget Book (second run), Meeting Clock, Day Journal, Clip
   Keeper, Days Until.
-- All 8 plain deterministic compiler bugs from section 6 item 3 are fixed and tested. Step 4 (pipeline,
-  CLI, and desktop app review/repair integration) is next.
+- All 8 plain deterministic compiler bugs from section 6 item 3 are fixed and tested, and `npm run kit:check`
+  passed across all 5 preset kits.
+- Step 4 (pipeline, manifest replay, CLI, and desktop app review/repair integration) is implemented and
+  unit-tested (`npm run check` green). Step 5 (live benchmark loop on the 16 broken round-12 packets) and
+  Step 6 (rebuild/install app, screenshot, 5 new ideas) are next.
 - The installed app is the build of 2026-11-10 15:09, before this session. No screenshot, no packet exported
   from the app.
 - Nothing was recorded in the vault or in Supermemory.

@@ -7,6 +7,8 @@ import { generatePacket, DEFAULT_API_URL, type BlueprintProvider } from "./pipel
 import { deepseekProvider } from "./provider"
 import { PRESETS, PRESET_IDS, isPresetId, resolvePresetOptions, type PresetId, type PresetOptionValue } from "./presets"
 import { verifyPacketFolder, writePacketAtomic, writeProviderAnswers, type PacketManifest } from "./packet"
+import { applyEditsToCompiledPacket, withPacketRepair, type PacketRepairRecord } from "./review"
+import { buildCompiledPacketKit, nodeReviewProvider } from "./review-wire"
 import { auditSemanticIntake, SemanticBlueprintSchema, type SemanticBlueprint } from "./schema"
 import { auditCapabilities } from "./capabilities"
 
@@ -51,6 +53,8 @@ async function generate(options: Record<string, string>, optionValues: readonly 
   if (!apiKey) fail("DEEPSEEK_API_KEY is not set")
   if (options.model && options.model !== "deepseek-flash" && options.model !== "deepseek-v4-pro") fail(`Unknown model: ${options.model}`)
   const jevKey = process.env.TYPESAFE_API_KEY
+  const anthropicKey = process.env.ANTHROPIC_API_KEY
+  const reviewRounds = options.reviewRounds ? Number(options.reviewRounds) : undefined
   const answers: string[] = []
   const provider: BlueprintProvider = async request => {
     const text = await (deepseekProvider as BlueprintProvider)(request)
@@ -65,9 +69,11 @@ async function generate(options: Record<string, string>, optionValues: readonly 
     apiUrl: process.env.CASCADE_API_URL || DEFAULT_API_URL,
     apiKey,
     jevApiKey: jevKey,
+    anthropicApiKey: anthropicKey,
+    reviewRounds,
     atomicAuditor: Boolean(jevKey),
     presetOptions: resolved.values,
-  }, provider, undefined, jevKey ? nodeJevProvider : undefined)
+  }, provider, undefined, jevKey ? nodeJevProvider : undefined, anthropicKey ? nodeReviewProvider : undefined, anthropicKey ? buildCompiledPacketKit : undefined)
   if (options.keepAnswers) writeProviderAnswers(options.keepAnswers, answers)
   if (result.status !== "gate-clean" || !result.packet || !result.blueprint) {
     console.error(JSON.stringify({ status: result.status, failure: result.failure, issues: result.issues, repairedIssues: result.repairedIssues }, null, 2))
@@ -76,23 +82,38 @@ async function generate(options: Record<string, string>, optionValues: readonly 
   const destination = await writePacket(result.packet, result.blueprint, id, resolved.values, options.out ?? ".")
   console.log(`Gate Clean: ${destination}`)
   if (result.repairedIssues?.length) console.log(`Repaired once: ${[...new Set(result.repairedIssues.map(issue => issue.rule))].join(", ")}`)
+  if (result.repair) {
+    console.log(result.repair.agentReady
+      ? `Verdict: Agent-ready (reviewed, 0 blocking${result.repair.rounds > 0 ? `, ${result.repair.rounds} repair round(s)` : ""})`
+      : `Verdict: Not ready (${result.repair.review.blocking.length} blocking${result.repair.kitBuildPassed === false ? ", kit build failed" : ""})`)
+  }
 }
 
 async function compile(options: Record<string, string>, optionValues: readonly string[]): Promise<void> {
   const id = presetId(options.preset)
   const resolved = resolvePresetOptions(id, optionValues)
   if (resolved.issues.length) fail(resolved.issues.join("\n"))
-  const blueprint = blueprintFrom(readJson(options.blueprint ?? fail("Provide --blueprint")))
+  const rawJson = readJson(options.blueprint ?? fail("Provide --blueprint"))
+  const isManifest = Boolean(rawJson && typeof rawJson === "object" && "schema" in rawJson && "blueprint" in rawJson)
+  const blueprint = blueprintFrom(isManifest ? (rawJson as { blueprint: unknown }).blueprint : rawJson)
+  const recordedRepair = isManifest ? (rawJson as { repair?: PacketRepairRecord }).repair : undefined
   const intake = auditSemanticIntake(blueprint)
   const capabilities = auditCapabilities(blueprint, PRESETS[id])
   if (intake.length || capabilities.length) {
     console.error(JSON.stringify([...intake, ...capabilities], null, 2))
     process.exit(1)
   }
-  const packet = await compilePacket(blueprint, id, resolved.values)
+  let packet = await compilePacket(blueprint, id, resolved.values)
   if (!packet.exportable) {
     console.error(JSON.stringify(packet.failures, null, 2))
     process.exit(1)
+  }
+  if (recordedRepair) {
+    const replayed = await applyEditsToCompiledPacket(packet, recordedRepair.edits)
+    if (replayed.failed.length) {
+      fail(`Repair edit replay failed in ${replayed.failed[0]!.edit.file}: ${replayed.failed[0]!.reason}`)
+    }
+    packet = withPacketRepair(replayed.packet, recordedRepair)
   }
   const destination = await writePacket(packet, blueprint, id, resolved.values, options.out ?? ".")
   console.log(`Compiled: ${destination}`)
@@ -138,6 +159,7 @@ async function main(): Promise<void> {
       model: { type: "string" },
       out: { type: "string" },
       "keep-answers": { type: "string" },
+      "review-rounds": { type: "string" },
       option: { type: "string", multiple: true },
     },
     allowPositionals: false,
@@ -151,6 +173,7 @@ async function main(): Promise<void> {
     ...(values.model ? { model: values.model } : {}),
     ...(values.out ? { out: values.out } : {}),
     ...(values["keep-answers"] ? { keepAnswers: values["keep-answers"] } : {}),
+    ...(values["review-rounds"] ? { reviewRounds: values["review-rounds"] } : {}),
   }
   if (command === "generate") return generate(options, values.option ?? [])
   if (command === "compile") return compile(options, values.option ?? [])
