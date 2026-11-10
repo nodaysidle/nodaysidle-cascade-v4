@@ -248,10 +248,12 @@ export const ASTRO_CONTENT_COLLECTION_PERSISTENCE = {
   temporaryPlacement: "Keep draft or preview values in memory inside client islands; do not mirror build-time catalog data into IndexedDB.",
 } as const
 
+// Each bullet states what the kit's src/styles/global.css (astroKit.ts) defines; TASK-01 keeps that file unchanged, so a token
+// named here and missing there is a contradiction (round 10). Change both together.
 export const ASTRO_DESIGN_TOKENS = [
   "Color: dark-first palette with --bg: #0B0F14 (Void Black), --surface, --text, --muted, --accent, and --border CSS custom properties in src/styles/global.css.",
-  "Typography: fluid heading scale, 16px base body, 1.5 line-height, and system-ui stack with one optional display face documented in global.css.",
-  "Spacing: 4px base grid (--space-1 through --space-8) for layout rhythm and component padding.",
+  "Typography: system-ui stack, 16px base body with a 1.65 line-height, and a fluid h1 (clamp(2.2rem, 6vw, 4.2rem), line-height 1.05), all in global.css; there is no display face.",
+  "Spacing: rem steps in global.css (1.25rem page padding, 1rem gaps, 3rem main padding) with --measure: 68ch for line length and --radius: 18px for rounded surfaces; a component adds its own spacing in its scoped style, not in global.css.",
   "Focus: visible :focus-visible rings on every interactive control; never remove outline without a replacement.",
   "Motion: honor prefers-reduced-motion; keep transitions under 200ms for UI state changes.",
 ] as const
