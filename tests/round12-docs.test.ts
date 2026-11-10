@@ -120,6 +120,9 @@ describe("Tauri: a read-only view of a selected record needs an edit feature (ro
     list!.acceptanceSignals = list!.acceptanceSignals.map(signal => signal.replace("Selecting a row shows that expense read-only with a Delete button.", "Each row has a Delete button."))
     remove!.trigger = "The user chooses Delete in the row of an expense."
     remove!.failureOutcome = "If the expense cannot be removed, the row stays in the list and shows that the expense was not deleted."
+    // Re-audit: the outcome sentence still said "can open one to view it".
+    expect(issues(blueprint).map(issue => issue.path)).toEqual(["features[1]"])
+    list!.userOutcome = "The user sees all recorded expenses."
     expect(issues(blueprint)).toEqual([])
     expect((PRESETS[TAURI].providerNotes ?? []).join(" ")).toContain("When no feature edits a record there is no read-only view")
   })

@@ -4,7 +4,7 @@ import { fieldIdentifier } from "./kitText"
 import { featureTexts, waybarCapabilityIssues } from "./waybarContracts"
 
 // Prose that puts a record in a view of its own, reached by selecting its row.
-const SELECTED_RECORD_VIEW = /\b(read-only|details?) (view|pane|panel|page)\b|\bselecting (a|an|the) \w+ (shows|opens|displays)\b/i
+const SELECTED_RECORD_VIEW = /\b(read-only|details?) (view|pane|panel|page)\b|\bselecting (a|an|the) \w+ (shows|opens|displays)\b|\bopen(s|ing)? (one|it|an? \w+|the \w+) to (view|see)\b/i
 
 // The preset declares what the platform can express. The blueprint declares what the product
 // needs. This is the gate that stops a Wayland packet from promising macOS-only automation.
@@ -37,7 +37,7 @@ export function auditCapabilities(blueprint: SemanticBlueprint, preset: PresetCo
   if (preset.id === "tauri2-rust-typescript-desktop" && !blueprint.features.some(feature => feature.dataOperations.some(entry => entry.operations.includes("edit")))) {
     blueprint.features.forEach((feature, index) => {
       if (featureTexts(feature).some(text => SELECTED_RECORD_VIEW.test(text))) {
-        issues.push({ path: `features[${index}]`, rule: "capability.tauri-no-detail-view", message: `Feature '${feature.name}' describes a view of one selected record, but no feature of this product edits a record, so the main screen has no such view: the list is the only place a record is shown. Rewrite this feature without it: a Delete or mark control is a button in the record's list row, and a failed delete leaves the row in place and shows its message there. Remove every mention of selecting a row, a read-only view, or a detail view from its behavior, trigger, failureOutcome, and acceptanceSignals.` })
+        issues.push({ path: `features[${index}]`, rule: "capability.tauri-no-detail-view", message: `Feature '${feature.name}' describes a view of one selected record, but no feature of this product edits a record, so the main screen has no such view: the list is the only place a record is shown. Rewrite this feature without it: a Delete or mark control is a button in the record's list row, and a failed delete leaves the row in place and shows its message there. Remove every mention of selecting a row, opening a record to view it, a read-only view, or a detail view from its userOutcome, behavior, trigger, failureOutcome, and acceptanceSignals.` })
       }
     })
   }
