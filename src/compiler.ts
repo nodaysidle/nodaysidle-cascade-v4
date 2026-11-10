@@ -9,7 +9,7 @@ import { renderPacket } from "./renderers"
 import { appSetInitial, clockInitial, featureDataUses, fieldChoiceList, offeredOnCreate, featureReferenceIssues, nameKey, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { gtkStoreInterface, refineGtkContracts, refineGtkPhases } from "./gtkContracts"
 import { kitProjectPaths, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarRoles, waybarTaskNotes } from "./kits"
-import { waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarResponseDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarSourceDetail } from "./waybarContracts"
+import { waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarResponseDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarKeptExtremeRule, waybarSourceDetail } from "./waybarContracts"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
 import { TAURI_WIRE_FORMAT, isCountdown, tauriAddHasForm, tauriDocumentInterface, tauriFeatureOps, tauriMainSlotsSentence, tauriStoreInterface, tauriTaskPrompt, type TauriData, type TauriFeatureUse } from "./tauriContracts"
@@ -577,6 +577,13 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
   if (referenceIssues.length) throw new NormalizationError(referenceIssues)
   const dataNameByKey = new Map(source.dataObjects.map(item => [referenceKey(item.name), cleanMeaning(item.name)]))
   const serviceNameByKey = new Map(source.externalServices.map(item => [referenceKey(item.name), cleanMeaning(item.name)]))
+  // Waybar: the scheduled refresh that writes a records object also reads it (stored_output, a rate's previous sample, a kept peak).
+  const waybarRecords = new Set(presetId === "linux-hyprland-waybar-module" ? source.dataObjects.filter(item => item.storage === "records").map(item => referenceKey(item.name)) : [])
+  const entryOperations = (feature: SemanticBlueprint["features"][number], entry: SemanticBlueprint["features"][number]["dataOperations"][number]): DataOperation[] => {
+    const operations = unique(entry.operations.map(operation => operation === "edit" ? "update" as const : operation))
+    const refreshes = feature.runsEverySeconds !== null || feature.runsDailyAt !== null
+    return refreshes && waybarRecords.has(referenceKey(entry.data)) && operations.includes("create") && !operations.includes("read") ? [...operations, "read"] : operations
+  }
 
   const baseFeatures = requireUniqueNames(source.features.map((feature, index) => {
     const name = cleanMeaning(feature.name)
@@ -601,8 +608,8 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       providedCapabilities: [slug(name)],
       requiredCapabilities: unique(feature.buildsOn.map(other => slug(cleanMeaning(other)))),
       // "edit" (change fields in a form) is an update of the stored record; the flag below keeps the difference for the screen.
-      dataOperations: unique(feature.dataOperations.flatMap(entry => entry.operations.map(operation => operation === "edit" ? "update" as const : operation))),
-      operationsByData: Object.fromEntries(feature.dataOperations.map(entry => [referenceKey(entry.data), unique(entry.operations.map(operation => operation === "edit" ? "update" as const : operation))])),
+      dataOperations: unique(feature.dataOperations.flatMap(entry => entryOperations(feature, entry))),
+      operationsByData: Object.fromEntries(feature.dataOperations.map(entry => [referenceKey(entry.data), entryOperations(feature, entry)])),
       editsRecords: feature.dataOperations.some(entry => entry.operations.includes("edit")),
       narrowsListBy: feature.narrowsListBy ?? "none",
       showsCurrentTime: feature.showsCurrentTime === true,
@@ -1105,7 +1112,7 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
   if (operations.length) {
     lines.push(`Store operations, exactly these and no others: ${operations.map(operation => `${operation} (${users.filter(feature => operationsOf(feature).includes(operation)).map(feature => feature.id).join(", ")})`).join("; ")}.`)
     lines.push(storeInterfaceDetail(presetId, item, operations))
-    if (presetId === "linux-hyprland-waybar-module") lines.push(...waybarSingleRecordDetail(item, operations))
+    if (presetId === "linux-hyprland-waybar-module") lines.push(...waybarSingleRecordDetail(item, operations), ...waybarKeptExtremeRule(item, users.find(feature => feature.runsEverySeconds !== null)?.runsEverySeconds ?? null))
   } else if (presetId === "astro-web") {
     lines.push(storeInterfaceDetail(presetId, item, operations))
   }

@@ -1,0 +1,259 @@
+{
+  "productName": "Temp Watch",
+  "summary": "A Waybar module that shows the CPU temperature in degrees Celsius, colors the text amber above 70 degrees and red above 85 degrees, refreshes the reading from the system every 5 seconds, and on click opens a desktop notification with the current temperature and the highest temperature since the module started.",
+  "targetUsers": [
+    "Linux desktop users running Waybar who want a persistent CPU temperature readout in their bar",
+    "Users who want a quick click-through summary of current and peak CPU temperature"
+  ],
+  "goals": [
+    "Show the current CPU temperature in degrees Celsius in a Waybar module label",
+    "Color the label amber above 70 degrees and red above 85 degrees",
+    "Refresh the temperature reading from the system every 5 seconds",
+    "On click, notify the current temperature and the highest temperature since the module started"
+  ],
+  "nonGoals": [
+    "No historical temperature charts or long-term logging beyond the peak since the module started",
+    "No configuration of thresholds or refresh interval by the user",
+    "No fan control or thermal management actions",
+    "No detection of a reading that is only valid for one calendar day"
+  ],
+  "features": [
+    {
+      "name": "Temperature label",
+      "userOutcome": "The user sees the current CPU temperature in degrees Celsius in the Waybar module, colored amber above 70 degrees and red above 85 degrees.",
+      "trigger": "The Waybar module command re-reads the cached label on each fragment re-run.",
+      "behavior": "The module command with no action or --once never measures; it re-reads the cached label written by the refresh pass and renders it with the label template '{value}\u00b0C'. The label class is normal at or below 70 degrees, warning above 70 degrees, and critical above 85 degrees. When the cache holds no reading the label is '--' with class empty. After a failed refresh the cache keeps the last good label text with class stale, and the module output rendered from that cache is that text with STALE_SUFFIX appended and class stale. The temperature is shown as a whole number of degrees Celsius.",
+      "failureOutcome": "When no reading was ever stored the label is '--' with class empty; after a failed refresh the module renders the last good label text with STALE_SUFFIX appended and class stale.",
+      "failureRecovery": "fallback",
+      "surface": "main",
+      "acceptanceSignals": [
+        "With a cached reading of 65 the module output text is '65\u00b0C' and the class is normal.",
+        "With a cached reading of 75 the module output text is '75\u00b0C' and the class is warning.",
+        "With a cached reading of 90 the module output text is '90\u00b0C' and the class is critical.",
+        "With no cached reading the module output text is '--' and the class is empty.",
+        "After a failed refresh the module output text is the last good label text with STALE_SUFFIX appended and the class is stale."
+      ],
+      "usesPlatformNeeds": [],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Temperature reading"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [],
+      "buildsOn": [],
+      "dataOperations": [
+        {
+          "data": "Temperature reading",
+          "operations": [
+            "read"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "schedule",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "thresholds": [
+        {
+          "state": "warning",
+          "comparison": "above",
+          "value": 70
+        },
+        {
+          "state": "critical",
+          "comparison": "above",
+          "value": 85
+        }
+      ],
+      "labelTemplate": "{value}\u00b0C",
+      "unit": "\u00b0C",
+      "valueDecimals": 0,
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Temperature refresh",
+      "userOutcome": "The cached temperature label stays current, refreshed from the system every 5 seconds.",
+      "trigger": "The --service loop runs every 5 seconds; --action refresh also performs one refresh.",
+      "behavior": "Each refresh reads the CPU temperature in degrees Celsius from the system source (highest thermal zone) and writes the cache label text and class atomically per record. The refresh pass also tracks the highest temperature since the start of the --service process in the service process memory and writes it into the cache so the click action can read it. A reading reaches the bar at the next fragment re-run after the cache write. When a refresh fails the cache keeps the last good label text with class stale and no stored record changes.",
+      "failureOutcome": "When the temperature cannot be read the cache keeps the last good label text with class stale and no stored record changes; if no reading was ever stored the label is '--'.",
+      "failureRecovery": "fallback",
+      "surface": "main",
+      "acceptanceSignals": [
+        "The refresh feature's default interval value is 5 seconds and the refresh pass returns that interval.",
+        "After a successful refresh the cache holds the label text of the measured temperature with class normal, warning, or critical per the thresholds.",
+        "After a failed refresh the cache keeps the last good label text with class stale and no stored record changes."
+      ],
+      "usesPlatformNeeds": [],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Temperature reading"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [],
+      "buildsOn": [
+        "Temperature label"
+      ],
+      "dataOperations": [
+        {
+          "data": "Temperature reading",
+          "operations": [
+            "create"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "schedule",
+      "runsEverySeconds": 5,
+      "runsDailyAt": null,
+      "systemSource": "temperature",
+      "thresholds": [],
+      "labelTemplate": "",
+      "unit": "",
+      "valueDecimals": null,
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Temperature notification",
+      "userOutcome": "Clicking the module opens a desktop notification with the current temperature and the highest temperature since the module started.",
+      "trigger": "A click on the Waybar module.",
+      "behavior": "On click the feature reads the stored temperature reading and the stored peak since the module started and sends a desktop notification titled 'CPU temperature' with the body 'Current: {current}\u00b0C, highest since start: {peak}\u00b0C'. With no stored record it sends nothing and exits non-zero. A failed click shows no JSON and makes the command exit non-zero.",
+      "failureOutcome": "With no stored record the click sends no notification and exits non-zero.",
+      "failureRecovery": "exit",
+      "surface": "main",
+      "acceptanceSignals": [
+        "With a stored current reading of 72 and a stored peak of 88 the notification body is 'Current: 72\u00b0C, highest since start: 88\u00b0C'.",
+        "With no stored record the click sends no notification and the command exits non-zero."
+      ],
+      "usesPlatformNeeds": [
+        "notifications"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Temperature reading"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [],
+      "buildsOn": [
+        "Temperature label"
+      ],
+      "dataOperations": [
+        {
+          "data": "Temperature reading",
+          "operations": [
+            "read"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "click",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "thresholds": [],
+      "labelTemplate": "",
+      "unit": "",
+      "valueDecimals": null,
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    }
+  ],
+  "dataObjects": [
+    {
+      "name": "Temperature reading",
+      "purpose": "Keeps the latest CPU temperature reading and the highest temperature since the module started so the label and the click notification can read them.",
+      "sensitivity": "internal",
+      "retentionIntent": "Keeps only the latest reading and the peak since the module started; the peak resets when the --service process starts.",
+      "storage": "records",
+      "writeMode": "atomic-replace",
+      "fields": [
+        {
+          "name": "temperature",
+          "valueType": "whole-number",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "peak",
+          "valueType": "whole-number",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "sampled at",
+          "valueType": "date-time",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        }
+      ],
+      "singleRecord": true,
+      "entryCount": null
+    }
+  ],
+  "externalServices": [],
+  "platformNeeds": [
+    "notifications"
+  ],
+  "qualityRequirements": [
+    "The label class is one of normal, warning, critical, stale, empty and never 'default'.",
+    "The temperature is shown as a whole number of degrees Celsius with the unit symbol \u00b0C.",
+    "The cache is written atomically per record after a successful refresh."
+  ],
+  "productConstraints": [
+    "The module command with no action or --once never measures or fetches; only the --service loop and --action refresh read the system source.",
+    "The peak since the module started lives in the --service process memory and reaches the click action only through the cache file.",
+    "A reading reaches the bar at the next fragment re-run after the cache write."
+  ],
+  "ideaCoverage": [
+    {
+      "sentence": 1,
+      "features": [
+        "Temperature label"
+      ],
+      "outsideFeatures": "none"
+    },
+    {
+      "sentence": 2,
+      "features": [
+        "Temperature refresh"
+      ],
+      "outsideFeatures": "none"
+    },
+    {
+      "sentence": 3,
+      "features": [
+        "Temperature notification"
+      ],
+      "outsideFeatures": "none"
+    }
+  ]
+}
