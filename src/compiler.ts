@@ -3,7 +3,7 @@ import { CATALOG_PATH } from "./astroKit"
 import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, astroStaticContentSite, dataKey, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetOptionValue, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { androidKitNeeds } from "./androidKit"
-import { ANDROID_DELETE_PROMPT, androidChoiceMatchesPicker, androidFormRules } from "./androidForms"
+import { ANDROID_DELETE_PROMPT, androidChoiceMatchesPicker, androidFormRules, androidSettingFormRules, androidSettingKeys } from "./androidForms"
 import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
 import { appSetInitial, clockInitial, featureDataUses, fieldChoiceList, offeredOnCreate, featureReferenceIssues, nameKey, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
@@ -1104,7 +1104,8 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
     if (runState.length && item.fields.some(field => field.valueType === "date" || field.valueType === "date-time")) {
       return [`Interface: the date ${item.name} keeps is the kit's schedule run state, SettingsRepository.lastRunEpochDay("${slug(runState[0]!.name)}") and recordRun("${slug(runState[0]!.name)}", epochDay), already provided and tested; OWN-DATA-STORE adds no key, no writer, and no file for it and only tests that reading it returns what the schedule recorded.`]
     }
-    return [`Interface: OWN-DATA-STORE adds one typed Preferences DataStore key per value of ${item.name} to data/SettingsRepository.kt${item.fields.length ? ` (${item.fields.map(field => field.name).join(", ")})` : ""}, each with a Flow reader and a suspend writer; no Room entity or DAO exists for it.`]
+    const unset = item.fields.filter(field => field.initial == null || field.initial === "")
+    return [`Interface: OWN-DATA-STORE adds one typed Preferences DataStore key per value of ${item.name} to data/SettingsRepository.kt${item.fields.length ? `: ${androidSettingKeys(item.fields)}; each key also has a suspend writer` : ", each with a Flow reader and a suspend writer"}; no Room entity or DAO exists for it.${unset.length ? ` While a value is null, a screen that shows it shows ${unset.map(field => `"${field.name}: none"`).join(" or ")}, and a result derived from it (a comparison, a remaining amount) is not shown until a value is saved.` : ""}`]
   }
   if (!item.fields.length) return []
   if (presetId === "linux-hyprland-waybar-module" && item.storage === "settings") return [waybarSettingsInterface(item, operations)]
@@ -1113,7 +1114,7 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
   ]
   if (operations.length) {
     lines.push(`Store operations, exactly these and no others: ${operations.map(operation => `${operation} (${users.filter(feature => operationsOf(feature).includes(operation)).map(feature => feature.id).join(", ")})`).join("; ")}.`)
-    lines.push(storeInterfaceDetail(presetId, item, operations))
+    lines.push(storeInterfaceDetail(presetId, item, operations, features.some(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null || feature.runsAtField !== null)))
     if (presetId === "linux-hyprland-waybar-module") lines.push(...waybarSingleRecordDetail(item, operations), ...waybarKeptExtremeRule(item, users.find(feature => feature.runsEverySeconds !== null)?.runsEverySeconds ?? null))
   } else if (presetId === "astro-web") {
     lines.push(storeInterfaceDetail(presetId, item, operations))
@@ -1132,9 +1133,11 @@ function androidFormFeature(feature: GraphFeature, item: NormalizedBlueprint["do
 
 function androidFeatureFormDetails(feature: GraphFeature, data: NormalizedBlueprint["domainData"], features: readonly GraphFeature[]): string[] {
   const itemPage = features.some(other => other.surface === "item-page")
+  const alwaysVisible = noListOnScreen(features, data)
   const details = data.flatMap(item => {
     const form = androidFormFeature(feature, item)
-    return form ? androidFormRules(item.name, item.fields, { edits: form.edits, creates: form.creates, itemPage, choices: feature.choiceLists }) : []
+    if (!form && item.storage === "settings" && opsOn(feature, item.name).includes("update") && feature.surface === "main" && feature.invokedBy === "user-control") return androidSettingFormRules(item.name, item.fields)
+    return form ? androidFormRules(item.name, item.fields, { edits: form.edits, creates: form.creates, itemPage, choices: feature.choiceLists, alwaysVisible }) : []
   })
   if (data.some(item => item.storage === "records" && opsOn(feature, item.name).includes("delete"))) details.push(ANDROID_DELETE_PROMPT)
   return details
@@ -1163,7 +1166,7 @@ function tauriData(item: NormalizedBlueprint["domainData"][number]): TauriData {
 }
 
 // One concrete interface per preset, owned by the data owner, so feature tasks call it and never invent storage access.
-function storeInterfaceDetail(presetId: PresetId, item: NormalizedBlueprint["domainData"][number], operations: readonly DataOperation[]): string {
+function storeInterfaceDetail(presetId: PresetId, item: NormalizedBlueprint["domainData"][number], operations: readonly DataOperation[], worker = true): string {
   const base = slug(item.name).replaceAll("-", "_")
   const record = pascal(item.name)
   const methods = (names: Record<DataOperation, string[]>) => operations.flatMap(operation => names[operation])
@@ -1172,7 +1175,7 @@ function storeInterfaceDetail(presetId: PresetId, item: NormalizedBlueprint["dom
   if (presetId === "android-kotlin-compose") {
     const functions = methods({ create: ["insert"], read: ["observeAll", "getById"], update: ["update"], delete: ["delete"] })
     const signatures = operations.flatMap(operation => ({ create: [`suspend fun insert(entity: ${record}Entity): Long`], read: [`fun observeAll() returning a Flow of the list of every ${record}Entity`, `suspend fun getById(id: Long): ${record}Entity?`], update: [`suspend fun update(entity: ${record}Entity)`], delete: [`suspend fun delete(entity: ${record}Entity)`] })[operation])
-    return `Interface: OWN-DATA-STORE owns one Room entity ${record}Entity with the stored fields above, one ${record}Dao with exactly: ${functions.join(", ")}, the one RoomDatabase subclass AppDatabase that lists every records entity (version 1, exportSchema = true; Room writes the schema JSON under app/schemas when the project builds, and that generated file is committed with the data task and exempt from its create-only list), and ${record}Repository over the DAO, all in its owner file; it constructs the database and repository in AppContainer.kt. Kotlin types: id is Long (autoGenerate), text and long-text are String, number is Double, whole-number is Long, flag is Boolean, a date is a Long epoch day (LocalDate.toEpochDay), a date and time is a Long in epoch milliseconds (UTC), a time of day is a String HH:MM (zero-padded, validated 00:00 through 23:59 before it is stored, parsed with LocalTime.parse), a reference is the referenced Long id, an ordered list of text lines is one String joined by newlines; an optional field is nullable. observeAll returns the rows ordered by id ascending (creation order); the feature ViewModel does every filter and other sort over that list, and a sort breaks ties by id in the sort's own direction. ${record}Repository has exactly these members, with the DAO's semantics: ${signatures.join("; ")}. Feature tasks use the repository and add no entity or query of their own. AppContainer.kt holds it as \`val ${androidRepositoryProperty(item.name)}\` (read as container.${androidRepositoryProperty(item.name)} by every feature, ViewModel, and Worker) and takes the Room database as an optional constructor parameter after the clock (\`database: AppDatabase = the production Room builder\`), so a test builds the container with Room.inMemoryDatabaseBuilder and a fixed Clock.`
+    return `Interface: OWN-DATA-STORE owns one Room entity ${record}Entity with the stored fields above, one ${record}Dao with exactly: ${functions.join(", ")}, the one RoomDatabase subclass AppDatabase that lists every records entity (version 1, exportSchema = true; Room writes the schema JSON under app/schemas when the project builds, and that generated file is committed with the data task and exempt from its create-only list), and ${record}Repository over the DAO, all in its owner file; it constructs the database and repository in AppContainer.kt. Kotlin types: id is Long (autoGenerate), text and long-text are String, number is Double, whole-number is Long, flag is Boolean, a date is a Long epoch day (LocalDate.toEpochDay), a date and time is a Long in epoch milliseconds (UTC), a time of day is a String HH:MM (zero-padded, validated 00:00 through 23:59 before it is stored, parsed with LocalTime.parse), a reference is the referenced Long id, an ordered list of text lines is one String joined by newlines; an optional field is nullable. observeAll returns the rows ordered by id ascending (creation order); the feature ViewModel does every filter and other sort over that list, and a sort breaks ties by id in the sort's own direction. ${record}Repository has exactly these members, with the DAO's semantics: ${signatures.join("; ")}. Feature tasks use the repository and add no entity or query of their own. AppContainer.kt holds it as \`val ${androidRepositoryProperty(item.name)}\` (read as container.${androidRepositoryProperty(item.name)} by every feature${worker ? ", ViewModel, and Worker" : " and ViewModel"}) and takes the Room database as an optional constructor parameter after the clock (\`database: AppDatabase = the production Room builder\`), so a test builds the container with Room.inMemoryDatabaseBuilder and a fixed Clock.`
   }
   if (presetId === "astro-web") {
     const name = `${record}Entries`
@@ -1315,6 +1318,32 @@ function tauriScreenView(features: readonly GraphFeature[]): readonly GraphFeatu
 const settingsKeysOf = (blueprint: Pick<NormalizedBlueprint, "domainData"> | undefined): ReadonlySet<string> =>
   new Set((blueprint?.domainData ?? []).filter(item => item.storage === "settings" || item.storage === "document").map(item => referenceKey(item.name)))
 
+// No list on screen: no feature updates, deletes, narrows, or opens a stored record, and every feature that reads records reads
+// them by the current day (a today total or count). The main screen then has one section per feature instead of a list.
+function noListOnScreen(features: readonly GraphFeature[], domainData: NormalizedBlueprint["domainData"]): boolean {
+  const records = domainData.filter(item => item.storage === "records")
+  // Only on positive evidence: some feature declares creating records, and no stored file folder is listed.
+  if (features.some(feature => feature.surface === "item-page") || domainData.some(item => item.storage === "app-files") || !records.some(item => features.some(feature => opsOn(feature, item.name).includes("create")))) return false
+  return records.every(item => features.every(feature => {
+    const ops = opsOn(feature, item.name)
+    return !ops.includes("update") && !ops.includes("delete") && (!ops.includes("read") || (feature.readsCurrentDay === true && feature.narrowsListBy === "none"))
+  }))
+}
+const sectionTag = (feature: GraphFeature): string => `section-${feature.id.replace(/^FEAT-/, "").toLowerCase()}`
+
+// Android, no list on screen: one section per feature that creates or reads records, and the actions area for each stored
+// setting and whole-screen command, the first task's own control included.
+function noListSlotsSentence(features: readonly GraphFeature[], firstMainOwnerId: string | undefined, directAdd: boolean): string {
+  const sections = features.filter(feature => feature.surface === "main" && feature.invokedBy !== "schedule" && feature.invokedBy !== "shortcut" && feature.dataOperations.length > 0)
+  const actions = features.filter(usesActionsArea)
+  const slots = [
+    'a status area (testTag "status") that carries the one quoted form-error text when the PRD or an acceptance signal quotes it (else each field shows its own supporting text and none goes here) and the write-failure message of a save (the text its acceptance quotes, else "Could not save changes"; tag "write-error"; the stored values stay as they were)',
+    ...(sections.length ? [`one section per feature that creates or reads the records, in this order, each a Column holding that feature's ${directAdd ? "add button (no stored field takes user input, so build no entry form shell)" : "always-visible entry form"} when it creates records, and every value its behavior shows (a total, a count, a status text): ${sections.map(feature => `"${feature.name}" (testTag "${sectionTag(feature)}")${feature.ownerId === firstMainOwnerId ? ", yours: build its content in this task" : ""}`).join(", ")}`] : []),
+    ...(actions.length ? [`an actions area at the top of the screen (testTag "actions") for the control of each stored setting (its fields, its Save button, and its shown value) and each command over all records${actions.some(feature => feature.ownerId === firstMainOwnerId) ? "; your own setting control is the first thing mounted there" : ""}`] : []),
+  ]
+  return `The main screen shows no list: no feature lists, edits, or deletes the stored records (they are only created, and read for what the screen shows of today), so build no list, no list rows, no empty-list message, no Add toggle, and no form shell. Expose exactly these named slots in the shared files, no others: ${slots.join("; ")}. Later feature tasks build their controls in their own files and mount them into these slots, editing only the shared registration files; build no control that no later task names.`
+}
+
 // Android: a record whose every field the app sets (a tap log stamped "now") is created by a button, with no entry form.
 function createsWithoutInput(features: readonly GraphFeature[], domainData: NormalizedBlueprint["domainData"]): boolean {
   const created = domainData.filter(item => item.storage === "records" && features.some(feature => opsOn(feature, item.name).includes("create")))
@@ -1368,10 +1397,11 @@ function tauriSlotHosts(features: readonly GraphFeature[], detailView: boolean, 
 }
 
 // The slot a later feature task mounts into, from its declared operations.
-function slotFor(owned: readonly GraphFeature[], presetId: PresetId, detailView = true): string {
+function slotFor(owned: readonly GraphFeature[], presetId: PresetId, detailView = true, noList = false): string {
   const android = presetId === "android-kotlin-compose"
   const ops = new Set(owned.flatMap(feature => feature.dataOperations))
   if (!ops.size && owned.some(usesActionsArea)) return android ? 'the actions area, testTag "actions"' : presetId === "tauri2-rust-typescript-desktop" ? 'the "actions" host' : "the actions area"
+  if (noList && ops.size && owned[0]) return `your own section, testTag "${sectionTag(owned[0])}"; a stored setting you read is shown only by its own control in the actions area, never again here`
   if (!ops.size && presetId === "tauri2-rust-typescript-desktop") return "no named slot: your own controls, if any (start and stop), sit in the main content area"
   if (ops.has("create")) return "the add-entry control"
   if (presetId === "tauri2-rust-typescript-desktop" && owned.length > 0 && owned.every(isCountdown)) return "the per-row action area (its Start control and the row's countdown display)"
@@ -1898,6 +1928,8 @@ function buildPhases(
   const settingsKeys = settingsKeysOf(blueprint)
   const screenView = sharedScreenView(features, preset.id, settingsKeys)
   const actionsArea = hasActionsArea(screenView, firstMainOwnerId)
+  const androidNoList = preset.id === "android-kotlin-compose" && blueprint !== undefined && noListOnScreen(features, blueprint.domainData)
+  const anySchedule = features.some(feature => feature.runsDailyAt !== null || feature.runsEverySeconds !== null || feature.runsAtField !== null)
   const coordinates = new Map(orderedDrafts.map((draft, index) => {
     const sequence = index + 2
     const suffix = draft.id.replace(/^OWN-/, "")
@@ -1950,6 +1982,8 @@ function buildPhases(
           containerTypes: draft.kind === "packaging" ? androidContainerTypes(blueprint) : undefined,
           focusedTestFile: files.focusedTestFile,
           firstMain: draft.id === firstMainOwnerId,
+          noList: androidNoList,
+          anySchedule,
           detailView,
           selectionFor: androidScheduledFeatures(preset, identity, features, blueprint.domainData).filter(item => item.at === null && item.selectionFiles.includes(files.implementationFile)).map(item => ({ name: item.name, pascal: item.pascal })),
         })
@@ -1998,9 +2032,9 @@ function buildPhases(
         `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}` +
         `. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}` +
         `${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}` +
-        `${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(screenView, detailView, filterSlot, preset.id === "tauri2-rust-typescript-desktop", preset.id === "android-kotlin-compose", blueprint !== undefined && ((preset.id === "tauri2-rust-typescript-desktop" && !tauriAddHasForm(features, blueprint.domainData.map(tauriData))) || (preset.id === "android-kotlin-compose" && createsWithoutInput(features, blueprint.domainData))), actionsArea)}` : ""}` +
+        `${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${androidNoList ? noListSlotsSentence(screenView, firstMainOwnerId, blueprint !== undefined && createsWithoutInput(features, blueprint.domainData)) : mainSlotsSentence(screenView, detailView, filterSlot, preset.id === "tauri2-rust-typescript-desktop", preset.id === "android-kotlin-compose", blueprint !== undefined && ((preset.id === "tauri2-rust-typescript-desktop" && !tauriAddHasForm(features, blueprint.domainData.map(tauriData))) || (preset.id === "android-kotlin-compose" && createsWithoutInput(features, blueprint.domainData))), actionsArea)}` : ""}` +
         `\n${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.length > 0 && ownedFeatures.every(feature => feature.invokedBy === "schedule") ? " This feature runs by itself and adds no control to the main screen: it mounts into no slot." : ""}` +
-        `${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") && !ownedFeatures.every(feature => feature.invokedBy === "schedule") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(sharedScreenView(ownedFeatures, preset.id, settingsKeys), preset.id, detailView)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${sharedScreenView(ownedFeatures, preset.id, settingsKeys).some(feature => (preset.id === "tauri2-rust-typescript-desktop" ? feature.editsRecords : true) && opsOnAny(feature).includes("update")) && screenView.some(feature => opsOnAny(feature).includes("create")) ? ` If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them${preset.id === "tauri2-rust-typescript-desktop" ? "" : "; a single mark or toggle action needs no form"}.` : ""}` : ""}` +
+        `${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") && !ownedFeatures.every(feature => feature.invokedBy === "schedule") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(sharedScreenView(ownedFeatures, preset.id, settingsKeys), preset.id, detailView, androidNoList)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${sharedScreenView(ownedFeatures, preset.id, settingsKeys).some(feature => (preset.id === "tauri2-rust-typescript-desktop" ? feature.editsRecords : true) && opsOnAny(feature).includes("update")) && screenView.some(feature => opsOnAny(feature).includes("create")) ? ` If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them${preset.id === "tauri2-rust-typescript-desktop" ? "" : "; a single mark or toggle action needs no form"}.` : ""}` : ""}` +
         `${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}` +
         `${draft.kind === "feature" && ownedFeature && placement?.kind === "page" && kitPaths.includes(placement.pageFile) ? ` Start from kit/${placement.pageFile}, a shell with the layout and one h1${(astroPlan?.collections ?? []).filter(item => item.dataName && ownedFeature.resourceIds.includes(`data:${dataKey(item.dataName)}`)).map(item => placement.pageFile.includes("[slug]") ? `; it reads ${item.dataName} only through list${pascal(item.dataName)}Entries() from src/lib/contentcatalog.ts and renders the declared fields (a long-text field in one element)` : `; it reads no data yet, so add the read of ${item.dataName} through list${pascal(item.dataName)}Entries() from src/lib/contentcatalog.ts and render the declared fields (a long-text field in one element)${astroPlan?.detailCollections.includes(item.name) ? "; when it lists entries, it renders one li containing one a per entry, href the detail route plus the entry id and a trailing slash" : `; ${item.name} has no detail route, so it renders the declared fields of every entry in ascending id order, one li per entry or one element for a single entry, with no a and no href; its focused test asserts that the built HTML contains each field value read from the content files, whatever the values are, and hardcodes no wording the content owner supplies`}`).join("")}.` : ""}` +
         `${draft.kind === "feature" && preset.id === "astro-web" && placement?.kind === "component" && placement.registrationFile === "src/pages/index.astro" ? " The component renders its part of the page only; src/pages/index.astro keeps the one h1." : ""}` +

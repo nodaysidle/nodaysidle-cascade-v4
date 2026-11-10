@@ -1,0 +1,219 @@
+{
+  "productName": "Step Goal",
+  "summary": "Step Goal helps a person walk more by recording the steps walked today, letting the person set a daily step goal, and showing whether today's steps reach that goal. Entries and the goal are stored on the device and restored after restart.",
+  "targetUsers": [
+    "People who want to walk more and track their daily step count against a personal goal"
+  ],
+  "goals": [
+    "Record the steps walked today",
+    "Set a daily step goal",
+    "Show whether today's steps reach the goal",
+    "Keep entries and the goal on the device across restarts"
+  ],
+  "nonGoals": [
+    "Counting steps automatically from device sensors",
+    "Tracking activity history beyond today's steps",
+    "Social sharing or competitions"
+  ],
+  "features": [
+    {
+      "name": "Set daily step goal",
+      "userOutcome": "The person has a daily step goal that persists on the device.",
+      "trigger": "The person opens the goal form and submits a goal value.",
+      "behavior": "The main screen shows a 'Daily step goal' field with a 'Save goal' button. The field accepts a whole number of steps; a trimmed-empty or non-numeric value stores nothing and the field problem is shown. Saving stores the goal in the app settings and the main screen shows the current goal. The stored goal is loaded when the app starts.",
+      "failureOutcome": "If the entered goal is empty or not a whole number, nothing is stored and the person sees the field problem.",
+      "failureRecovery": "retry",
+      "surface": "main",
+      "acceptanceSignals": [
+        "After entering 8000 in the 'Daily step goal' field and pressing 'Save goal', the main screen shows the goal as 8000.",
+        "Submitting an empty 'Daily step goal' field stores no goal and shows a field problem.",
+        "After restarting the app, the previously saved goal is shown on the main screen."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Daily goal"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [],
+      "buildsOn": [],
+      "dataOperations": [
+        {
+          "data": "Daily goal",
+          "operations": [
+            "read",
+            "update"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "thresholds": [],
+      "labelTemplate": "",
+      "unit": "",
+      "valueDecimals": null,
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Enter today's steps",
+      "userOutcome": "The person records the steps walked today and sees whether they reach the daily goal.",
+      "trigger": "The person enters a step count for today and submits it.",
+      "behavior": "The main screen shows a 'Steps walked today' field with an 'Add steps' button. The field accepts a whole number of steps; a trimmed-empty or non-numeric value stores nothing and the field problem is shown. Submitting stores a step entry with today's date and the entered count. The main screen shows today's total steps, the current daily goal, and whether today's total reaches the goal ('Goal reached' when today's total is greater than or equal to the goal, otherwise 'Goal not reached'). Entries are loaded from the device when the app starts.",
+      "failureOutcome": "If the entered step count is empty or not a whole number, nothing is stored and the person sees the field problem.",
+      "failureRecovery": "retry",
+      "surface": "main",
+      "acceptanceSignals": [
+        "After entering 3000 in the 'Steps walked today' field and pressing 'Add steps', today's total shown on the main screen is 3000.",
+        "With a saved goal of 8000 and today's total of 3000, the main screen shows 'Goal not reached'.",
+        "With a saved goal of 8000 and today's total of 8000, the main screen shows 'Goal reached'.",
+        "After restarting the app, today's previously entered step entries are still included in today's total."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Step entry",
+        "Daily goal"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [],
+      "buildsOn": [
+        "Set daily step goal"
+      ],
+      "dataOperations": [
+        {
+          "data": "Step entry",
+          "operations": [
+            "create",
+            "read"
+          ]
+        },
+        {
+          "data": "Daily goal",
+          "operations": [
+            "read"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "thresholds": [],
+      "labelTemplate": "",
+      "unit": "",
+      "valueDecimals": null,
+      "showsCurrentTime": false,
+      "readsCurrentDay": true,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    }
+  ],
+  "dataObjects": [
+    {
+      "name": "Daily goal",
+      "purpose": "Stores the person's daily step goal.",
+      "sensitivity": "personal",
+      "retentionIntent": "Kept on the device until the person saves a new goal.",
+      "storage": "settings",
+      "writeMode": "atomic-replace",
+      "fields": [
+        {
+          "name": "goal steps",
+          "valueType": "whole-number",
+          "optional": false,
+          "min": 0,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        }
+      ],
+      "singleRecord": true,
+      "entryCount": null
+    },
+    {
+      "name": "Step entry",
+      "purpose": "Stores each step count the person records for a day.",
+      "sensitivity": "personal",
+      "retentionIntent": "Kept on the device so today's steps are restored after restart.",
+      "storage": "records",
+      "writeMode": "atomic-replace",
+      "fields": [
+        {
+          "name": "steps",
+          "valueType": "whole-number",
+          "optional": false,
+          "min": 0,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "entry date",
+          "valueType": "date",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": "today",
+          "appStamped": null
+        }
+      ],
+      "singleRecord": false,
+      "entryCount": null
+    }
+  ],
+  "externalServices": [],
+  "platformNeeds": [
+    "local-storage"
+  ],
+  "qualityRequirements": [
+    "Today's total is the sum of the step entries whose entry date is today.",
+    "The goal comparison uses greater than or equal to the goal as 'Goal reached'.",
+    "Stored goal and step entries are restored after the app restarts."
+  ],
+  "productConstraints": [
+    "Step counts and the daily goal are whole numbers of steps and cannot be negative.",
+    "All data stays on the device; no account or network connection is required."
+  ],
+  "ideaCoverage": [
+    {
+      "sentence": 1,
+      "features": [],
+      "outsideFeatures": "product"
+    },
+    {
+      "sentence": 2,
+      "features": [
+        "Set daily step goal",
+        "Enter today's steps"
+      ],
+      "outsideFeatures": "none"
+    },
+    {
+      "sentence": 3,
+      "features": [
+        "Set daily step goal",
+        "Enter today's steps"
+      ],
+      "outsideFeatures": "none"
+    }
+  ]
+}
