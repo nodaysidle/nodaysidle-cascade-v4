@@ -35,8 +35,15 @@ export function auditCapabilities(blueprint: SemanticBlueprint, preset: PresetCo
     if (feature.systemSource !== "none" && preset.id !== "linux-hyprland-waybar-module") {
       issues.push({ path: `${path}.systemSource`, rule: "capability.system-source", message: `Feature '${feature.name}' reads an operating-system source, which ${preset.label} does not provide; set systemSource to none.` })
     }
-    if (((feature.thresholds ?? []).length > 0 || (feature.labelTemplate ?? "").trim() !== "" || (feature.unit ?? "").trim() !== "" || (feature.valueDecimals ?? null) !== null) && preset.id !== "linux-hyprland-waybar-module") {
-      issues.push({ path: `${path}.thresholds`, rule: "capability.waybar-label", message: `Feature '${feature.name}' declares a module label or severity thresholds, which only a bar module has; leave thresholds empty and labelTemplate empty.` })
+    // Name only the fields actually set: a repair told to clear fields that are already empty leaves the real one in place.
+    const barFields = [
+      (feature.thresholds ?? []).length > 0 && "thresholds to []",
+      (feature.labelTemplate ?? "").trim() !== "" && "labelTemplate to \"\"",
+      (feature.unit ?? "").trim() !== "" && "unit to \"\"",
+      (feature.valueDecimals ?? null) !== null && "valueDecimals to null",
+    ].filter((field): field is string => field !== false)
+    if (barFields.length > 0 && preset.id !== "linux-hyprland-waybar-module") {
+      issues.push({ path: `${path}.${barFields[0]!.split(" ")[0]}`, rule: "capability.waybar-label", message: `Feature '${feature.name}' sets bar-module label fields, which only a Waybar module uses; set ${barFields.join(", ")}. State a count, goal, or unit in the feature's behavior and acceptance signals instead.` })
     }
     if (feature.usesTray && !preset.capabilities.tray) {
       issues.push({ path: `${path}.usesTray`, rule: "capability.tray", message: `Feature '${feature.name}' needs a tray, but ${preset.label} has no tray surface.` })

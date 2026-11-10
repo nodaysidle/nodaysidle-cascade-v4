@@ -267,6 +267,18 @@ describe("Waybar system sources, units, and one failure rule", () => {
       expect(rules(freeSpaceBlueprint, "linux-wayland-gtk4-desktop")).toContain("capability.waybar-label")
       expect(rules(freeSpaceBlueprint, "linux-wayland-gtk4-desktop")).toContain("capability.system-source")
     })
+
+    // Round 10 (Water Log): a goal "in glasses" set only unit; the repair named thresholds and labelTemplate, so unit stayed and the repair failed.
+    it("names exactly the bar-module fields a non-bar feature set, so the repair clears the right one", () => {
+      const glasses = structuredClone(freeSpaceBlueprint)
+      glasses.features.forEach(feature => { feature.systemSource = "none"; feature.thresholds = []; feature.labelTemplate = ""; feature.unit = ""; feature.valueDecimals = null })
+      glasses.features[0]!.unit = "glasses"
+      const issues = auditCapabilities(glasses, PRESETS["android-kotlin-compose"]).filter(issue => issue.rule === "capability.waybar-label")
+      expect(issues).toHaveLength(1)
+      expect(issues[0]!.path).toBe("features[0].unit")
+      expect(issues[0]!.message).toContain("unit")
+      expect(issues[0]!.message).not.toContain("thresholds")
+    })
   })
 
   describe("temperature source, click page value, and packaging expectation (audit round 4)", () => {
