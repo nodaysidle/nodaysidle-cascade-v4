@@ -77,7 +77,7 @@ describe("round 12: Waybar label fields copied onto every feature", () => {
   const copied = (): SemanticBlueprint => {
     const blueprint = structuredClone(freeSpaceBlueprint)
     const label = blueprint.features[1]!
-    Object.assign(label, { labelTemplate: "{value} GB free", unit: "GB", valueDecimals: 1 })
+    Object.assign(label, { labelTemplate: "{value} GB free", unit: "GB", valueDecimals: 1, acceptanceSignals: ["With 3,670,016,000 free bytes the label is 3.7 GB free."] })
     Object.assign(blueprint.features[0]!, { labelTemplate: label.labelTemplate, unit: label.unit, valueDecimals: label.valueDecimals, thresholds: structuredClone(label.thresholds) })
     return blueprint
   }
