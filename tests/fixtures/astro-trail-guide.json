@@ -1,0 +1,192 @@
+{
+ "productName": "Trail Guide",
+ "summary": "A static trail guide site that lists hiking trails on the home page and gives each trail its own page showing the trail name, length in kilometers, difficulty (easy, moderate, hard), and a short description.",
+ "targetUsers": [
+  "Hikers looking up trail details",
+  "Outdoor enthusiasts browsing local hiking options"
+ ],
+ "goals": [
+  "List every hiking trail on the home page with a link to its page",
+  "Show each trail's name, length in kilometers, difficulty, and short description on its own page"
+ ],
+ "nonGoals": [
+  "User accounts or sign-in",
+  "Editing or adding trails from the site",
+  "Interactive maps or route planning"
+ ],
+ "features": [
+  {
+   "name": "Trail listing on home page",
+   "userOutcome": "A visitor sees every hiking trail listed on the home page and can follow a link to any trail's page.",
+   "trigger": "A visitor opens the home page.",
+   "behavior": "The home page lists every trail in the trail content, each entry showing the trail name and linking to that trail's own page. The list is ordered by trail name alphabetically. An address that matches no page shows the site's 404 page.",
+   "failureOutcome": "The build fails when a trail content file is missing a required field (name, length, difficulty, or description).",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "The built home page contains one link per trail in the trail content.",
+    "Each link on the home page points to the page built for that trail.",
+    "The trail links on the home page appear in alphabetical order by trail name.",
+    "A request for an address that matches no built page returns the site's 404 page."
+   ],
+   "usesPlatformNeeds": [],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Trails"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Trails",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "click",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Trail detail page",
+   "userOutcome": "A visitor reads a single trail's name, length in kilometers, difficulty, and short description on that trail's own page.",
+   "trigger": "A visitor follows a trail link from the home page.",
+   "behavior": "Each trail has its own page showing the trail name as the page heading, the length in kilometers, the difficulty (easy, moderate, or hard), and the short description. The page is built once from the trail content file.",
+   "failureOutcome": "The build fails when a trail content file is missing a required field (name, length, difficulty, or description).",
+   "failureRecovery": "retry",
+   "surface": "item-page",
+   "acceptanceSignals": [
+    "A page exists for every trail in the trail content.",
+    "Each trail page shows the trail name, the length in kilometers, the difficulty, and the short description from that trail's content.",
+    "Each trail page shows the difficulty as one of easy, moderate, or hard."
+   ],
+   "usesPlatformNeeds": [],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Trails"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Trail listing on home page"
+   ],
+   "dataOperations": [
+    {
+     "data": "Trails",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "click",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Trails",
+   "purpose": "The hiking trails shown on the site, one record per trail.",
+   "sensitivity": "public",
+   "retentionIntent": "Kept as site content and rebuilt into pages on every build.",
+   "storage": "records",
+   "writeMode": "direct",
+   "fields": [
+    {
+     "name": "name",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "length in kilometers",
+     "valueType": "number",
+     "optional": false,
+     "min": 0,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "difficulty",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "description",
+     "valueType": "long-text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [],
+ "qualityRequirements": [
+  "Every trail page shows the same trail name, length, difficulty, and description as its content record.",
+  "The home page lists every trail in the content with no trail omitted."
+ ],
+ "productConstraints": [
+  "The site is static: pages are built once from content files.",
+  "Difficulty values are limited to easy, moderate, and hard."
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Trail detail page"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Trail listing on home page"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

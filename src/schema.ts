@@ -483,6 +483,11 @@ function featureProse(feature: SemanticBlueprint["features"][number]): string[] 
   return [feature.name, feature.userOutcome, feature.trigger, feature.behavior, feature.failureOutcome, ...feature.acceptanceSignals]
 }
 
+// A choice list named exactly like a stored text field fixes that field's values (a difficulty of easy, moderate, or hard).
+export function fieldChoiceList<T extends { readonly name: string; readonly options: readonly string[]; readonly initial: string }>(features: readonly { readonly choiceLists?: readonly T[] }[], field: { readonly name: string; readonly valueType: string }): T | undefined {
+  return field.valueType === "text" ? features.flatMap(feature => feature.choiceLists ?? []).find(list => referenceKey(list.name) === referenceKey(field.name)) : undefined
+}
+
 // The initial choice must be an option, and a list two features share must have the same options.
 function choiceListIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
   const issues: SemanticIssue[] = []
@@ -869,7 +874,7 @@ export function buildBlueprintInstructions(input: BlueprintInstructionInput): st
     "Every feature acceptance signal must describe a concrete, mechanically verifiable condition (such as state transitions, UI element visibility, disk persistence, error code handling, or measured response under an explicit numerical threshold) that automated unit or integration tests can assert without human subjective impression. Never use subjective or hyperbolic phrases such as 'feels smooth', 'zero latency', 'instantaneous', or 'aesthetic appeal'.",
     "For features that depend on the operating system or device (notifications, reminders, tray or menu bar presence, background operation, permissions, hardware access, launch at login), write acceptance signals as the request the app makes or the app state a test can read, never as what the user sees or notices, and name the concrete request, value, or state.",
     "When a behavior, failure outcome, or acceptance signal depends on a default, interval, or limit, state its concrete value (for example a font family and point size, or a duration in milliseconds). Never write 'documented defaults' or an interval without its value.",
-    "For every feature, put each fixed set of options the user picks from in that feature (such as currencies, units, sort orders, or levels) in choiceLists with its name, every option, and the option selected initially. Use an empty array only when the feature offers no fixed options. When two features offer the same list, give it the same name and the same options. Never write 'a fixed list' or 'supported values' without the values.",
+    "For every feature, put each fixed set of options the user picks from in that feature (such as currencies, units, sort orders, or levels) in choiceLists with its name, every option, and the option selected initially. A stored text field whose value is one of a fixed set the idea names (a difficulty of easy, moderate, or hard) gets a choice list too, on the feature that shows or writes it, named exactly like the field, even when nothing is picked on screen. Use an empty array only when the feature offers no fixed options. When two features offer the same list, give it the same name and the same options. Never write 'a fixed list' or 'supported values' without the values.",
     "When one feature's behavior sets or changes what another feature's records contain, such as a default applied when a record is created, state the same rule in both features. Never let two features describe the same record field differently.",
     "When a feature lets the user narrow what is shown, such as a selected category, a filter, or a search, state what is selected initially and exactly how the user returns to seeing everything.",
     "State one decided behavior for every rule. Never leave a choice between two behaviors for the builder to make (for example 'retries or skips'); pick one. Options that the user chooses between, such as a list of billing cycles, are fine. Give every scheduled or repeated action an exact time or interval and state how it avoids acting twice for the same item.",

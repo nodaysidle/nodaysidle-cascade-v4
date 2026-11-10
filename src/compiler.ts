@@ -6,7 +6,7 @@ import { androidKitNeeds } from "./androidKit"
 import { ANDROID_DELETE_PROMPT, androidChoiceMatchesPicker, androidFormRules } from "./androidForms"
 import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
-import { clockInitial, featureDataUses, featureReferenceIssues, nameKey, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
+import { clockInitial, featureDataUses, fieldChoiceList, featureReferenceIssues, nameKey, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { gtkStoreInterface, refineGtkContracts, refineGtkPhases } from "./gtkContracts"
 import { kitProjectPaths, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarRoles, waybarTaskNotes } from "./kits"
 import { waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarResponseDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarSourceDetail } from "./waybarContracts"
@@ -1097,7 +1097,7 @@ function dataShapeDetails(presetId: PresetId, item: NormalizedBlueprint["domainD
   if (!item.fields.length) return []
   if (presetId === "linux-hyprland-waybar-module" && item.storage === "settings") return [waybarSettingsInterface(item, operations)]
   const lines = [
-    `Stored fields (one record each, plus ${presetId === "astro-web" ? "its entry id, the file name without extension" : "a stable generated id"}): ${item.fields.map(field => `${field.name} (${VALUE_TYPE_LABEL[field.valueType]}${rangeNote(field)}${field.optional ? ", optional" : ""})`).join("; ")}.`,
+    `Stored fields (one record each, plus ${presetId === "astro-web" ? "its entry id, the file name without extension" : "a stable generated id"}): ${item.fields.map(field => `${field.name} (${fieldChoiceList(features, field) ? `one of ${fieldChoiceList(features, field)!.options.join(", ")}` : VALUE_TYPE_LABEL[field.valueType]}${rangeNote(field)}${field.optional ? ", optional" : ""})`).join("; ")}.`,
   ]
   if (operations.length) {
     lines.push(`Store operations, exactly these and no others: ${operations.map(operation => `${operation} (${users.filter(feature => operationsOf(feature).includes(operation)).map(feature => feature.id).join(", ")})`).join("; ")}.`)

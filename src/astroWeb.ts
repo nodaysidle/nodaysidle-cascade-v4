@@ -1,6 +1,6 @@
 import type { DataField, NormalizedBlueprint } from "./compiler"
 import type { PresetRuntimeMode } from "./presets"
-import type { FeatureSurface } from "./schema"
+import { fieldChoiceList, type FeatureSurface } from "./schema"
 
 export type AstroFeaturePlacement =
   | { readonly kind: "component"; readonly registrationFile: string }
@@ -13,6 +13,8 @@ export interface AstroCollection {
   readonly fields: readonly DataField[]
   // The count of entries the idea states for this object when it names none; null otherwise.
   readonly entryCount: number | null
+  // The fixed values of a text field a choice list names, by field name; the schema is an enum and the sample uses the initial one.
+  readonly choices?: ReadonlyMap<string, { readonly options: readonly string[]; readonly initial: string }>
 }
 
 // The starter seed files of a collection: one, or entryCount numbered sample entries.
@@ -70,10 +72,18 @@ export function dataKey(name: string): string {
 }
 
 // Collections are named after the declared data objects, never guessed from feature prose.
+function fieldChoices(blueprint: NormalizedBlueprint, fields: readonly DataField[]): ReadonlyMap<string, { readonly options: readonly string[]; readonly initial: string }> {
+  return new Map(fields.flatMap(field => {
+    const list = fieldChoiceList(blueprint.features, field)
+    // The sample uses the option the initial choice names, spelled as the option is.
+    return list ? [[field.name, { options: list.options, initial: list.options.find(option => option.trim().toLowerCase() === list.initial.trim().toLowerCase()) ?? list.options[0]! }] as const] : []
+  }))
+}
+
 export function astroCollections(blueprint: NormalizedBlueprint): AstroCollection[] {
   const stored = blueprint.domainData
     .filter(item => item.storage === "records" && item.fields.length && (item.sensitivity === "public" || item.sensitivity === "internal"))
-    .map(item => ({ name: dataKey(item.name) || "entries", dataName: item.name, fields: item.fields, entryCount: item.entryCount ?? null }))
+    .map(item => ({ name: dataKey(item.name) || "entries", dataName: item.name, fields: item.fields, entryCount: item.entryCount ?? null, choices: fieldChoices(blueprint, item.fields) }))
   if (stored.length || !blueprint.features.some(feature => feature.surface === "item-page")) return stored
   // An item-page feature that declares no stored object still gets one generic collection.
   return [{ name: "entries", dataName: "", entryCount: null, fields: [{ name: "Title", valueType: "text", optional: false }, { name: "Description", valueType: "long-text", optional: false }] }]

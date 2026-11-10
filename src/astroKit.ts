@@ -55,7 +55,7 @@ function contentConfig(collections: readonly AstroCollection[]): string {
   const entries = collections.map(item => `  ${JSON.stringify(item.name)}: defineCollection({
     loader: glob({ pattern: "**/*.{md,mdx}", base: "./src/content/${item.name}" }),
     schema: z.object({
-${item.fields.map(field => `      ${fieldKey(field.name)}: ${ZOD_FOR[field.valueType]}${field.min != null ? `.min(${field.min})` : ""}${field.max != null ? `.max(${field.max})` : ""}${field.optional ? ".optional()" : ""},`).join("\n")}
+${item.fields.map(field => `      ${fieldKey(field.name)}: ${item.choices?.has(field.name) ? `z.enum([${item.choices.get(field.name)!.options.map(option => JSON.stringify(option)).join(", ")}])` : ZOD_FOR[field.valueType]}${field.min != null ? `.min(${field.min})` : ""}${field.max != null ? `.max(${field.max})` : ""}${field.optional ? ".optional()" : ""},`).join("\n")}
     }),
   }),`)
   return `import { defineCollection, z } from "astro:content"
@@ -260,7 +260,7 @@ export function astroKit(identity: ProjectIdentity, blueprint: NormalizedBluepri
       // A counted collection numbers its samples so every entry differs; a lone sample keeps the plain placeholder values.
       const mark = item.entryCount ? ` ${index + 1}` : ""
       return file(`src/content/${item.name}/${name}`, `---
-${item.fields.map(field => `${fieldKey(field.name)}: ${field.valueType === "text" || field.valueType === "long-text" ? SEED_FOR[field.valueType] + mark : (field.valueType === "number" || field.valueType === "whole-number") && (field.min != null || field.max != null) ? String(field.min ?? field.max) : SEED_FOR[field.valueType]}`).join("\n")}
+${item.fields.map(field => `${fieldKey(field.name)}: ${item.choices?.has(field.name) ? JSON.stringify(item.choices.get(field.name)!.initial) : field.valueType === "text" || field.valueType === "long-text" ? SEED_FOR[field.valueType] + mark : (field.valueType === "number" || field.valueType === "whole-number") && (field.min != null || field.max != null) ? String(field.min ?? field.max) : SEED_FOR[field.valueType]}`).join("\n")}
 ---
 
 Sample content${mark}. Keep it when the idea supplies no entries; the site owner replaces it with real entries after delivery.
