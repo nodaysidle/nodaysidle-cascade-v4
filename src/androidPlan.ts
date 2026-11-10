@@ -108,6 +108,8 @@ export function androidTaskExtras(input: {
   readonly firstMain?: boolean
   // No feature lists the stored records: the main screen has one section per feature instead of a list.
   readonly noList?: boolean
+  // No data object is declared at all: nothing is stored, listed, or reopened.
+  readonly noData?: boolean
   // Some feature of the packet runs on a schedule (a Worker exists).
   readonly anySchedule?: boolean
   readonly detailView?: boolean
@@ -158,7 +160,9 @@ export function androidTaskExtras(input: {
     notes.push("A test that closes and reopens the store uses a file-backed Room database (Room.databaseBuilder on a file in a temporary directory under Robolectric), because the in-memory database of the test hook cannot be reopened.")
     notes.push("Room writes the schema JSON app/schemas/(the AppDatabase class name)/1.json when the project builds (the kit sets room.schemaLocation); that file is generated build output, committed with this task, and is not part of the create-only list.")
   }
-  if (input.firstMain && input.noList) {
+  if (input.firstMain && input.noData) {
+    notes.push("Nothing is stored, so there is no repository to seed: your focused test drives your own acceptance criteria through the real screen (enter the values, press the buttons, and assert the shown values and the field messages). State that a later task owns lives in that task's own feature file, never in the shared view state, because later tasks modify only the registration files.")
+  } else if (input.firstMain && input.noList) {
     notes.push(`With no list, your focused test drives your own acceptance criteria through the real screen (your control in its slot, the value it shows, and that value after the store is reopened) and asserts that every other slot exists; an acceptance criterion that needs a control a later task builds is verified by that task. Every stored date or time the screen shows is formatted as ${ANDROID_DISPLAY_FORMATS}. State that a later task owns (its typed field values) lives in that task's own feature file, never in the shared view state, because later tasks modify only the registration files.`)
   } else if (input.firstMain) {
     notes.push(`Every list row${input.detailView ? " and detail view" : ""} shows every stored field the PRD says that list${input.detailView ? " or view" : ""} shows, in the form the stored value has (for a date, the formatted date: ${ANDROID_DISPLAY_FORMATS}); a value an acceptance outcome asserts on screen is shown there too. An acceptance criterion of yours that names a control a later task builds (its form, its row button) is verified by that task; your focused test seeds records through the repository and asserts only the list, its empty state, and the empty host areas. State that a later task owns (an open form, a pending delete, a mark) lives in that task's own feature file, never in the shared view state, because later tasks modify only the registration files.`)
