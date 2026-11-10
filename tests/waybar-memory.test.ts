@@ -59,4 +59,17 @@ describe("memory source wiring, one failure wording, and no inherited boilerplat
     expect(rules(named)).toContain("capability.waybar-cache-file")
     expect(PRESETS[ID]!.providerNotes?.join(" ")).toContain("reads the stored record and, with no stored record, sends nothing")
   })
+
+  // Round 10: the repair asked for a failed-refresh sentence that itself named cache.json, so the repair failed the same check.
+  it("never asks the provider to write cache.json: the failed-refresh wording it requests passes the check", () => {
+    const named = structuredClone(memory)
+    named.features[1]!.acceptanceSignals = ["After a failed refresh cache.json is unchanged."]
+    const message = auditCapabilities(named, PRESETS[ID]).find(issue => issue.rule === "capability.waybar-cache-file")!.message
+    const requested = message.slice(message.indexOf("after a failed refresh ") + "after a failed refresh ".length, message.indexOf(". Write"))
+    expect(requested).not.toMatch(/cache\.json/i)
+    const note = PRESETS[ID]!.providerNotes!.find(text => text.startsWith("Cache and store"))!
+    expect(note.slice(note.indexOf("the acceptance criteria say:"))).not.toMatch(/cache\.json/i)
+    named.features[1]!.acceptanceSignals = [`After a failed refresh ${requested}.`]
+    expect(rules(named)).not.toContain("capability.waybar-cache-file")
+  })
 })

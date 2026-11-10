@@ -79,7 +79,8 @@ export function waybarSourceDetail(source: SystemSource): string[] {
 }
 
 const CACHE_FILE = /cache\.json/i
-const FAILED_REFRESH_PLAIN = WAYBAR_FAILED_REFRESH_CACHE.replace(/ \(cache\.json[^)]*\)/, "")
+// Drop the kit-facing aside that names cache.json: the provider is asked to write this text, and the cache-file check rejects that name.
+const FAILED_REFRESH_PLAIN = WAYBAR_FAILED_REFRESH_CACHE.replace(/ \([^)]*cache\.json[^)]*\)/, "")
 const BINARY_UNITS = /\b1,?024\b|\b[kmgt]ib\b|\b(?:kibi|mebi|gibi|tebi)bytes?\b/i
 
 function featureTexts(feature: SemanticBlueprint["features"][number]): string[] {
