@@ -34,7 +34,7 @@ describe("Waybar declared response paths, label units, and rate sources", () => 
     const trd = packet.documents["TRD.md"]
     expect(trd).toContain('Index value at ["data", "aqi"]')
     expect(trd).toContain("the bare number of the reading in the fixed unit km/h")
-    expect(trd).toContain('with exactly 1 decimal, rounded half away from zero (12.0 stays "12.0")')
+    expect(trd).toContain('with exactly 1 decimal, rounded half away from zero (12 is shown as "12.0")')
     const names = packet.kit.map(file => file.name)
     expect(names).toContain("kit/src/platform/units.rs")
     expect(names).not.toContain("kit/src/platform/system_source.rs")
