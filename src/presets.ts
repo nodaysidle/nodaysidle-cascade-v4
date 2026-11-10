@@ -853,10 +853,14 @@ const astroWeb: PresetContract = {
   permissionPatterns: webPermissionPatterns,
   lifecycleRules: ["Generate static output by default.", "Enable server rendering only when a server-held credential or remote account contract makes it necessary.", "Clean up event listeners, observers, media tracks, and object URLs when interactive components unmount."],
   accessibilityRules: ["Meet WCAG 2.2 AA with semantic landmarks, ordered headings, keyboard access, visible focus, text alternatives, reduced motion, and automated accessibility checks."],
+  foundationValidationCommands: [
+    "npm run check",
+    "npm test",
+  ],
   validationCommands: [
     () => "npm run check",
-    () => "npm test",
     () => "npm run build",
+    () => "npm test",
     () => "npm run test:a11y",
     () => "npm run audit:performance",
   ],

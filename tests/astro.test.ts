@@ -174,6 +174,13 @@ describe("Astro packets for a site with several record types", () => {
     expect(tasks.find(task => task.ownerIds.includes("OWN-DATA-STORE"))!.filesToModify).toEqual([])
     const about = tasks.find(task => task.ownerIds.includes("OWN-ABOUT-PAGE"))!
     expect(about.validationCommands[0]).toBe("npm run build")
+    expect(packet.graph.validationCommands).toEqual([
+      "npm run check",
+      "npm run build",
+      "npm test",
+      "npm run test:a11y",
+      "npm run audit:performance",
+    ])
   })
 
   it("gives a static content site static failure, wiring, lifecycle, and deployment text and a packaging task with no edits", async () => {

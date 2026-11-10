@@ -2072,7 +2072,9 @@ function buildPhases(
         ...(preset.id === "astro-web" && (draft.kind === "feature" || draft.kind === "packaging") ? ["npm run build"] : []),
         files.focusedTestCommand,
         ...(androidExtras?.create.filter(file => file.endsWith("SchedulerTest.kt")).map(file => `./scripts/gradle.sh testDebugUnitTest --tests "${file.replace(/^app\/src\/test\/java\//, "").replace(/\.kt$/, "").replaceAll("/", ".")}"`) ?? []),
-        ...preset.validationCommands.slice(0, draft.kind === "packaging" ? undefined : 2).map(command => command(identity)),
+        ...(preset.id === "astro-web" && draft.kind !== "packaging" && draft.kind !== "feature"
+          ? ["npm run check", "npm test"]
+          : preset.validationCommands.slice(0, draft.kind === "packaging" ? undefined : 2).map(command => command(identity))),
         // Rust formatting is checked where the Rust is written, so a later task never has to reformat an earlier task's files.
         ...(preset.id === "tauri2-rust-typescript-desktop" && draft.kind !== "packaging" && filesToCreate.some(file => file.endsWith(".rs")) ? ["cargo fmt --manifest-path src-tauri/Cargo.toml -- --check"] : []),
       ]),
