@@ -245,8 +245,29 @@ end in two rounds: each round fixed what was flagged and the reviewer then raise
    - **3 repair rounds:** **16 of 16** reached `0 blocking + passing kit build` (`disk-free` and `net-rate`
      reached 0 blocking in round 3).
    - Set `DEFAULT_REVIEW_ROUNDS = 3` in `src/review.ts` (packets that reach 0 blocking earlier stop immediately).
-6. **Rebuild and install** (`bash scripts/install-linux-app.sh`), take a screenshot, then give Alan five new
-   ideas, one per preset. He runs them in the app; verify, build the kits and audit what he exports.
+6. **Rebuild and install (done).** Ran `bash scripts/install-linux-app.sh` (`/home/arch/.local/bin/nodaysidle-cascade-v4`),
+   took a screenshot, and gave Alan five new ideas, one per preset, never used before. Alan generated and
+   exported all five from the desktop UI:
+   - `/home/arch/dev/nodaysidle/tea-cellar/` (`linux-wayland-gtk4-desktop`): 2 repair rounds, 7 edits, 0 blocking
+     (`verdict: "agent-ready"`). Passed `cascade verify --packet`, kit build (`cargo fmt`, `clippy`, `test`),
+     and lead file-by-file audit against `scripts/agent-ready/audit-brief.md` (0 blocking).
+   - `/home/arch/dev/nodaysidle/swap-meter/` (`linux-hyprland-waybar-module`): 1 repair round, 4 edits, 0 blocking
+     (`verdict: "agent-ready"`). Passed `cascade verify --packet` and kit build (`cargo fmt`, `clippy`, `test`),
+     plus lead file-by-file audit against `scripts/agent-ready/audit-brief.md` (0 blocking; minor note:
+     `ACC-SWAP-REFRESH-03` treats `/proc/meminfo` numbers as raw bytes whereas `SwapReader` multiplies `/proc/meminfo`
+     `kB` values by 1024, flagged in `blueprint.json` polish #1).
+   - `/home/arch/dev/nodaysidle/snippet-vault/` (`tauri2-rust-typescript-desktop`): 1 repair round, 4 edits,
+     0 blocking (`verdict: "agent-ready"`). Passed `cascade verify --packet`, kit build (`npm run typecheck`,
+     `npm test`, `cargo fmt`, `clippy`, `test`), and lead file-by-file audit against
+     `scripts/agent-ready/audit-brief.md` (0 blocking).
+   - `/home/arch/dev/nodaysidle/cinema-club/` (`astro-web`): 0 repair rounds, 0 edits, 0 blocking
+     (`verdict: "agent-ready"`). Passed `cascade verify --packet`, kit build (`npm run check`, `npm test`,
+     `npm run build`, `npm run test:a11y`, `npm run audit:performance`), and lead file-by-file audit against
+     `scripts/agent-ready/audit-brief.md` (0 blocking).
+   - `/home/arch/dev/nodaysidle/fuel-log/` (`android-kotlin-compose`): 3 repair rounds, 9 edits, 0 blocking
+     (`verdict: "agent-ready"`). Passed `cascade verify --packet`, kit build (`./scripts/gradle.sh testDebugUnitTest`,
+     `lintDebug`, `assembleDebug`), and lead file-by-file audit against `scripts/agent-ready/audit-brief.md`
+     (0 blocking; confirms the 3-round default was needed in a real UI run).
 7. Still wanted, lower priority: Waybar examples written by the compiler; "daily at a user-chosen time" for
    Android (support it or reject it clearly); reuse of a saved blueprint.
 
@@ -318,7 +339,16 @@ end in two rounds: each round fixed what was flagged and the reviewer then raise
   benchmark on all 16 broken round-12 packets: 14/16 in 2 rounds, 16/16 in 3 rounds; `DEFAULT_REVIEW_ROUNDS = 3`)
   are complete. Note that "0 blocking by Sonnet 5.5 + passing kit build" on the remaining 14 packets has not
   had a separate subagent audit beyond the 2 independent audits in Step 1 (`focus-timer`, `net-rate`).
-- Step 6: Rebuilt and installed the desktop app (`bash scripts/install-linux-app.sh` -> `/home/arch/.local/bin/nodaysidle-cascade-v4`), captured a window screenshot, and gave Alan five new ideas (one per preset, never used before) to run in the app. Waiting for Alan's exported packets to verify, build kits, and audit.
+- Step 6 (done): Rebuilt and installed the desktop app (`bash scripts/install-linux-app.sh` ->
+  `/home/arch/.local/bin/nodaysidle-cascade-v4`), captured a window screenshot, and gave Alan five new ideas
+  (one per preset, never used before). Alan generated and exported all five from the UI (`tea-cellar`,
+  `swap-meter`, `snippet-vault`, `cinema-club`, `fuel-log`). All 5 passed `cascade verify --packet` (confirming
+  `blueprint.json` repair replay matches the UI export byte-for-byte), all 5 passed every kit build command via
+  `scripts/agent-ready/build-round-kits.sh`, and all 5 passed the in-pipeline Sonnet 5.5 review plus the lead's
+  file-by-file audit against `scripts/agent-ready/audit-brief.md` with **0 blocking findings** (`swap-meter`
+  has one non-blocking unit note in `ACC-SWAP-REFRESH-03` where `/proc/meminfo` `kB` values vs bytes are noted
+  in `blueprint.json` polish #1). Separate subagents were not spawned for the 5 Step 6 packets so as not to
+  exceed the 3-subagent cap without asking (2 subagents were used in Step 1).
 - Nothing was recorded in the vault or in Supermemory.
 
 ## 11. Prompt for the next agent
