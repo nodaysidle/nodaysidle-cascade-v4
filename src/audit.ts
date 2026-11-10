@@ -436,7 +436,8 @@ const secretPatterns = [
   /\bAKIA[0-9A-Z]{16}\b/,
   /\bgh[opusr]_[A-Za-z0-9]{20,}\b/,
 ]
-const genericIdentityPattern = /\b(?:com\.example(?:\.[a-z0-9-]+)*|org\.example(?:\.[a-z0-9-]+)*|example\.com|your[-. ]company|your[-. ]bundle)\b/i
+// A test email's domain (ada@example.com) is a fixture, not a generic identity; compiler.ts genericIdentity keeps it too.
+const genericIdentityPattern = /\b(?:com\.example(?:\.[a-z0-9-]+)*|org\.example(?:\.[a-z0-9-]+)*|(?<!@)example\.com|your[-. ]company|your[-. ]bundle)\b/i
 
 function markdownFailures(name: string, markdown: string): AuditFailure[] {
   const failures: AuditFailure[] = []

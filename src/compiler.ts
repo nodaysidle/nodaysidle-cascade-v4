@@ -378,7 +378,8 @@ function uniqueStrings(values: readonly string[]): string[] {
 }
 
 const implementationSuggestion = /\b(?:build|built|implement|implemented|implementation|use|using|written|powered|with)\s+(?:in\s+|on\s+)?(?:React Native|Jetpack Compose|SwiftUI|AppKit|Flutter|Electron|Tauri(?:\s*2)?|Astro|Next\.js|Kotlin|Rust|TypeScript|Swift(?:\s*6)?|React|Vue|Svelte)\b/gi
-const genericIdentity = /\b(?:com|org)\.example(?:\.[a-z0-9-]+)+\b|\bexample\.com\b|\byour[-. ](?:company|bundle)\b/gi
+// The domain after "@" is a test email (ada@example.com in an acceptance criterion), not a placeholder identity (round 10).
+const genericIdentity = /\b(?:com|org)\.example(?:\.[a-z0-9-]+)+\b|(?<!@)\bexample\.com\b|\byour[-. ](?:company|bundle)\b/gi
 // IDs are uppercase (FEAT-01, OWN-DATA-STORE); "task-list" or "own-brand" is prose.
 const providerId = /\b(?:FEAT|REQ|TASK|PHASE|CONTRACT|CON|CTR|OWN)-[A-Z0-9-]+\b/g
 // A path needs a segment right after its prefix: "on / off" is prose.

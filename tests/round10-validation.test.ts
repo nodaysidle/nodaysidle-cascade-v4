@@ -26,3 +26,14 @@ describe("the validation message travels from the submit handler to the form she
     expect(store).toContain("run: async (name: string): Promise<SubmitResult>")
   })
 })
+
+// Round 10 (Contact Book): the placeholder-identity cleanup rewrote the fixture email ada@example.com into "ada@the application identity".
+describe("an example email survives the placeholder cleanup (round 10)", () => {
+  it("keeps ada@example.com in the PRD and TASKS acceptance criteria", async () => {
+    const packet = await compilePacket(contactBook, "tauri2-rust-typescript-desktop")
+    for (const name of ["PRD.md", "TASKS.md"] as const) {
+      expect(packet.documents[name]).toContain("ada@example.com")
+      expect(packet.documents[name]).not.toContain("@the application identity")
+    }
+  })
+})
