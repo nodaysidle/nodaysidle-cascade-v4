@@ -271,6 +271,10 @@ no verdict yet.
 | GTK Focus Timer | 3 | not agent-ready |
 | GTK Quiet Hours | 4, one cause | not agent-ready |
 | GTK Habit Streak | 4, two causes | not agent-ready |
+| GTK Word Bank | 4, one cause | not agent-ready |
+| Waybar Net Rate | 6, five causes | not agent-ready (and its kit fails `cargo test`) |
+| Waybar Load Meter | 2 | not agent-ready |
+| Astro Field Notes | 3, two causes | not agent-ready |
 
 - **Battery Watch.** `runsEverySeconds` 1800 for "every 30 seconds": TRD schedule line, the acceptance
   criterion, kit `config.rs` default and kit `contract_tests.rs` all enforce 1800 while PRD goals say 30.
@@ -297,6 +301,33 @@ no verdict yet.
   child record (reference + date, no initial): it got the add-form template (a typed habit and date,
   `validate_habit_completions`), the slot "the add-entry control" instead of the per-row action area, and a
   removal confirmation dialog, while the PRD says pressing again removes it at once.
+
+- **Word Bank** (import from a chosen text file, compiled as an add-a-record form). TASK-06 "Import words" got
+  the entry-form prompt (`validate_words(word, meaning)`, form_state) with no word about a file, while the PRD
+  says words come only from a file; no Import button and no owner for the Open panel; the read-only document
+  got a SQLite table `imported_word_file` while its own persistence contract says "the app keeps no copy";
+  TASK-07 "Add meaning" is told to reuse the add form, which lets the user edit the word (the PRD forbids it)
+  and has no validate for the meaning alone.
+- **Net Rate** (reads every 2 seconds). (1) The kit floors the service interval at 5 seconds
+  (`settings.refresh_seconds.max(5)` in kit `src/module.rs`, `config.rs` rejects less than 5) while the default
+  is the declared 2: the kit's own stale tests fail and TASK-05's required `interval_seconds(...) == 2` cannot
+  hold. (2) The wrong example "6,250,000 bytes over 5 seconds ... '10.0 kB/s'". (3) Provider behavior says
+  "the counter change times 8 ... converts it to kB/s" (TRD 109) against the compiler's "a rate is the counter
+  change divided by the whole seconds" (TRD 113). (4) First sample: provider "writes the label with 0.0 kB/s",
+  compiler "the label stays the empty label". (5) Both examples measure "over 5 seconds", more than twice the
+  2-second interval, which the contract's own reset rule turns into 0.0. (6) "The first refresh after the
+  service loop starts" has no mechanism: one `fetch_output` serves the loop and `--action refresh`.
+- **Load Meter.** (1) The record and tooltip need the 5- and 15-minute values, but the kit's
+  `LoadAverageReader` returns only the first field (`type Reading = f64`), `system_source.rs` is in no task's
+  modify list, and TRD 108 forbids reading any other field. (2) Two decimals lost (see 5.5).
+- **Field Notes.** (1) "One page per author" was compiled as one static `/author` page over all authors
+  (`kit/src/pages/author.astro`), while the acceptance says "A page exists for every author" and the home list
+  and post page must link "to that author's page": no such route or href exists. (2) The seeded post says
+  `author: sample-reference` while the seeded author's id is `01-sample-entry`, nothing says what a reference
+  stores, and the contract requires the build to fail on an unknown author, so the untouched seed fails it.
+
+Kit builds, final: **20 of 21 pass every command** (GTK 5, Waybar 3 of 4, Tauri 5, Astro 4, Android 3). Only
+Net Rate fails.
 
 Class forming across presets: **the main-screen task prompt assumes "a list with an add form"** whatever the
 declared shape is. Seen for no data (Android Tip Split, fixed last session), app-stamped records (Focus
