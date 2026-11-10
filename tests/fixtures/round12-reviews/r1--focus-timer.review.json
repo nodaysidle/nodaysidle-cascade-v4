@@ -1,0 +1,78 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 51375,
+    "output_tokens": 10385
+  },
+  "review": {
+    "slug": "focus-timer",
+    "blocking": [
+      {
+        "where": "TRD.md — Permission Contracts, CON-PERMISSION-NOTIFICATIONS (also TASKS.md TASK-04 and TASK-05 prompts)",
+        "quote": "Use gio::Notification through the freedesktop notification service; when no daemon is present, keep in-app status and do not retry in a loop.",
+        "why": "The store gets an exact trait signature, but the notification owner gets none. TASK-04 has no interface, and TASK-05 needs a trait to assert that a request was made. TASK-05 must also show 'Desktop notifications are unavailable.' when a request is denied or unavailable. gio::Application::send_notification returns (), so the stated API cannot report denial or a missing daemon. The agent has to invent both the trait and the detection mechanism, for example a D-Bus name probe, and the two tasks may invent them differently.",
+        "fix": "In CON-PERMISSION-NOTIFICATIONS define a trait (e.g. Notifier::notify(&self, title:&str, body:&str) -> Result<(), NotifyError>), say how 'unavailable' is detected (e.g. no org.freedesktop.Notifications name owner on the session bus, checked via gio before sending), and name the task-05 test double that implements it.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TASKS.md — TASK-05-FOCUS-SESSION-TIMER task prompt",
+        "quote": "a today-count slot (an empty gtk::Box directly under the MM:SS display)",
+        "why": "The same prompt later orders the screen as the MM:SS label, the button row, the today-count slot, then the status area. That puts the slot under the buttons, not directly under the display. The layout order is contradictory.",
+        "fix": "State one order, e.g. MM:SS label, today-count slot, button row, status area, in both sentences.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/state.rs",
+        "quote": "#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]",
+        "why": "TASK-05 must add the timer state, loaded records and the ToastOverlay to the shared view state. A ToastOverlay is a GTK widget and cannot satisfy these derives. The packet also says AppState lives on the GTK main thread but never says whether the serde AppState is kept or a separate view-state struct is added.",
+        "fix": "Tell TASK-05 to put the widgets and timer state in a new non-serde ViewState in src/state.rs and leave AppState unchanged.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-05 task prompt",
+        "quote": "reload() re-reads the store's list into the loaded records",
+        "why": "TRD requires store calls through spawn_blocking plus spawn_local, but reload() is called a display-free entry point asserted in tests. It is unclear whether reload() is synchronous or async, and how a test awaits it before reading the count.",
+        "fix": "Specify a synchronous reload_with(store) core that tests call and a thin async wrapper that the UI uses.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-LIFECYCLE-PRESET",
+        "quote": "On window close or SIGTERM, cancel active tasks",
+        "why": "The lifecycle owner is built in TASK-03, before any feature that owns tasks, such as the tick timeout or an in-flight insert. No registry or cancel interface is defined. TASK-05 is not told to register anything, and the TASK-03 test has nothing to assert about cancellation.",
+        "fix": "Define a gio::Cancellable or token held in Services that TASK-03 cancels and TASK-05 tick/insert tasks must observe.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-TODAY-S-COMPLETED-SESSION-COUNT-INTERFACE, Local day rule",
+        "quote": "end = start + 86_400_000",
+        "why": "The PRD says local midnight to midnight, but a fixed 24 h window is wrong on DST-change days. The offset is read once at 'now', so the day boundary shifts by an hour on those days.",
+        "fix": "Either note that DST-change days are intentionally approximated, or compute end from the next local midnight.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — Data Contracts, CON-DATA-COMPLETED-SESSIONS / CON-PERSISTENCE-COMPLETED-SESSIONS",
+        "quote": "Keep the last valid record; a failed insert leaves the timer stopped at 00:00 until the user presses Reset.",
+        "why": "The failure toast says 'Try again.' and the persistence recovery says 'Retry only from an explicit user action.' But the only action is Reset, which discards the unsaved session, so no retry of the insert exists. The user message and the recovery contradict each other.",
+        "fix": "Either add a retry path for the pending insert, or state that Reset abandons the unsaved session and does not retry it.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-RUNTIME-WIRING",
+        "quote": "with each list holding several entries, one of them longer than the view is wide",
+        "why": "This is generic boilerplate. The product has no list, as the next bullets admit. The rest of the launch check is written for list screens, which adds noise and ambiguity for a single-screen timer.",
+        "fix": "Replace the list wording with checks for the single main screen: MM:SS label, buttons, count and status label fully inside the window at the default and a narrow width.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-PLATFORM-FILES",
+        "quote": "Every path outside this boundary is rejected and leaves the filesystem unchanged.",
+        "why": "The contract is owned by OWN-PACKAGING (scripts/package.sh), but no code owns path rejection. DataStore::open accepts any &Path, and package.sh itself installs under ~/.local, outside the XDG data directory. The 'explain the rejected path' recovery has no implementer.",
+        "fix": "Assign path validation to DataStore::open or build_services, with a test, and scope the contract to runtime access only.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Mostly buildable. Scope, data contract, task order, kit files and the local-day test vector are consistent, and I checked the vector's arithmetic. One blocking gap remains: the notification interface and its denied/unavailable detection are undefined, and the stated gio API cannot report them. The remaining items are polish."
+  }
+}

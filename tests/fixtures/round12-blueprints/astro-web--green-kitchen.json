@@ -1,0 +1,237 @@
+{
+ "productName": "Green Kitchen",
+ "summary": "Green Kitchen is a static recipe website. The home page lists every recipe, each recipe has its own page showing its ingredients and steps, and each meal type (breakfast, lunch, or dinner) has its own page listing the recipes of that type.",
+ "targetUsers": [
+  "Home cooks looking for recipes by meal type",
+  "Visitors browsing a collection of recipes"
+ ],
+ "goals": [
+  "List every recipe on the home page",
+  "Show each recipe's ingredients and steps on its own page",
+  "List the recipes of each meal type on that meal type's page"
+ ],
+ "nonGoals": [
+  "User accounts or saved favorites",
+  "Recipe submission or editing by visitors"
+ ],
+ "features": [
+  {
+   "name": "Recipe home page",
+   "userOutcome": "See every recipe in the collection from the home page",
+   "trigger": "Visitor opens the site's home page",
+   "behavior": "The home page lists every recipe in the collection, each entry showing the recipe name and linking to that recipe's page. The list is ordered by recipe name alphabetically.",
+   "failureOutcome": "The build fails when a recipe content file is missing its name.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "The home page lists one entry for every recipe content file.",
+    "Each home page entry links to that recipe's page.",
+    "Home page entries appear in alphabetical order by recipe name."
+   ],
+   "usesPlatformNeeds": [],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Recipes"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Recipes",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "click",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Recipe page",
+   "userOutcome": "Read one recipe's ingredients and steps",
+   "trigger": "Visitor opens a recipe's page",
+   "behavior": "Each recipe page shows the recipe name, its meal type, its ingredient list, and its numbered steps in the order stored.",
+   "failureOutcome": "The build fails when a recipe content file is missing its ingredients or steps.",
+   "failureRecovery": "retry",
+   "surface": "item-page",
+   "acceptanceSignals": [
+    "A recipe page exists for every recipe content file.",
+    "A recipe page shows the recipe name, its meal type, every ingredient, and every step in stored order."
+   ],
+   "usesPlatformNeeds": [],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Recipes"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Recipe home page"
+   ],
+   "dataOperations": [
+    {
+     "data": "Recipes",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "click",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Meal type page",
+   "userOutcome": "See the recipes that belong to one meal type",
+   "trigger": "Visitor opens a meal type page",
+   "behavior": "There is one page for each meal type: breakfast, lunch, and dinner. Each meal type page lists every recipe whose meal type is that value, showing the recipe name and linking to its recipe page, ordered by recipe name alphabetically.",
+   "failureOutcome": "The build fails when a recipe content file has a meal type outside breakfast, lunch, and dinner.",
+   "failureRecovery": "retry",
+   "surface": "tag-page",
+   "acceptanceSignals": [
+    "A page exists for breakfast, for lunch, and for dinner.",
+    "Each meal type page lists exactly the recipes whose meal type matches it, in alphabetical order by recipe name.",
+    "Each entry on a meal type page links to that recipe's page."
+   ],
+   "usesPlatformNeeds": [],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Recipes"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [
+    {
+     "name": "Meal type",
+     "options": [
+      "breakfast",
+      "lunch",
+      "dinner"
+     ],
+     "initial": "breakfast"
+    }
+   ],
+   "buildsOn": [
+    "Recipe home page"
+   ],
+   "dataOperations": [
+    {
+     "data": "Recipes",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "click",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Recipes",
+   "purpose": "The recipe content of the site: each recipe's name, meal type, ingredients, and steps.",
+   "sensitivity": "public",
+   "retentionIntent": "Kept as long as the site content includes the recipe.",
+   "storage": "records",
+   "writeMode": "direct",
+   "fields": [
+    {
+     "name": "name",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "meal type",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "ingredients",
+     "valueType": "text-list",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "steps",
+     "valueType": "text-list",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [],
+ "qualityRequirements": [
+  "Every recipe page shows its ingredients and steps in the order stored in the content file.",
+  "Home page and meal type page lists are ordered alphabetically by recipe name."
+ ],
+ "productConstraints": [
+  "The site is static: pages are built once from content files.",
+  "Meal type is limited to breakfast, lunch, and dinner."
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [],
+   "outsideFeatures": "product"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Recipe home page",
+    "Recipe page",
+    "Meal type page"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

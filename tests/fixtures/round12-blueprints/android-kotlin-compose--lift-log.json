@@ -1,0 +1,310 @@
+{
+ "productName": "Lift Log",
+ "summary": "Lift Log records gym workouts as sets. Each set holds an exercise name, a weight in kilograms with one decimal, a repetition count, and today's date. The user adds, edits, and deletes sets and sees them newest first, and the sets persist on the device across restarts.",
+ "targetUsers": [
+  "People who lift weights and want a simple on-device record of their sets",
+  "Gym-goers tracking exercise, weight, and repetitions over time"
+ ],
+ "goals": [
+  "Record each gym set with exercise name, weight in kilograms, repetitions, and today's date",
+  "Let the user correct or remove a recorded set",
+  "Show recorded sets newest first",
+  "Keep sets on the device and restore them after a restart"
+ ],
+ "nonGoals": [
+  "Workout programming, routines, or plans",
+  "Charts, statistics, or progress analytics",
+  "Cloud sync or multi-device sharing",
+  "Rest timers or workout session tracking"
+ ],
+ "features": [
+  {
+   "name": "Set list",
+   "userOutcome": "The user sees every recorded set, newest first, with its exercise name, weight, repetitions, and date.",
+   "trigger": "The user opens Lift Log.",
+   "behavior": "The main screen shows a list of all recorded sets ordered by date newest first; sets sharing the same date are ordered by creation time newest first. Each row shows the exercise name, the weight in kilograms with one decimal place (for example 82.5), the number of repetitions, and the date. When no sets exist, the list area shows an empty state. The list is restored from on-device storage when the app starts.",
+   "failureOutcome": "If stored sets cannot be read at startup, the app shows the list as empty and keeps the unreadable data untouched.",
+   "failureRecovery": "fallback",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With three stored sets dated 2024-05-01, 2024-05-03, and 2024-05-02, the list shows them in the order 2024-05-03, 2024-05-02, 2024-05-01.",
+    "A row for a set with weight 82.5 shows the weight as 82.5 with one decimal place.",
+    "After the app is restarted, the same sets appear in the list in the same order.",
+    "With no stored sets, the list area shows the empty state."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Sets"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Sets",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "launch",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Add set",
+   "userOutcome": "The user records a new set with its exercise name, weight, repetitions, and today's date.",
+   "trigger": "The user activates the Add set button on the main screen.",
+   "behavior": "An add form opens with the fields Exercise name (required text, trimmed; a trimmed-empty value counts as empty), Weight (kg) (required number with at most one decimal place), and Repetitions (required whole number). The date is not entered: the app stamps today's date when the set is saved. Activating Save stores the set and closes the form; the new set appears at the top of the list for today's date. If a required field is empty or invalid, nothing is stored and the user sees the field problem.",
+   "failureOutcome": "If the set cannot be written to on-device storage, the form stays open with the entered values and the user sees that the set was not saved.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Saving with Exercise name \"Bench press\", Weight (kg) 82.5, and Repetitions 8 stores a set dated today and shows it at the top of the list.",
+    "Saving with Exercise name containing only spaces stores nothing and the user sees the field problem.",
+    "Saving with Weight (kg) 82.55 stores nothing and the user sees the field problem.",
+    "Saving with Repetitions empty stores nothing and the user sees the field problem."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Sets"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Set list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Sets",
+     "operations": [
+      "create"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Edit set",
+   "userOutcome": "The user corrects the exercise name, weight, or repetitions of an existing set.",
+   "trigger": "The user activates Edit on a set row.",
+   "behavior": "An edit form opens prefilled with the set's Exercise name, Weight (kg), and Repetitions; the date is shown read-only and is not changed. The same validation rules as adding apply. Activating Save stores the changed fields and closes the form; the list shows the updated values. If a required field is empty or invalid, nothing is stored and the user sees the field problem.",
+   "failureOutcome": "If the change cannot be written to on-device storage, the form stays open with the entered values and the user sees that the change was not saved.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Editing a set's Weight (kg) from 82.5 to 85.0 and saving shows 85.0 on that set's row.",
+    "Editing a set's Exercise name to only spaces stores nothing and the user sees the field problem.",
+    "The edit form shows the set's date as read-only and saving does not change it."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Sets"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Set list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Sets",
+     "operations": [
+      "edit"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Delete set",
+   "userOutcome": "The user removes a set that should not be in the log.",
+   "trigger": "The user activates Delete on a set row.",
+   "behavior": "A confirmation dialog asks the user to confirm deleting the set. Confirming removes the set from on-device storage and from the list; cancelling leaves the set unchanged.",
+   "failureOutcome": "If the set cannot be removed from on-device storage, the set stays in the list and the user sees that it was not deleted.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Confirming Delete on a set removes that set's row from the list.",
+    "Cancelling the confirmation dialog leaves the set's row in the list unchanged.",
+    "After a confirmed delete and an app restart, the deleted set does not appear in the list."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Sets"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Set list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Sets",
+     "operations": [
+      "delete"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Sets",
+   "purpose": "Recorded gym sets, each with exercise name, weight in kilograms, repetitions, and the date it was recorded.",
+   "sensitivity": "personal",
+   "retentionIntent": "Kept on the device until the user deletes a set.",
+   "storage": "records",
+   "writeMode": "direct",
+   "fields": [
+    {
+     "name": "Exercise name",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "Weight (kg)",
+     "valueType": "number",
+     "optional": false,
+     "min": 0,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "Repetitions",
+     "valueType": "whole-number",
+     "optional": false,
+     "min": 1,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "Date",
+     "valueType": "date",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": "today",
+     "appStamped": true
+    },
+    {
+     "name": "Created at",
+     "valueType": "date-time",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": "now",
+     "appStamped": true
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [
+  "local-storage"
+ ],
+ "qualityRequirements": [
+  "Weight is displayed with exactly one decimal place (for example 82.5).",
+  "The set list is ordered by date newest first, with same-date sets ordered by creation time newest first.",
+  "Sets persist on the device and are restored in the same order after an app restart."
+ ],
+ "productConstraints": [
+  "Weight is entered in kilograms with at most one decimal place.",
+  "Repetitions are whole numbers of at least 1.",
+  "The date of a set is stamped by the app as today's date and is not editable."
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Set list",
+    "Add set"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Add set",
+    "Edit set",
+    "Delete set",
+    "Set list"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 3,
+   "features": [
+    "Set list"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

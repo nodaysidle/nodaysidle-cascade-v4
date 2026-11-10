@@ -1,0 +1,92 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 42837,
+    "output_tokens": 4891
+  },
+  "review": {
+    "slug": "quiet-hours",
+    "blocking": [
+      {
+        "where": "TRD.md — CON-DATA-QUIET-HOURS-SETTINGS vs CON-PERSISTENCE-QUIET-HOURS-SETTINGS (also ARD.md Persistence Placement)",
+        "quote": "DataStore creates table quiet_hours_settings (id INTEGER PRIMARY KEY AUTOINCREMENT, start_time TEXT NOT NULL",
+        "why": "The data contract prescribes a SQLite table, a Database handle, PRAGMA user_version migrations and StoreError::Sqlite. The persistence contract and ARD say the data lives in atomic JSON at settings.json, and ARD says the app creates no database. The agent cannot tell whether to build SQLite or JSON. Where the file lives is also ambiguous, since PLATFORM-FILES puts records under XDG_DATA_HOME and settings under XDG_CONFIG_HOME.",
+        "fix": "Pick one store. Preferably drop the SQLite table, Database and user_version text from CON-DATA-QUIET-HOURS-SETTINGS and define a JSON-backed store at $XDG_CONFIG_HOME/com.quiet.hours/settings.json, using the kit's atomic_file and config helpers. Have ARD and TRD agree.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/Cargo.toml",
+        "quote": "serde_json = \"1\"",
+        "why": "The data contract requires a SQLite Database and StoreError::Sqlite, and says the kit opens the database at user_version 1. Neither the locked stack nor kit/Cargo.toml has a SQLite crate, and the kit ships no database code. The agent would have to invent a dependency, which the stack lock forbids, or the DataStore task fails.",
+        "fix": "If SQLite stays, add rusqlite to the locked stack and Cargo.toml and ship the kit's database opener. Otherwise remove all SQLite wording from the data contract.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-DATA-QUIET-HOURS-SETTINGS",
+        "quote": "Store operations, exactly these and no others: read (FEAT-QUIET-HOURS-SETTINGS-AND-STATUS); update (FEAT-QUIET-HOURS-SETTINGS-AND-STATUS).",
+        "why": "There is no create operation, yet update returns NotFound for an unknown id and NewQuietHoursSettings is defined but never used. On first launch nothing is stored, so no id exists to update. The contract does not say who seeds the 22:00/07:00 record, how the app finds the id, or how list/get map to a single settings pair.",
+        "fix": "Specify a single-record model with explicit seeding (for example, the store creates the defaults on open or list-empty, and the feature uses the first record id). Or add a create/upsert operation. Remove NewQuietHoursSettings if it is unused.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-QUIET-HOURS-SETTINGS-AND-STATUS task prompt",
+        "quote": "Expose exactly these named slots in the shared files, no others: a status area shared by every message the main screen shows (empty state).",
+        "why": "The generic list/mark/empty-state template does not fit this feature. The only slot is an empty-state message area. Nothing owns or places the start time input, the end time input, or the 'Inside quiet hours'/'Outside quiet hours' status label that the PRD requires. The prompt instead tells the agent to build per-row AdwActionRows, a mark control, a stored flag and an empty-list message. The data model has no flag and no list, so the agent must guess the actual UI.",
+        "fix": "Replace the list/row/mark/empty-state paragraph with the real UI: two time inputs (name the widget, for example AdwActionRow with hour and minute spin buttons), one status label showing Inside/Outside, and the save-failure toast. Drop the mark control, rows and empty state.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-DATA-QUIET-HOURS-SETTINGS Recovery",
+        "quote": "Keep the last valid record; a failed mark leaves the row in the list.",
+        "why": "There is no mark action, no row and no deletion in this product. The wording is copied from a to-do template and contradicts the feature. The ordering rule 'newest created first, by descending id' is also meaningless for one settings pair.",
+        "fix": "Reword recovery to 'a failed update leaves the last stored start and end times unchanged'. Remove the list-order and mark text.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TASKS.md — TASK-04 acceptance criteria",
+        "quote": "The status area updates at least once per second while the app is open.",
+        "why": "No clock abstraction or pure function signature is named, so the time-based criteria cannot be tested deterministically without an injected clock. The agent must choose the signature and the tick mechanism (glib timeout vs tokio).",
+        "fix": "Name a display-free `is_inside(start, end, now) -> bool` and a `Clock` trait, and require a 1 s glib timeout that calls them.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-QUIET-HOURS-SETTINGS-AND-STATUS-INTERFACE",
+        "quote": "The main screen shows a start time input and an end time input",
+        "why": "GTK4/libadwaita has no time-picker widget. The input widget, the HH:MM validation of what the user enters, and the 24-hour zero-padded format are not specified.",
+        "fix": "State the widget (for example, two AdwSpinRows for hour 0–23 and minute 0–59 per time) and that each change writes HH:MM.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-RUNTIME-WIRING",
+        "quote": "with each list holding several entries, one of them longer than the view is wide",
+        "why": "The launch-check text refers to lists, empty-list messages and switches that this product does not have. Some checks cannot be performed.",
+        "fix": "Trim the launch check to the actual screen: two time inputs and one status label.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-03-LIFECYCLE-COORDINATOR task prompt",
+        "quote": "Depend only on the locked foundation; implement every documented decision, failure, cancellation, cleanup, and recovery branch.",
+        "why": "The coordinator's API (for example start/stop of the 1 s tick, cancel on SIGTERM) is never defined. TASK-04 is supposed to depend on OWN-LIFECYCLE-COORDINATOR but has no interface to call.",
+        "fix": "Define the coordinator's public functions in TRD and state how the feature's tick task registers with it.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/config.rs",
+        "quote": "pub theme: String,",
+        "why": "The kit's Settings carries an unrelated theme field and schema. The start and end times are not stored in it. If JSON persistence is chosen, the agent must guess whether to extend this struct.",
+        "fix": "Say whether start_time and end_time are added to config::Settings (bump schema_version) or kept in the datastore.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/resources/com.quiet.hours.metainfo.xml",
+        "quote": "<summary>Quiet Hours lets the user set a start time and an end time for a daily quiet</summary>",
+        "why": "The summary is cut off mid-sentence and is longer than appstream's recommended summary length, so appstreamcli validate may warn.",
+        "fix": "Use a short summary such as 'Show whether it is currently your quiet hours'.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Not buildable as written. The data layer contradicts itself: the TRD data contract prescribes SQLite with no dependency or kit support, while the TRD persistence contract and ARD prescribe JSON with no database. It has no create or seed operation. TASK-04 prescribes a list/mark/empty-state UI and a one-slot layout that does not fit a two-time-input and status screen. Fix these before an agent can build the product without guessing."
+  }
+}

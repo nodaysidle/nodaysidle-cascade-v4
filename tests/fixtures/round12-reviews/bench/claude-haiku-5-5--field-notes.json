@@ -1,0 +1,99 @@
+{
+  "usage": {
+    "model": "claude-haiku-5-5",
+    "input_tokens": 46205,
+    "output_tokens": 21943
+  },
+  "review": {
+    "slug": "field-notes",
+    "blocking": [
+      {
+        "where": "TRD.md — Information Architecture and Routes",
+        "quote": "/author — src/pages/author.astro",
+        "why": "FEAT-AUTHOR-PAGE requires a page for every author and each author's own post list, but the only author route is a single static /author page with no per-author path, and no task creates one. An agent must invent the route and its owner file. The PRD Screen Map also lists the author page as a plain page, not an item page, so the Authors collection gets no [slug] route. The kit nav link to /author/ would also dangle if the route changed.",
+        "fix": "Add a per-author route /author/[slug] at src/pages/author/[slug].astro owned by OWN-AUTHOR-PAGE, built with getStaticPaths over listAuthorsEntries(); keep /author/ as a valid nav target, and update ARD.md, TRD.md, AGENTS.md and TASKS.md owner paths to match.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-AUTHOR-PAGE",
+        "quote": "authors has no detail route, so it renders the declared fields of every entry in ascending id order",
+        "why": "This instruction makes the author page list authors, not that author's posts. It contradicts the acceptance criteria (exactly the posts whose author is that author, ordered newest first). No prompt step filters posts by author or sorts them by published date.",
+        "fix": "Rewrite the TASK-04 prompt so each author page lists only posts where entry.data.author equals that author's id, sorted by published descending, one li per post with an a to /posts/<id>/, and drop the authors-as-list instruction.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/content.config.ts",
+        "quote": "author: z.string()",
+        "why": "TRD.md says author is a reference to another stored item, and FEAT-AUTHOR-PAGE says the build must fail when a post references an undefined author. A plain string enforces neither, and no task implements the check. The kit sample post sets author: sample-reference, which matches no author id (01-sample-entry), so a reference check would fail the very starter build.",
+        "fix": "Declare author with reference('authors') from astro:content in src/content.config.ts and change kit/src/content/posts/01-sample-entry.md to author: 01-sample-entry, so an undefined author fails npm run build.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/pages/posts/[slug].astro",
+        "quote": "<dt>Author</dt><dd>{entry.data.author}</dd>",
+        "why": "FEAT-POST-PAGE requires the author's name, linked to that author's page. This renders the raw author reference (an id string) with no link. TASK-05's prompt does not tell the agent to resolve the id through listAuthorsEntries(), so the name and link must be guessed.",
+        "fix": "In the TASK-05 prompt, require resolving entry.data.author against listAuthorsEntries() and rendering that author's name as an a whose href is /author/<id>/.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TASKS.md — TASK-03-HOME-POST-LIST",
+        "quote": "Implement owner OWN-HOME-POST-LIST (HomePostList) in src/components/HomePostList.astro",
+        "why": "The prompt does not say to sort by published descending, to look up the author name, or to link the author. Those come only from the Order convention and the feature text, and ties on published are unspecified.",
+        "fix": "Add to the prompt: sort by published descending with ties by ascending id, show the author name from listAuthorsEntries(), and link it to that author's page.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/content.config.ts",
+        "quote": "published: z.coerce.date()",
+        "why": "TRD.md defines published as a calendar day with no time, but z.coerce.date() accepts datetimes and the page formats it through toISOString() in UTC, so a datetime with an offset can show the wrong day.",
+        "fix": "Use a date-only string schema (for example z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/)) and render the stored string unchanged.",
+        "quoteFound": true
+      },
+      {
+        "where": "ARD.md — Component and Ownership Map",
+        "quote": "Foundation owns package.json, astro.config.mjs, tsconfig.json, src/pages/index.astro",
+        "why": "ARD lists src/pages/index.astro under the foundation, but TASK-03 modifies it. Only the shared-file line in AGENTS.md resolves this.",
+        "fix": "Mark src/pages/index.astro as shared and edited by TASK-03 in the ARD ownership line.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-05-POST-PAGE",
+        "quote": "a list field as one ol with one li per item in stored order",
+        "why": "Neither the Posts nor the Authors schema has a list field, so this rule does not apply and invites guessing.",
+        "fix": "Delete the list-field clause from the TASK-05 prompt.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — Data Contracts (CON-DATA-POSTS)",
+        "quote": "getPostsEntry(id) (one entry or undefined; covered by the catalog test, pages read the list)",
+        "why": "No page or component calls getPostsEntry or getAuthorsEntry, so these exports exist only for tests, which the Build-to-Use rule says should not be built.",
+        "fix": "Drop getPostsEntry and getAuthorsEntry from the interface and the catalog test, or name the page that calls each one.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-05-POST-PAGE",
+        "quote": "Dependencies: TASK-01-FOUNDATION, TASK-02-DATA-STORE, TASK-03-HOME-POST-LIST",
+        "why": "The post page never uses the HomePostList component, so this dependency forces an ordering the feature does not need. It is repeated in the PRD, ARD, TRD and AGENTS traceability lines.",
+        "fix": "Remove TASK-03 from the TASK-05 dependencies everywhere, or state what HomePostList supplies to the post page.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/pages/posts/[slug].astro",
+        "quote": "description={entry.data.body}",
+        "why": "The meta description becomes the full body text, and the body is shown twice (once in a dd and once through Content), so which text is the full body is unclear.",
+        "fix": "Use a short summary or the title for the description, and render the body only once.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — Packaging Contract (CON-PACKAGING-RELEASE)",
+        "quote": "No application code signature applies; deploy the verified production artifact over HTTPS with immutable asset hashes.",
+        "why": "This signing and deployment wording is boilerplate: the packet declares no deployment host and says deploying dist/ is outside these tasks.",
+        "fix": "Replace it with a single line saying no signing applies and deployment is out of scope.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Not buildable as written: the author-page route is missing (one /author page instead of a page per author), the author-page task lists authors instead of each author's posts, and author references are unvalidated while the kit sample post points at a nonexistent author id. The post page also shows the raw author id with no link. Fix these four blocking items before handing the packet to a coding agent; the polish items are optional."
+  }
+}

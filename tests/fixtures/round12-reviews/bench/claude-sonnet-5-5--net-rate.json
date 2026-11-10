@@ -1,0 +1,85 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 72978,
+    "output_tokens": 7112
+  },
+  "review": {
+    "slug": "net-rate",
+    "blocking": [
+      {
+        "where": "PRD.md Feature Contracts FEAT-DOWNLOAD-RATE-LABEL (same text in TRD.md CON-DOWNLOAD-RATE-LABEL-INTERFACE and TASKS.md TASK-05)",
+        "quote": "A refresh with a counter change of 6,250,000 bytes over 5 seconds writes the label '10.0 kB/s' with class normal.",
+        "why": "The two rate acceptance criteria use different formulas and neither matches the stated rule. The behavior says rate = change x 8 / seconds, shown in kB/s. That gives 500,000 B over 5 s = 800 kb/s and 6,250,000 B over 5 s = 10,000 kb/s (10 Mb/s). Criterion 02 ('10.0 kB/s') only fits a Mb/s calculation, and the '100.0 kB/s' criterion only fits a plain bytes-per-second calculation (100,000 B/s). The units rule also says a byte rate uses kB/s while a bit rate uses kb/s. An agent cannot satisfy both tests and the formula, so the acceptance tests would fail or the formula would be guessed.",
+        "fix": "Choose one formula (for example bytes/s, no x8, labelled kB/s) and make both acceptance examples consistent with it (500,000 B in 5 s = '100.0 kB/s'; 6,250,000 B in 5 s = '1250.0 kB/s'). Remove 'times 8' if bytes/s is chosen.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-DOWNLOAD-RATE-LABEL-INTERFACE (System source) vs PRD.md FEAT-DOWNLOAD-RATE-LABEL Behavior",
+        "quote": "With no stored record yet, the refresh stores the counter and the time without a rate and the label stays the empty label (class empty)",
+        "why": "PRD says the first refresh 'writes the label with 0.0 kB/s'. TRD says the first refresh leaves the label '--' with class empty. ACC-05 ('--' with class empty) and the 0.0 kB/s rule cannot both hold after the first refresh. TRD also mentions 'a record without a rate', but RateSample has no rate field. Separately, 'the first refresh after the service loop starts' has no way to be detected: nothing is kept in memory, --action refresh runs in a separate process, and the feature function takes only store, reader, clock and interval.",
+        "fix": "State one first-refresh outcome (either 0.0 kB/s class normal, or '--' class empty). Drop the 'record without a rate' clause. Define 'first refresh after service start' purely as no stored record or a stored sample older than 2x the interval.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-DATA-RATE-SAMPLE Retention",
+        "quote": "when the stored sample time is more than twice the refresh interval old, the refresh starts a new baseline at the new reading.",
+        "why": "The total is 'counter minus the counter stored when the service loop started', and the PRD says the total is 'since the module started'. Resetting the baseline after any gap (a network or service pause) silently redefines that total. The contract does not say what the baseline is when a counter goes backwards (reboot or interface change), or how insert preserves baseline on a normal refresh, since insert replaces every stored field. A decreasing counter would also make received minus baseline an unsigned underflow in the click path.",
+        "fix": "Specify exactly: baseline_bytes is set only on the first insert or on a stale gap, and is carried over on every other insert. On a counter decrease set baseline to min(baseline, new counter), or reset it to the new counter. Click total = received.saturating_sub(baseline).",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-05-DOWNLOAD-RATE-LABEL (with kit/src/module.rs and kit/src/config.rs)",
+        "quote": "the test also asserts module::interval_seconds(&Settings::default()) == 2",
+        "why": "The kit's interval_seconds clamps the interval to at least 5 (`u64::from(settings.refresh_seconds.max(5))`). Settings::set rejects refresh_seconds below 5, and the kit contract test asserts that 4 is rejected. So the assertion returns 5, not 2. The service would also loop every 5 s instead of 2 s, and stale would be derived at 10 s instead of 4 s. The task forbids changing the loop interval and does not list interval_seconds as editable.",
+        "fix": "Tell TASK-05 to change interval_seconds to `u64::from(settings.refresh_seconds.max(1))`, and the kit/config.rs minimum in Settings::set and the kit contract test to match, so that 2 is a valid interval.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TRD.md CON-PRESET-OPTIONS",
+        "quote": "refreshSeconds=15",
+        "why": "The idea says the rate is read every 2 seconds, but the Waybar exec path re-reads the cache only every 15 s, so the bar can be up to 15 s behind. It is documented, but the user-facing promise and the displayed freshness differ.",
+        "fix": "Set refreshSeconds=2 (and the kit config.jsonc interval) or state in the PRD that the bar updates every 15 s.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md FEAT-TOTAL-RECEIVED-NOTIFICATION Behavior",
+        "quote": "sends a desktop notification whose body states the total data received since the module started",
+        "why": "The notification title is unspecified, but notify() requires one. The agent must invent it.",
+        "fix": "State the title, for example 'Net Rate', and the exact body wording, for example 'Total received: 3.67 GB'.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md Non-Goals",
+        "quote": "Detecting or resetting the total when the calendar day changes",
+        "why": "Calendar-day behavior is boilerplate the idea never mentioned, and it is repeated in Operational Constraints.",
+        "fix": "Remove the calendar-day non-goal and constraint.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-05-DOWNLOAD-RATE-LABEL",
+        "quote": "Files to modify: src/features/mod.rs; src/module.rs; src/config.rs; src/main.rs",
+        "why": "No setting is declared, SETTING_KEYS is empty, and the dispatch in main.rs is unchanged. config.rs and main.rs have no required edit in TASK-04 or TASK-05, which invites speculative edits (TASK-03 lists main.rs too).",
+        "fix": "Drop config.rs and main.rs from the modify lists of tasks 03-05, or say why they change.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-RUNTIME-WIRING",
+        "quote": "the real HTTP client, SystemLauncher",
+        "why": "This is template text that names an HTTP client in a standalone app with no network. The agent may look for an HTTP owner that does not exist.",
+        "fix": "Drop the HTTP client from the composition-root list for this packet.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-DATA-RATE-SAMPLE Interface",
+        "quote": "the kit opens the database at PRAGMA user_version 1 with no tables, so the migration runs when the version is below 2 and sets it to 2",
+        "why": "The migration must run from datastore.rs using Database::connection(), but kit sqlite.rs (owned by foundation) only handles version 1. How to trigger the datastore migration is not stated, for example on RateSampleStore construction.",
+        "fix": "State that the datastore constructor opens Database and runs its own transaction migration before the first operation.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Not buildable as written. The two rate acceptance examples contradict the x8 rule and each other, so the kB/s numbers are unresolved. The first-refresh outcome conflicts between PRD ('0.0 kB/s') and TRD (empty label), and baseline handling is undefined. The kit's 5-second interval floor breaks the declared 2-second schedule and the assertion in TASK-05. The rest of the file ownership, task order and kit references are coherent."
+  }
+}

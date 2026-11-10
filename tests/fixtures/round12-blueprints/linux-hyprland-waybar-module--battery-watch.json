@@ -1,0 +1,260 @@
+{
+ "productName": "Battery Watch",
+ "summary": "A Waybar module that shows the current battery charge percentage, colours the label amber below 30 percent and red below 15 percent, refreshes the reading every 30 seconds, and opens a desktop notification stating whether the battery is charging or discharging when the module is clicked.",
+ "targetUsers": [
+  "Waybar users on laptops who want the battery charge and charging state visible in their status bar"
+ ],
+ "goals": [
+  "Show the current battery charge percentage in the Waybar module label",
+  "Colour the label amber below 30 percent and red below 15 percent",
+  "Refresh the battery reading every 30 seconds",
+  "Open a desktop notification stating the charging state when the module is clicked"
+ ],
+ "nonGoals": [
+  "No historical battery charts or long-term logging",
+  "No low-battery alerts or notifications triggered automatically by the threshold",
+  "No detection of a reading that is only valid for one calendar day"
+ ],
+ "features": [
+  {
+   "name": "Battery percentage label",
+   "userOutcome": "See the current battery charge percentage in the Waybar module, coloured by the stated thresholds",
+   "trigger": "The Waybar module re-reads the cached label on its fragment interval",
+   "behavior": "The module command with no action or --once never measures the battery; it re-reads the cached label and renders it with the class derived from the stored reading: class critical below 15 percent, class warning below 30 percent, otherwise class normal. The label is the whole-number percentage followed by the percent sign. When no reading was ever stored the label is -- with class empty. When the last refresh failed the cache keeps the last good label text with class stale, and the module output rendered from that cache is that text with STALE_SUFFIX appended and class stale.",
+   "failureOutcome": "With no stored reading the label is -- with class empty; after a failed refresh the last good label text is shown with STALE_SUFFIX appended and class stale",
+   "failureRecovery": "fallback",
+   "surface": "main",
+   "acceptanceSignals": [
+    "A stored reading of 42 renders the label 42% with class normal",
+    "A stored reading of 25 renders the label 25% with class warning",
+    "A stored reading of 9 renders the label 9% with class critical",
+    "With no stored reading the module output is -- with class empty",
+    "After a failed refresh the module output is the last good label text with STALE_SUFFIX appended and class stale"
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Battery reading"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Battery reading",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [
+    {
+     "state": "warning",
+     "comparison": "below",
+     "value": 30
+    },
+    {
+     "state": "critical",
+     "comparison": "below",
+     "value": 15
+    }
+   ],
+   "labelTemplate": "{value}%",
+   "unit": "%",
+   "valueDecimals": 0,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Battery refresh",
+   "userOutcome": "The module keeps showing a fresh battery percentage and charging state without any manual action",
+   "trigger": "The --service loop runs every 30 seconds, and --action refresh runs on demand",
+   "behavior": "Each refresh reads the battery charge percentage and charging state from the system source, then writes the single stored reading record with the percentage, the charging state, and the sample time as a UTC epoch in whole milliseconds. The cache is written with the formatted label text and class as soon as the fetch succeeds; the bar re-reads that cache on its next fragment re-run. When the fetch fails the cache keeps the last good label text with class stale and no stored record changes.",
+   "failureOutcome": "The cache keeps the last good label text with class stale and no stored record changes; with no reading ever stored the label is --",
+   "failureRecovery": "fallback",
+   "surface": "main",
+   "acceptanceSignals": [
+    "The refresh pass returns an interval of 1800 seconds",
+    "After a successful refresh the stored reading record holds the measured percentage, the charging state, and a sample time in whole milliseconds",
+    "After a failed refresh the cache keeps the last good label text with class stale and no stored record changes"
+   ],
+   "usesPlatformNeeds": [
+    "local-storage",
+    "background-execution"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Battery reading"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Battery percentage label"
+   ],
+   "dataOperations": [
+    {
+     "data": "Battery reading",
+     "operations": [
+      "create",
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "schedule",
+   "runsEverySeconds": 1800,
+   "runsDailyAt": null,
+   "systemSource": "battery",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Charging state notification",
+   "userOutcome": "Click the module and get a desktop notification saying whether the battery is charging or discharging",
+   "trigger": "A click on the Waybar module",
+   "behavior": "A click reads the stored battery reading record and sends a desktop notification whose body states the stored charging state: charging, discharging, full, not charging, or unknown. With no stored record the click sends nothing and exits non-zero.",
+   "failureOutcome": "With no stored record the click sends no notification and exits non-zero",
+   "failureRecovery": "exit",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With a stored charging state of charging the click sends a notification whose body states charging",
+    "With a stored charging state of discharging the click sends a notification whose body states discharging",
+    "With no stored record the click sends no notification and exits non-zero"
+   ],
+   "usesPlatformNeeds": [
+    "notifications",
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Battery reading"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Battery percentage label"
+   ],
+   "dataOperations": [
+    {
+     "data": "Battery reading",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "click",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Battery reading",
+   "purpose": "The latest measured battery charge percentage, charging state, and sample time",
+   "sensitivity": "internal",
+   "retentionIntent": "Keeps only the latest reading; each refresh replaces the single stored row",
+   "storage": "records",
+   "writeMode": "direct",
+   "fields": [
+    {
+     "name": "percentage",
+     "valueType": "whole-number",
+     "optional": false,
+     "min": 0,
+     "max": 100,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "charging state",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "sampled at",
+     "valueType": "date-time",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    }
+   ],
+   "singleRecord": true,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [
+  "local-storage",
+  "background-execution",
+  "notifications"
+ ],
+ "qualityRequirements": [
+  "The label shows the percentage as a whole number followed by the percent sign, for example 42%",
+  "The label class is normal at or above 30 percent, warning below 30 percent, and critical below 15 percent",
+  "The refresh interval is 1800 seconds"
+ ],
+ "productConstraints": [
+  "The module command with no action or --once never measures the battery and only re-reads the cached label",
+  "A reading reaches the bar only at the next fragment re-run after the cache write"
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Battery percentage label",
+    "Battery refresh"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Charging state notification"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

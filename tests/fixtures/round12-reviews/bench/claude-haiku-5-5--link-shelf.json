@@ -1,0 +1,113 @@
+{
+  "usage": {
+    "model": "claude-haiku-5-5",
+    "input_tokens": 70428,
+    "output_tokens": 38779
+  },
+  "review": {
+    "slug": "link-shelf",
+    "blocking": [
+      {
+        "where": "TASKS.md — TASK-06-OPEN-BOOKMARK",
+        "quote": "Choosing Open on a row makes one request to open that row's exact web address with the default browser.",
+        "why": "No task, plugin, command, or injected dependency provides the OS open call. TRD says \"Commands, exactly: list_bookmarks() takes no arguments\" and feature tasks \"add no Rust command of their own\". Cargo.toml has no tauri-plugin crate and capabilities/default.json has only core:default. TASK-06 names no dependency for its factory, so its test cannot inject an opener.",
+        "fix": "Name the mechanism in TASK-06: add an exact-version opener plugin to Cargo.toml, lib.rs, package.json, and an opener permission in capabilities/default.json, with the open function injected into the factory; or amend the TRD command list with one allowlisted open command owned by OWN-OPEN-BOOKMARK.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-06-OPEN-BOOKMARK",
+        "quote": "(the \"summary\" host)",
+        "why": "TASK-04 exposes only status, add, and filter hosts, so there is no \"summary\" slot for TASK-06 to mount into.",
+        "fix": "Replace \"summary\" with the per-row slot that TASK-04 is changed to expose (see the TASK-04 item).",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-BOOKMARK-LIST",
+        "quote": "Expose exactly these named slots in the shared files, no others",
+        "why": "The only slots are status, add, and filter. No per-row slot exists, and nothing requires the list to call slots.row for each record, so the per-row Open button of FEAT-OPEN-BOOKMARK has no place to be built.",
+        "fix": "Add a named row slot such as \"row-actions\" to TASK-04's exposed list and require the list render to call slots.row(\"row-actions\", record) for every row.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-07-SEARCH-BOOKMARKS",
+        "quote": "Typing \"rust\" shows only bookmarks whose title or a tag contains \"rust\" in any letter case.",
+        "why": "TASK-07 lists ACC-SEARCH-BOOKMARKS-01..03 as its acceptance criteria, but its focused test covers only that its control writes query. TASK-04's prompt says the match rule is tested in TASK-04's test, and TASK-04's Acceptance IDs omit ACC-SEARCH. No test owned by OWN-SEARCH-BOOKMARKS checks the stated criteria.",
+        "fix": "Give TASK-07's focused test the rendered-row assertions for the match, clear, and no-match cases, or move ACC-SEARCH-BOOKMARKS-01..03 to TASK-04 and remove them from TASK-07.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-BOOKMARK-LIST",
+        "quote": "failures go through the errors banner",
+        "why": "The PRD and TRD say a launch-load failure shows in the list area (\"the list area shows one message, \\\"Bookmarks could not be loaded\\\"\"). TASK-04 routes it to the banner, which is outside the list area, so the placement contradicts the PRD.",
+        "fix": "Show the launch-load failure in the list area (the status slot) with its retry action, or amend the PRD and TRD to name the banner.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-PACKAGING-RELEASE",
+        "quote": "the installed desktop entry is validated before the launch smoke",
+        "why": "No command, task, or script step validates the desktop entry or verifies the AppImage before the launch smoke. scripts/package_linux.sh only builds, copies, and writes the desktop file, and TASK-08 does not list the script.",
+        "fix": "Add scripts/package_linux.sh to TASK-08's modify list and add a concrete validation step for the installed desktop entry and the AppImage, run before the launch check.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TRD.md — CON-DATA-BOOKMARKS",
+        "quote": "Validation: create and update return AppError invalid",
+        "why": "\"Store operations, exactly these and no others\" conflicts with the update and delete wording that TASK-05 repeats (\"after a delete, remove that id\"). An agent could add update or delete commands.",
+        "fix": "Delete the update sentence and the TASK-05 and TASK-06 delete sentences; state that only read and create exist.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-BOOKMARK-LIST",
+        "quote": "its test fixes the clock and compares the local parts",
+        "why": "TASK-04 takes no now dependency, and the list shows no date, so this clause does not apply to it and the agent has to guess.",
+        "fix": "Remove the clock and local-parts clause from TASK-04 and keep only the instants rule the same paragraph gives.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md — FEAT-ADD-BOOKMARK",
+        "quote": "the form rejects an empty title or an empty web address and keeps the entered values",
+        "why": "No text is given for the validation message, and the kit's rule covers only failed writes. The agent must invent a string.",
+        "fix": "Add the exact validation message text for an empty title and for an empty web address to the PRD.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/README.md — Behavior to keep",
+        "quote": "(Edit, Delete, Copy with nothing selected)",
+        "why": "The kit guidance names Edit, Delete, and Copy, which the packet excludes. The agent might build those controls.",
+        "fix": "Replace the example with a non-excluded command, such as Open with nothing selected.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-07-SEARCH-BOOKMARKS",
+        "quote": "(the filter area or the list region)",
+        "why": "\"the list region\" is not an exposed slot, and the either-or leaves the mount point to the agent.",
+        "fix": "Name one slot: the filter slot.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-08-PACKAGING",
+        "quote": "Cover direct features none and owned contracts CON-SECURITY-BOUNDARY, CON-PACKAGING-RELEASE, CON-PRESET-OPTIONS, CON-RUNTIME-WIRING.",
+        "why": "The packaging test covers only the wiring check. Nothing tests the security boundary (no bookmark data in logs or diagnostics), so CON-SECURITY-BOUNDARY has no proof.",
+        "fix": "Add a packaging_tests assertion that scans production sources for logging of bookmark fields, or name the check that proves the boundary.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — Accessibility Contracts",
+        "quote": "and Vitest DOM accessibility assertions.",
+        "why": "Keyboard operation, reduced motion, and visible focus are required, but no task or acceptance criterion tests them.",
+        "fix": "Add one accessibility assertion (keyboard activation and focus visibility of the Add and Open controls) to TASK-04 and TASK-05 tests.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-PRESET-OPTIONS",
+        "quote": "the compiler never guesses an option",
+        "why": "No compiler or generation step exists in the packet, so this failure behavior cannot apply and misleads the agent.",
+        "fix": "Replace the sentence with a check that tauri.conf.json and scripts/package_linux.sh contain the two preset options.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Not buildable without guesswork. The Open Bookmark feature has no mechanism to open the browser, no injectable dependency, and no row slot to mount into, and the search and list-failure criteria are tested outside their owners. Fix the six blocking items before the agent starts; the polish items are cleanup."
+  }
+}

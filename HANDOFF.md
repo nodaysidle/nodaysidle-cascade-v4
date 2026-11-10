@@ -1,666 +1,352 @@
-# HANDOFF — NODAYSIDLE Cascade V4 (rewritten 2026-11-10, after the round-12 repair session)
+# HANDOFF — NODAYSIDLE Cascade V4 (rewritten 2026-11-10, evening, after the round-12 live round)
 
 Read this file first, then `AGENTS.md`. A fresh session can resume from this file alone.
 Workspace rules: `/home/arch/dev/nodaysidle/CLAUDE.md` (start every reply with `ALAN`; this repo's
 `AGENTS.md` wins over the root one). The owner is Alan (git user `nodaysidle`).
 
-The earlier handoff (rounds 8 to 11, the F1 to F16 code audit, per-round tables) is in git:
-`git show 2c8fe5e:HANDOFF.md`. Everything in it marked "to do" is done unless it is repeated below.
+Older detail is in git: `git show 5f6ac03:HANDOFF.md` has the long version of this session (every audit
+finding with file and line, the per-stack gap lists), and `git show 2c8fe5e:HANDOFF.md` has rounds 8 to 11.
 
 ## 1. What the app is
 
 Cascade V4 is a local-first **compiler** and Tauri 2 desktop app (Arch Linux / Omarchy, Wayland).
-Input: one software idea (plain text) + one locked tech-stack preset + optional preset options.
-Output: a folder with five Markdown contracts, a starter kit, and a manifest:
+Input: one software idea (plain text) + one tech-stack preset. Output: a folder with five Markdown contracts
+(`PRD.md ARD.md TRD.md TASKS.md AGENTS.md`), a starter `kit/`, and `blueprint.json`. A coding agent opens the
+folder and builds the product from it. **"Agent-ready"** means a coding agent can build exactly the idea from
+the packet alone, with no guesswork and no contradictions, and the kit builds with its own commands.
 
-```text
-PRD.md  ARD.md  TRD.md  TASKS.md  AGENTS.md   (the five documents)
-kit/                                          (real, tested starter code the agent copies)
-blueprint.json                                (validated provider blueprint + preset + options + hashes)
-```
-
-A coding agent opens that folder, reads `AGENTS.md`, follows `TASKS.md` task by task, and builds the
-product. **The product of this repo is the quality of those documents: "agent-ready"** means a coding
-agent can build exactly the user's idea from the packet alone, with no guesswork and no contradictions,
-and the kit builds with its own commands.
-
-Five presets (`src/presets.ts`): `linux-wayland-gtk4-desktop`, `linux-hyprland-waybar-module`,
+Presets (`src/presets.ts`): `linux-wayland-gtk4-desktop`, `linux-hyprland-waybar-module`,
 `tauri2-rust-typescript-desktop`, `astro-web`, `android-kotlin-compose`.
 
-## 2. How it works
+How it works today: idea → local checks → TypeSafe Jev preflight → one DeepSeek request (strict JSON
+blueprint) plus at most one repair → `settleBlueprint` → intake, Jev integrity and capability audits →
+normalize → project graph → render five documents and the kit → `auditPacket` → export. Everything after the
+provider answer is deterministic local code.
+
+## 2. What this session found (2026-11-10)
+
+Start state was green. Alan approved live runs of the 25 round-12 ideas (the texts are in
+`scripts/agent-ready/run-round.fish`) and one read-only audit per packet. Every blocking claim was checked by
+the lead against the packet files.
+
+| | Result |
+|---|---|
+| Live runs | 26 runs, 23 packets. Budget Book failed once and passed once (the provider is not repeatable at temperature 0). Drink Reminder failed. |
+| Kit builds | 23 of 24 built packets pass every command. Net Rate fails `cargo test`. |
+| Audits | 19 packets audited. **3 agent-ready** (Tip Split, Green Kitchen, Studio Folio). **16 not.** 5 without a verdict (Alan stopped the agents). |
+| By preset | GTK 0 of 5. Waybar 0 of 5. Astro 2 of 5. Android 1 of 3. Tauri 0 of 1 audited. |
+
+Confirmed blocking causes, one line per packet (the benchmark truth for the tools in section 5):
+
+- **Waybar Disk Free:** an example says class normal for a reading the threshold makes critical.
+- **Waybar Battery Watch:** `runsEverySeconds` 1800 for "every 30 seconds"; kit default and test enforce 1800.
+- **Waybar Net Rate (5):** wrong example (10.0 kB/s is 1250.0) and bits against bytes; examples measured
+  over 5 seconds with a 2-second interval; the kit floors the interval at 5 seconds so its own tests fail;
+  two rules for the first sample; no mechanism for "since the service started".
+- **Waybar Load Meter (2):** the kit reader returns only the 1-minute value; `valueDecimals` without a unit is
+  rejected, so the two decimals were lost.
+- **Waybar Weather Bar:** the documents say `--set Latitude=VALUE`, the kit accepts only `latitude`.
+- **GTK Focus Timer (3):** an Add button, dialog and list for a timer with no add task; the count has no
+  slot; "today" has no local-or-UTC rule.
+- **GTK Quiet Hours (4):** a single settings record compiled as a SQLite list (no create, list rows, a mark
+  control, an empty-list message) while the kit and ARD say one JSON file.
+- **GTK Habit Streak (4):** a Save button labelled "Read 10 pages" (a sample value taken from an acceptance
+  sentence); a row toggle compiled as an add form with a removal confirmation.
+- **GTK Word Bank (4):** file import compiled as a type-in form; no Import button; the read-only file got a
+  database table.
+- **GTK Plant Care (2):** "Watered today" (stamps a date) compiled as a checkbox on a flag that does not
+  exist; the add form asks for a last-watered day.
+- **Astro Field Notes (3):** "one page per author" became one page for all authors; no author link target;
+  the seed post references a missing author.
+- **Astro Corner Cafe:** "show every value as stored" against "price as 6.50 €" and a mark only when true.
+- **Astro Town Events (3):** the one seed event is in the past so the home page is empty; past events both
+  have and do not have a reachable page; no clock rule for the build day.
+- **Android Shopping List (2):** the one "Clear checked" button compiled as a delete button per row.
+- **Android Lift Log (2):** the input rule accepts two decimals where the idea says one; the date is both
+  "not in the edit form" and "shown read-only".
+- **Tauri Link Shelf (2):** the Open button sent to a "summary" host no task builds (side effect of last
+  session's `isTauriSummary`); nothing in the kit can open a web address.
+- **Drink Reminder (no packet):** the schema cannot say "daily at a time the user chooses, kept in settings";
+  the provider's repair turned it into a fixed 09:00, then a later check rejected it. Budget Book's first run
+  died the same way: the one repair fixed what it was told and exposed a check of a later stage.
+
+Three root causes:
+
+1. **The compiler guesses the screen.** It infers a shape from the declared operations and falls back to "a
+   list with an add form" when the idea does not fit, without saying so. Fixing one shape per round does not
+   converge: rounds 8 to 12 each closed and the next found new shapes.
+2. **Provider text beside compiler rules.** The provider's prose and the numbers it computes or copies from
+   our own prompt examples are printed next to the compiler's rules and contradict them.
+3. **Kits are narrower than the documents promise**, and nothing ties a declared need to what the kit ships.
+
+Two things held in every audit: the skeleton (task order, file ownership, names, commands, kits) and the
+audit itself (about 45 blocking claims checked, all true).
+
+## 3. Alan's decisions
+
+- "this app approach of making the documents has flaws, it's not intelligent to repeat the same thing."
+- "My decision is that you do what you think will solve my problem ... non agent-ready docs."
+- **Use Claude Sonnet 5.5 (`claude-sonnet-5-5`)** for the new review and repair steps. His Anthropic key is in
+  the fish environment as `ANTHROPIC_API_KEY`.
+- The UI stays as it is: the user writes an idea, picks a preset, presses Generate.
+- Waybar label and class examples are to be **written by the compiler** from the declared threshold, unit and
+  decimals, not by the provider (decided before the direction change; still wanted, now as backlog).
+- After the fixes are in the installed app, the lead gives Alan **five new ideas, one per preset, never used
+  before**. Alan runs them alone in the app; the lead then verifies, builds the kits and audits what he
+  exported, and reports per packet.
+- Open: reuse a saved blueprint in the app so the same idea gives the same packet ("generate fresh" asks
+  again). Recommended for later.
+
+## 4. The app idea (the target the next agent builds)
+
+**What the user sees.** The same screen. Idea, preset, Generate. The progress line gains three stages:
+Review, Repair, Review again. The result shows a verdict: **Agent-ready (reviewed, 0 blocking)** or
+**Not ready** with each reason in one plain sentence, plus the minor notes. Export works in both cases, and
+the verdict is written into the packet. One more key field (Anthropic), kept in memory only like the others.
+A run takes a few minutes instead of seconds.
+
+**What happens behind Generate.**
 
 ```text
 idea + preset
-  -> local input checks                                              no money spent if invalid
-  -> TypeSafe Jev preflight (src/jev.ts)                             viability score, preset check
-  -> ONE DeepSeek request, strict JSON schema (src/pipeline.ts)      schema per preset: providerSchemaFor
-  -> settleBlueprint (src/compiler.ts)                               the two deterministic settlements
-  -> intake audit (src/schema.ts) + Jev integrity + capability audit (src/capabilities.ts)
-       -> on failure: exactly ONE repair request with the failed checks
-  -> normalizeBlueprint -> project graph (owners, contracts, phases, tasks, IDs)
-  -> render five docs (src/renderers.ts) + kit (src/kits.ts and the per-preset kit files)
-  -> auditPacket (src/audit.ts) gates export; preview bytes == export bytes
-  -> export with blueprint.json (CLI: src/packet.ts; app: src-tauri/src/export.rs)
+  -> everything the compiler does today (checks, Jev, DeepSeek blueprint, compile)   unchanged
+  -> REVIEW   Sonnet 5.5, one request: all five documents + the kit's text files + the audit brief.
+              Answer: typed findings (where, quote, why, fix). Every quote is checked against the files;
+              a finding whose quote is in no file is dropped.
+  -> REPAIR   only when the review has blocking findings. Sonnet 5.5 returns exact text edits
+              (file, find, replace). Local code applies them; an edit that does not match is reported.
+  -> BUILD    when the repair touched a kit file and a build is possible (CLI): the kit's own commands.
+              A repair that breaks the kit is thrown away.
+  -> REVIEW   again, on the repaired packet. At most 2 repair rounds (consider 3, see section 5).
+  -> VERDICT  0 blocking and the kit builds = agent-ready. Otherwise not ready, with the findings shown.
+  -> EXPORT   five documents + kit + blueprint.json
 ```
 
-Everything after the provider answer is deterministic local code. The provider supplies product meaning
-only, through **declared fields**. A new fact the documents need is a new declared field, an intake rule,
-and one provider-prompt sentence.
+**What gets saved.** `blueprint.json` must record the repair: the ordered edits, the model id, and the final
+review. Then compile(blueprint) + the recorded edits reproduces the exported bytes exactly, so
+`verify --packet` keeps working and a saved packet can be rebuilt for free. Without this, verify fails on any
+repaired packet.
 
-Invariants: exactly five docs, then `kit/`, then `blueprint.json`; preview bytes equal export bytes; one
-provider request plus at most one repair; keys are memory-only and never logged; every preset has a real
-kit; **strict JSON mode needs every schema property in `required`** (`tests/schema.test.ts` guards it).
+**What stays.** The compiler, the kits, the skeleton and all deterministic checks. The review findings become
+the backlog of compiler fixes: each plain compiler bug fixed deterministically means less for the repair step
+to do, and a cheaper, faster run.
 
-## 3. Goal and definition of done
+**What "done" means now.** Every exported packet carries an honest verdict. An idea gives either an
+agent-ready packet or a clear "not ready, because". No template system can promise that every idea compiles
+perfectly; this makes a failure visible instead of silent.
 
-Alan wants **a working installed desktop app whose exported packets are agent-ready for every preset.**
+**Honest limits, both seen in the test (section 5).** The reviewer that judges the repair is the same model
+that wrote it. And a review is not a build: the reviewer passed a repaired packet whose kit no longer builds.
 
-1. `npm run typecheck`, `npm test`, `npm run kit:check`, and in `src-tauri`: `cargo fmt --check`,
-   `cargo clippy --all-targets -- -D warnings`, `cargo test` are green. (`npm run check` runs all but kit:check.)
-2. Two consecutive live rounds on fresh ideas show no *systematic* defect class (the same defect in
-   several packets or presets), and every kit builds with its own commands.
-3. The app is rebuilt and installed, and has exported one packet per preset **from the app itself**,
-   each passing `npm run -s cascade -- verify --packet <dir>`.
-4. A final report to Alan: numbers per round, what was fixed, what is not verified, remaining limits.
+## 5. What was measured (paid for on Alan's Anthropic key: 31 calls, about $3.80)
 
-## 4. Before this session
+Tools, committed and tested (`tests/review-tool.test.ts`):
 
-Round 11 had closed with five of five packets agent-ready. Alan then ran the round-12 ideas
-(`scripts/agent-ready/run-round.fish`, 25 ideas, five per preset) from the installed app, and the run
-failed **before any document was written**:
+- `scripts/agent-ready/review.ts`: reviews one packet in one request. `--model`, `--packet`, `--out`,
+  `--idea` (looked up in `run-round.fish` for round packets), `--dry-run`.
+- `scripts/agent-ready/fix.ts`: repairs a packet from a review's blocking findings into a **copy**
+  (`--out` must not exist). Writes `<slug>.fix.json` next to the copy.
+- `@anthropic-ai/sdk` 1.7.0 is a dev dependency. Both tools stream with `max_tokens` 64000, because thinking
+  counts against the limit (20000 cut Haiku's answers short).
 
-| Preset | Idea | What happened |
-|---|---|---|
-| Waybar | Disk Free | The AI put labelTemplate and thresholds on every feature; the one repair did not remove the copies. |
-| Android | Tip Split | The AI invented a scheduled notification, then after the repair set `valueDecimals`, a bar-only field. |
-| Tauri | not recorded | `provider.http-error` at the provider step; the UI hid the HTTP status. |
-| Astro | not recorded | `jev.intake-rejected`; the UI hid Jev's score. |
+**Step A: can the model review?** Nine packets with known truth (six broken, three clean).
 
-After the intake stage was fixed (section 5.1), four ideas were generated live by CLI. All four reached
-Gate Clean, verified, and built their kits, and **none was agent-ready**:
-
-| Packet | Blocking | Defect |
-|---|---|---|
-| Waybar Disk Free | 1, then 1 more | Label acceptance examples said two decimals ("3.67 GB") while the contract and kit said one. A later audit found one example also gave class normal to a reading that the red-below-10-GB rule makes critical. |
-| Android Tip Split | 2, one cause | A calculator with no stored data still got the list prompt: status, empty-state and write-error slots, and a test that "seeds records through the repository". |
-| Tauri Budget Book | 3, two causes | PRD said selecting a row opens a read-only view with Delete while the tasks built no such view. Monthly totals were compiled as a list filter, with a failure message both required and forbidden. |
-| Astro Green Kitchen | 3 | Nothing linked to the meal-type pages; nothing said which pages exist or what an empty one shows; the kit printed ingredients and steps as one comma-joined line. |
-
-## 5. What was fixed this session
-
-All local on `main`, nothing pushed. Commits `f2f4f5c` to `2c8fe5e` (twelve, each fix with a test that
-failed first). Tests: `tests/round12-intake.test.ts`, `tests/round12-docs.test.ts`.
-
-### 5.1 Intake stage
-
-- **Failures say why.** `provider.http-error` now carries the HTTP status, a plain-word hint, and the
-  allowlisted provider code (`providerIssue`, src/pipeline.ts; the CLI provider forwards `error.code`).
-  `jev.intake-rejected` carries the viability score, the 0.65 it needs, and the preset Jev would pick
-  (`jevIntakeRejectedIssue`, src/jev.ts). Jev returns numbers only, so there is no text reason.
-- **Bar-only keys are offered to the Waybar preset only.** `providerSchemaFor(presetId)` (src/schema.ts)
-  leaves `systemSource`, `thresholds`, `labelTemplate`, `unit`, `valueDecimals` out of the response schema
-  of the other four presets. Cause of the Tip Split failure: one shared schema plus strict JSON mode made
-  the AI fill every key.
-- **`settleBlueprint`** (src/compiler.ts) runs on the parsed answer before any check. Waybar: identical
-  label or threshold copies stay on one feature (`settleWaybarLabel`, src/waybarContracts.ts: the first
-  non-click feature that only shows data, else the scheduled measuring feature); copies that differ are
-  rejected as before. All presets: a `scheduledNotification` with no schedule is cleared when no feature
-  uses notifications. `AGENTS.md` names these as the only exceptions to "never drop provider content".
-
-### 5.2 Document stage
-
-| Stack | Fix | Where |
-|---|---|---|
-| Android | Zero data objects means no list: one section per feature, and the first main task tests its own acceptance with no repository. | `androidNoData`, `noListSlotsSentence` (src/compiler.ts); src/androidPlan.ts |
-| Waybar | Check `capability.waybar-label-decimals`: a label example whose decimals differ from `valueDecimals` goes back for repair. Check `capability.waybar-class-example`: an example whose class contradicts the thresholds for its reading goes back. The units rule yields to a label that states its decimals. | `waybarValueIssues`, `WAYBAR_UNIT_CONVENTION`, provider notes (src/waybarContracts.ts) |
-| Tauri | A later read-only main feature with `narrowsListBy` none is a **summary**: its own "summary" host, writes nothing to the store, one load-failure rule. A Tauri filter now needs `narrowsListBy` other than none. | `isTauriSummary`, `hasFilterFeature`, `slotFor` (src/compiler.ts); src/tauriContracts.ts |
-| Tauri | Check `capability.tauri-no-detail-view` (Alan's decision: send the wording back): with no edit feature, text about a view of one selected record goes back for repair. The cause was our own provider note saying a delete always starts from a read-only view; it is now scoped to products with an edit feature. | src/capabilities.ts; Tauri `providerNotes` (src/presets.ts) |
-| Astro | A tag page over the collection's one choice field gets a kit shell (one page per option, "No entries yet."), nav links per option, a route line stating the page set, and a task that starts from the kit shell. List fields render as `<ol><li>`; the seed has two items; the test-reading rule covers a list field. | `astroTagPages` (src/astroWeb.ts); `tagPage`, `SHOWN_AS` (src/astroKit.ts) |
-
-### 5.3 Result
-
-| Packet | Re-audit | Basis |
-|---|---|---|
-| Tip Split | 0 blocking | Recompiled from the AI's own answer. |
-| Green Kitchen | 0 blocking | Recompiled from the AI's own answer. |
-| Disk Free | 0 blocking | Recompiled from a blueprint repaired by hand as the two new checks ask. Third audit. |
-| Budget Book | 0 blocking | Recompiled from a blueprint repaired by hand as the new check asks. The second audit left one sentence; after that fix the packet differs from the audited one only in that sentence and one clause (sentence diff, identical kit). No third audit. |
-
-Verified at `2c8fe5e`: `npm run check` green (467 tests, clippy, cargo test); `npm run kit:check` 18/18;
-the four recompiled kits build with their own commands; `verify --packet` passes on each; the app is
-rebuilt and installed (`scripts/install-linux-app.sh`, 2026-11-10 15:09).
-
-Not verified:
-- **No live run after the document fixes.** Whether the AI repairs Disk Free (decimals and class) and
-  Budget Book (two features and an outcome sentence) in its single repair request is unproven.
-- `settleWaybarLabel` has never acted in a live run (the AI returned one feature for Disk Free).
-- 21 of the 25 round-12 ideas have not been run. GTK was not run at all in round 12.
-- The Tauri HTTP status and the Jev score of the rejected Astro idea are still unknown. Budget Book and
-  Green Kitchen were stand-ins; Alan never said which ideas failed. Request size is ruled out for Tauri
-  (its request is the second smallest; Waybar's is the largest and passed).
-- No screenshot of the rebuilt app; no packet exported from the app itself this session.
-
-Test data: `tests/fixtures/waybar-disk-free.json`, `android-tip-split.json`, `tauri-budget-book.json`,
-`astro-green-kitchen.json` are the **unrepaired** provider answers. The hand repairs are the `repaired()`
-helpers in `tests/round12-docs.test.ts`. The packets were in `/tmp/v4-round12b`, `12c`, `12d` (a RAM disk;
-gone after a reboot; recompile with `npm run -s cascade -- compile --preset <id> --blueprint <file> --out <dir>`).
-
-### 5.4 Next session (2026-11-10, later): the four ideas run live again
-
-Start state was green (`npm run check`, 467 tests). Alan said yes to the four live runs (CLI, packets in
-`/tmp/v4-round12e`, a RAM disk).
-
-| Idea | Live result | Verify | Kit build | Audit |
+| Model | Confirmed blocking causes found | On the 3 clean packets | Quotes | Per review |
 |---|---|---|---|---|
-| Disk Free (Waybar) | Gate Clean | pass | all commands 0 | **1 blocking**, 10 polish: not agent-ready |
-| Green Kitchen (Astro) | Gate Clean | pass | all commands 0 | 0 blocking, 5 polish: agent-ready |
-| Tip Split (Android) | Gate Clean | pass | all commands 0 | 0 blocking, 10 polish: agent-ready |
-| Budget Book (Tauri) | **`capability-rejected`, no packet** | - | - | not agent-ready |
+| Sonnet 5.5 | **17 of 19** (missed: Net Rate's 5-second examples; Lift Log's date in the edit form) | 0, 1, 1 "blocking": both real, rated minor by the earlier audit (`npm test` before the build; a device check for saved data in an app that saves nothing) | all found in the files | about 1 minute, 13 to 23 cents (41k to 74k tokens in, 5k to 13k out) |
+| Haiku 5.5 | all of Focus Timer, Quiet Hours, Net Rate, Field Notes, Link Shelf; Lift Log 1 of 2 | 3, 5 and 2 "blocking": real but minor things | all found in the files | 1.5 to 2.5 minutes, about 2 cents (22k to 41k tokens out, mostly thinking) |
 
-**Disk Free blocking defect (confirmed by the lead in PRD.md 53, 59, 88 and TASKS.md 98).** "With 3,670,016,000
-bytes free the label text is 3.7 GB and the class is normal", while the declared threshold is critical below
-10,000,000,000 and the kit applies it. `capability.waybar-class-example` did not fire: its pattern is
-`class (normal|warning|critical)` and the answer says "the class **is** normal" (src/waybarContracts.ts, the
-`stated` set in `waybarValueIssues`). The decimals held (3.7 GB). One of the three pattern checks therefore
-failed on its first live run because of one word: evidence for the prose-check decision (6.1).
+Sonnet 5.5 is precise enough to be the gate. Haiku 5.5 finds as much but calls two to three times as many
+things blocking, which would cost extra repair rounds.
 
-Polish worth fixing, by stack (all match section 6 unless marked new):
-- Android: storage text with no data object (SavedStateHandle, Room, OWN-DATA-STORE, relaunch check, "loaded
-  records", six recovery states); no field rules for entered values; build-tools 37.0.0; **new:** the no-data
-  task prompt says "press the buttons ... assert the field messages" when the product has neither; **new:** the
-  provider copied our note's "(for example 84.50 means 2)" into the behavior, so the note's example must read
-  as a shown value; **new:** no test asserts that nothing is written (CON-PERSISTENCE-DISABLED has no test owner).
-- Astro: **new:** the tag-page kit shell lists entries unsorted while the acceptance says alphabetical by name,
-  and with one seed entry no test can tell; final validation runs `npm test` before `npm run build`; both seed
-  lists hold the same items; a list item cannot contain a comma; the `/teas/` example route.
-- Waybar: no tooltip text or rule for total = 0; `{app-id}` unrendered; nothing says what
-  `lifecyclecoordinator.rs` holds; "two hooks" (three); click clauses with no click feature; the TASK-01 marker
-  reads a TASK-05 file; the launch check never imports the CSS; **new:** the launch check asks to trigger a
-  failure that a system source cannot produce; the feature function signature; kit `units.rs` comment.
+**Step B: can the model repair?** Sonnet 5.5 repaired three broken packets from its own review, then reviewed
+the result. Every edit applied (0 failed out of 80). Then the repaired kits were built.
 
-**Budget Book live failure (a repair cascade).** The first answer invented an "Edit expense" feature. The one
-repair (`semantic.feature-not-requested`) removed it. The repaired answer then failed
-`capability.tauri-no-detail-view` on "Expense list" and "Delete expense": their text about a read-only view was
-right while an edit feature existed and wrong once it was removed. No repair was left. Likely trigger: the
-Tauri provider note now opens with "When some feature edits a record ..." (the earlier live run, before that
-rewording, invented no edit feature). Cause in the pipeline: the repair request lists only the stage that
-failed (intake), so the provider never sees the capability check that removing the feature will trip.
-Not fixed yet; neither answer was kept, so the next live run of Budget Book (with `--keep-answers`) supplies
-the fixture.
+| Packet | Blocking before | After round 1 | After round 2 | Kit build after repair |
+|---|---|---|---|---|
+| Focus Timer (GTK) | 4 | 1 (new: the notification part had no function to call) | **0** | passes |
+| Field Notes (Astro) | 3 | **0** by the reviewer | - | **fails** |
+| Net Rate (Waybar) | 4 | 1 (new: the 5-second examples) | 1 (another: a TASK-01 check reads a file TASK-06 creates) | **passes now** (it failed before the repair) |
 
-No `provider.http-error` appeared in the four runs.
+- Focus Timer: the Add button, dialog and list are gone; the timer screen and a slot for the count are
+  described; a notifier interface is defined.
+- Net Rate: the examples are right (1250.0 kB/s), "times 8" is gone, one first-sample rule; the model also
+  fixed the kit's interval floor in `config.rs`, `module.rs` and the kit test, and `cargo test` passes.
+- **Field Notes shows the gap.** The repair added a per-author route to the documents (33 edits) and rewrote
+  `kit/src/pages/author.astro` for its new place `author/[slug].astro`. An edit cannot move or create a file,
+  so the file stayed where it was with imports that no longer resolve: `npm run check` and `npm run build`
+  fail. The reviewer still said 0 blocking, because it reads and cannot build.
 
-Changed (`c183599`): `generate --keep-answers <folder>` writes `answer-1.json` (and `answer-2.json` after a
-repair) with credential-like text removed; a Gate Clean run prints `Repaired once: <rules>`;
-`run-round.fish` keeps full output and answers per run under `<round>/_logs/` and `<round>/_answers/`.
-Before this the CLI did not record a repair, so **whether Disk Free needed its repair in this run is unknown.**
+A repair round costs about 15 to 26 cents and 1.5 to 2.5 minutes. A packet with two rounds costs about 70 to
+90 cents and 5 minutes.
 
-Confirmed against a real packet (Tip Split), not fixed yet: the Android storage boilerplate in a no-storage
-packet (6.3, first Must), and the build-tools version: the docs say 37.0.0, the kit sets no
-`buildToolsVersion`, and this machine builds the kit with only build-tools 36.0.0 installed.
+**What this proves:** the model finds the confirmed defects, its edits apply cleanly, it can fix kit code that
+a kit test then confirms, and the reviewer stops flagging the original defects after the repair.
+**What it does not prove:** that "0 blocking" by Sonnet 5.5 means agent-ready. No independent audit and no
+trial build has checked the repaired packets. **What it disproves:** that a review alone is enough after a
+repair. A repair that touches the kit must be followed by the kit's own build, and the edit format needs
+"create", "move" and "delete" for files (or kit edits must be refused). Net Rate also shows the loop need not
+end in two rounds: each round fixed what was flagged and the reviewer then raised the next real item.
 
-### 5.5 The round-12 live round (22 ideas, `/tmp/v4-round12f`, a RAM disk)
+## 6. What to do next, in order
 
-Alan chose "Run 22": the 21 ideas not yet run plus Budget Book; Disk Free, Tip Split and Green Kitchen count
-from 5.4 (same compiler). Full logs are in `/tmp/v4-round12f/_logs/`, the provider answers in `_answers/`.
+1. **Check the repair independently (first, before building anything).** Take the repaired Focus Timer and
+   Net Rate packets (section 7 says how to rebuild them). Run one fresh read-only audit agent per packet with
+   `scripts/agent-ready/audit-brief.md` (make the prompts with `make-audit-prompts.py`), and confirm each
+   blocking claim against the files. If the repaired packets are not clearly better than the originals by
+   that audit, stop and tell Alan: the direction needs rethinking.
+2. **Close the gap Field Notes showed.** Give `fix.ts` file operations (create, move, delete) with a test,
+   and make the loop build the kit after any repair that touches it. Then repair Field Notes again and see
+   whether its kit builds. Decide with Alan what the desktop app does, where no build can run: refuse kit
+   edits and report "not ready", or run the build when the tools are installed.
+3. **Fix the plain compiler bugs the reviewer keeps finding** (deterministic, one failing test first each),
+   so the repair loop has less to do: the kit's 5-second interval floor against a declared shorter interval;
+   final validation runs `npm test` before `npm run build` (Astro); the TASK-01 marker criterion reads a file
+   a later task creates (Waybar); the relaunch check asks for saved data when nothing is stored (Android);
+   the Save label taken from the first quoted string of an acceptance sentence (GTK, Habit Streak);
+   `isTauriSummary` catching an action that is not a summary (Link Shelf); `valueDecimals` without a unit
+   rejected (Load Meter); the provider-note examples that get copied ("30 minutes is 1800", "6,250,000 bytes
+   in 5 seconds is 10.0 Mb/s", "84.50 means 2").
+4. **Build the review and repair steps into the pipeline** (section 4): `src/pipeline.ts` stages, the edits
+   recorded in the manifest and replayed by `verify`, the CLI `generate` path with the SDK, a Rust command
+   for the desktop app like `deepseek_complete` (keys in memory only), the third key field, the new progress
+   stages and the verdict panel in `src/app.ts`. Read the `claude-api` skill before writing Claude API code.
+   Facts already checked there: model id `claude-sonnet-5-5`; thinking cannot be disabled and is adaptive by
+   default; no forced `tool_choice`; structured output through `output_config.format`; set
+   `output_config.effort` (the tests used `high`; try `medium` for speed and cost); always check
+   `stop_reason` (`max_tokens`, `refusal`); the skill's default for product code is the server-side
+   `fallbacks: "default"` with the beta header `server-side-fallback-2026-07-01` (left out of the two tools
+   on purpose, because they measure the named model).
+5. **Decide the round limit with data.** Run the loop on all 16 broken packets (free to rebuild, a few
+   dollars of API). Count how many reach 0 blocking with a passing kit build in 2 rounds and in 3.
+6. **Rebuild and install** (`bash scripts/install-linux-app.sh`), take a screenshot, then give Alan five new
+   ideas, one per preset. He runs them in the app; verify, build the kits and audit what he exports.
+7. Still wanted, lower priority: Waybar examples written by the compiler; "daily at a user-chosen time" for
+   Android (support it or reject it clearly); reuse of a saved blueprint.
 
-**Generation: 21 of 22 Gate Clean, all 21 verify.** Repairs used (the new `Repaired once` line):
-Word Bank (missing-data-fields, feature-not-requested), Quiet Hours (initial-value-type), Net Rate
-(waybar-build-order), Load Meter (waybar-label-unit), Meeting Clock (notification-schedule), Day Journal
-(missing-data-fields), Clip Keeper (capability.clipboard-watch), Studio Folio (narrow-not-read-only).
-Budget Book passed this time with no repair: the provider is not repeatable at temperature 0.
+## 7. Where things are
 
-**Failed: Drink Reminder (Android), `capability-rejected` after its repair.** Answers kept in
-`_answers/21-android-kotlin-compose/`. First answer: a settings object with `reminder time` (time, initial
-"09:00"), `reminder on`, `last sent day`; the feature had `scheduledNotification` and no schedule. The repair
-(`semantic.initial-value-type`, `semantic.notification-schedule`) set `runsDailyAt` to a fixed "09:00", and
-then `capability.android-run-state` rejected `last sent day`. Two findings:
-1. **Repair cascade, second time today, second preset** (Budget Book in 5.4): the repair fixes what it was
-   told, the repaired answer fails a check of a later stage, and no repair is left.
-2. **The schema cannot say "daily at a time the user chooses, kept in settings".** `runsDailyAt` is a fixed
-   time and `runsAtField` needs a records object with a title field. The provider turned the user's time into
-   a fixed 09:00. Had it also dropped `last sent day`, the packet would have been Gate Clean and wrong.
-   Needs real support or a clear rejection.
+- Provider answers of the round: `tests/fixtures/round12-answers/` (per run `answer-1.json` and, after a
+  repair, `answer-2.json`).
+- The final blueprint of every round packet (24): `tests/fixtures/round12-blueprints/<preset>--<slug>.json`.
+  Rebuild a packet for free:
+  `npm run -s cascade -- compile --preset <preset> --blueprint <file> --out /tmp/<round>/<preset>`.
+- Reviews and repairs of steps A and B: `tests/fixtures/round12-reviews/` (`bench/` holds the step-A reviews
+  per model; `r1--<slug>.fix.json`, `r1--<slug>.review.json`, `r2--...` hold step B). To rebuild a repaired
+  packet: recompile it, then apply the edits of its `fix.json` files in order (`fix.edits`) with `applyEdits`
+  from `scripts/agent-ready/fix.ts`.
+- The packets themselves are on a RAM disk and vanish on reboot: `/tmp/v4-round12e` (first four runs),
+  `/tmp/v4-round12f` (the 22-idea round, with `_logs/` and `_answers/`), `/tmp/v4-round12g` (`r1/`, `r2/`
+  repaired packets, `logs/`).
+- Repo map: `src/schema.ts` (provider schema, prompt, intake rules), `src/pipeline.ts` (flow, the one repair),
+  `src/jev.ts`, `src/capabilities.ts`, `src/compiler.ts` (settle, normalize, graph, task prompts),
+  `src/renderers.ts`, `src/audit.ts`, `src/presets.ts`, per-preset `*Contracts.ts` and `*Kit.ts`,
+  `src/cli.ts`, `src/packet.ts`, `src/app.ts`, `src-tauri/src/`, `tests/`, `scripts/agent-ready/`.
 
-**Kit builds** (`build-round-kits.sh`, every command of every kit): GTK 5 of 5 pass. Astro 4 of 4 pass.
-Waybar 3 of 4 pass; **Net Rate fails `cargo test`**: `tests/module_output_tests`, tests
-`fresh_cache_is_shown_and_old_cache_is_marked_stale` and
-`severity_comes_from_declared_thresholds_in_both_directions_and_stale_wins` (left "normal", right "stale").
-Net Rate refreshes every 2 seconds; cause not read yet (suspect: the kit test's fixed ages against a short
-interval). Tauri 5 and Android 3 were still building when this was written.
+## 8. How to work
 
-**Audits.** One agent per packet, prompts made by `scripts/agent-ready/make-audit-prompts.py` (new). 20 were
-started; the account hit its 5-hour usage limit (resets 19:40 Europe/Ljubljana) and they stopped before
-reporting. Days Until was never started (20-agent limit). **No packet of this round has an audit verdict
-yet.** A fresh session cannot resume those agents: regenerate the prompts and start one agent per file.
-
-**Confirmed by the lead from the kept answers and packets (no audit needed to see them):**
-- Net Rate: acceptance "a counter change of 6,250,000 bytes over 5 seconds writes the label '10.0 kB/s'".
-  That is 1250.0 kB/s. The provider copied our note's example "6,250,000 bytes in 5 seconds is 10.0 Mb/s".
-- Battery Watch: the idea says every 30 seconds; the provider declared `runsEverySeconds` 1800 (our note says
-  "30 minutes is 1800"). PRD.md says both "every 30 seconds" (line 23) and "The refresh interval is 1800
-  seconds" (line 99).
-- Load Meter: the idea asks for two decimals. `capability.waybar-label-unit` rejects `valueDecimals` without a
-  unit, so the repair set it to null. The TRD decision says "exactly two decimals", the Label line says "any
-  other number as stored". A unitless number with fixed decimals must be allowed.
-- Disk Free (5.4): wrong class in an example.
-So 4 of the 5 live Waybar packets carry a wrong or lost number that the provider computed or copied.
-
-**Alan's decisions this session:**
-- Waybar label and class examples are **written by the compiler** from the declared threshold, unit and
-  decimals; a provider sentence that states a class or a label value for a reading goes back for repair. This
-  replaces `waybar-label-decimals` and `waybar-class-example`. Not built yet. Plan: append the lines in
-  `normalizeBlueprint` (src/compiler.ts, `acceptanceOutcomes`), compute with the kit's rounding (half away
-  from zero; pick readings that are exact in binary), and add a kit test with the same numbers so
-  `cargo test` proves them. Also reword the provider-note examples that get copied.
-- Alan's own five-idea check comes **after** the fixes are in the installed app (6.1 item 5).
-- Open, not decided: reuse a saved blueprint in the app so the same idea gives the same packet ("generate
-  fresh" asks the provider again). Recommended for after the stacks are agent-ready.
-- Open, to ask with this evidence: allow a second repair when the repaired answer fails only checks the first
-  repair request could not list (changes the "one request plus at most one repair" rule), or keep one repair
-  and report every local stage at once.
-
-### 5.6 Audit ledger of the round (each blocking claim checked by the lead against the packet files)
-
-The limit cleared and the audits were resumed. Entries are added as audits return; a packet not listed has
-no verdict yet.
-
-| Packet | Blocking (confirmed) | Verdict |
-|---|---|---|
-| Waybar Battery Watch | 1 | not agent-ready |
-| GTK Focus Timer | 3 | not agent-ready |
-| GTK Quiet Hours | 4, one cause | not agent-ready |
-| GTK Habit Streak | 4, two causes | not agent-ready |
-| GTK Word Bank | 4, one cause | not agent-ready |
-| Waybar Net Rate | 6, five causes | not agent-ready (and its kit fails `cargo test`) |
-| Waybar Load Meter | 2 | not agent-ready |
-| Astro Field Notes | 3, two causes | not agent-ready |
-| GTK Plant Care | 2 | not agent-ready |
-| Waybar Weather Bar | 1 | not agent-ready |
-| Android Shopping List | 2, one cause | not agent-ready |
-| Tauri Link Shelf | 2 | not agent-ready |
-| Astro Corner Cafe | 1 | not agent-ready |
-| Android Lift Log | 2 | not agent-ready |
-| Astro Studio Folio | 0 (8 polish) | **agent-ready** |
-| Astro Town Events | 3, one cause | not agent-ready |
-| Tauri Budget Book (second run), Meeting Clock, Day Journal, Clip Keeper; Android Days Until | - | **no verdict**: Alan said "stop the agents" while these five audits ran |
-
-- **Battery Watch.** `runsEverySeconds` 1800 for "every 30 seconds": TRD schedule line, the acceptance
-  criterion, kit `config.rs` default and kit `contract_tests.rs` all enforce 1800 while PRD goals say 30.
-  No check compares the declared interval with the idea. Polish: the stored record struct and the kit's
-  reader struct are both named `BatteryReading`; a failure sentence ending in "the label is --" loses its
-  "--" in three places (PRD 73, TRD 134, 268); CON-PLATFORM-FILES rejects paths outside XDG while the battery
-  is read from /sys.
-- **Focus Timer** (records whose only field is stamped by the app, so no add form exists).
-  (1) TASK-05 is told to build an Add button, an empty dialog shell "that the add task fills" and an
-  empty-list sentence naming the Add button; there is no add task. (2) TASK-06 (today's count) must mount
-  into "the filter area or the list region", slots TASK-05 does not expose ("exactly these named slots, no
-  others: a status area; an add-entry control"). (3) No document says whether "the current calendar day" is
-  the local or the UTC day; nothing in PRD, TRD or TASKS names a time zone.
-- **Quiet Hours** (one settings object, `singleRecord`, operations read and update, no initial values).
-  Rendered through the record-list path: TRD 114 gives it a SQLite table, a migration and a
-  list/get/update trait whose update returns NotFound, while ARD 42 says "the app creates no database",
-  TRD 166 says atomic JSON, and the kit ships no SQLite. Nothing creates the first record, so every save
-  fails. TASK-04 is told to build list rows, "the mark control (a GtkCheckButton or GtkToggleButton) in the
-  per-row action area" and an empty-list message in a "status area", the name the PRD uses for the
-  Inside/Outside label.
-- **Habit Streak.** (1) TASK-05: "the dialog's Save slot button is labelled \"Read 10 pages\"": the
-  compiler took the first quoted string of the acceptance criterion (the sample habit name) as the button
-  label; the criterion says "the button labeled Add". (2) "Mark habit done for today" is create + delete on a
-  child record (reference + date, no initial): it got the add-form template (a typed habit and date,
-  `validate_habit_completions`), the slot "the add-entry control" instead of the per-row action area, and a
-  removal confirmation dialog, while the PRD says pressing again removes it at once.
-
-- **Word Bank** (import from a chosen text file, compiled as an add-a-record form). TASK-06 "Import words" got
-  the entry-form prompt (`validate_words(word, meaning)`, form_state) with no word about a file, while the PRD
-  says words come only from a file; no Import button and no owner for the Open panel; the read-only document
-  got a SQLite table `imported_word_file` while its own persistence contract says "the app keeps no copy";
-  TASK-07 "Add meaning" is told to reuse the add form, which lets the user edit the word (the PRD forbids it)
-  and has no validate for the meaning alone.
-- **Net Rate** (reads every 2 seconds). (1) The kit floors the service interval at 5 seconds
-  (`settings.refresh_seconds.max(5)` in kit `src/module.rs`, `config.rs` rejects less than 5) while the default
-  is the declared 2: the kit's own stale tests fail and TASK-05's required `interval_seconds(...) == 2` cannot
-  hold. (2) The wrong example "6,250,000 bytes over 5 seconds ... '10.0 kB/s'". (3) Provider behavior says
-  "the counter change times 8 ... converts it to kB/s" (TRD 109) against the compiler's "a rate is the counter
-  change divided by the whole seconds" (TRD 113). (4) First sample: provider "writes the label with 0.0 kB/s",
-  compiler "the label stays the empty label". (5) Both examples measure "over 5 seconds", more than twice the
-  2-second interval, which the contract's own reset rule turns into 0.0. (6) "The first refresh after the
-  service loop starts" has no mechanism: one `fetch_output` serves the loop and `--action refresh`.
-- **Load Meter.** (1) The record and tooltip need the 5- and 15-minute values, but the kit's
-  `LoadAverageReader` returns only the first field (`type Reading = f64`), `system_source.rs` is in no task's
-  modify list, and TRD 108 forbids reading any other field. (2) Two decimals lost (see 5.5).
-- **Field Notes.** (1) "One page per author" was compiled as one static `/author` page over all authors
-  (`kit/src/pages/author.astro`), while the acceptance says "A page exists for every author" and the home list
-  and post page must link "to that author's page": no such route or href exists. (2) The seeded post says
-  `author: sample-reference` while the seeded author's id is `01-sample-entry`, nothing says what a reference
-  stores, and the contract requires the build to fail on an unknown author, so the untouched seed fails it.
-
-- **Plant Care.** (1) "Watered today" is an `update` that stamps a date; TASK-07 is told to build "the mark
-  control (a GtkCheckButton or GtkToggleButton) ... it changes the stored flag", and Plants has no flag.
-  (2) The add form's `validate_plants(name, room, watering_interval_days, last_watered)` takes a typed
-  last-watered day, while the PRD says a new plant has none. No declared field says which fields a feature
-  writes, or that a field is stamped by an action instead of typed.
-- **Weather Bar.** The provider's text documents `--set Latitude=VALUE` (PRD 39, ARD 30 and 45, TRD 115); the
-  kit's `SETTING_KEYS` are `latitude`, `longitude`, matched exactly, so the documented command exits 2. No
-  acceptance criterion runs `--set`. Polish: the kit's `format_in_unit` rejects a unit such as degrees
-  Celsius and the Label line names no function for it; "HTTPS only" against a plain 127.0.0.1 test listener.
-- **Shopping List.** "Clear checked" (one button, delete by rule) got the per-row delete template: its slot is
-  "the per-row action area" and its contract reads "the row's Delete control carries testTag delete- plus the
-  record id". The first main task exposes no list-level action slot. Polish: clearing N items is N single
-  deletes with no transaction.
-- **Link Shelf.** (1) "Open bookmark" (read-only, `narrowsListBy` none) was classified as a **summary** by
-  last session's `isTauriSummary` and sent to "the summary host", which TASK-04 does not expose; the PRD wants
-  an Open button in every row. (2) Nothing can open a web address: no opener plugin in the kit's Cargo.toml,
-  package.json or capabilities, no command, no platform need declared, and TRD 218 says no permission is
-  required.
-
-- **Corner Cafe.** The general seed rule "Every field value is rendered as the stored value alone ... never a
-  reformatted one" (PRD 63, TRD 53, TASKS 33) against the feature's "price formatted in euros with exactly two
-  decimals (6.50 €)" and "a vegetarian mark shown only when the flag is true" (PRD 79, TASKS 116). The TASK-04
-  prompt names neither. The seed is `price: 0`, `vegetarian: true`. Polish: an empty group has no stated
-  rendering; "one element for a single entry" for a multi-record list.
-- **Lift Log.** (1) Weight is rendered with the default rule `^[0-9]+([.][0-9]{1,2})?$` ("at most 2 decimal
-  places ... unless the behavior states another count") while the behavior says "at most one decimal place"
-  and the acceptance says 82.55 must be rejected. A data field has no declared decimals; the count lives in
-  prose. (2) Edit contract: "Date, Created at ... is not in the form" against the acceptance "The edit form
-  shows the set's date as read-only". Polish: no field slug is printed, so testTags are a guess.
-- **Studio Folio: 0 blocking.** Polish: one seed entry cannot prove the year sort; every seed field holds
-  "Sample text" (the link too); `npm test` before `npm run build`; the `/teas/` example; the link field is
-  plain text in the kit shell while the acceptance needs an `a`; docs say "markdown or MDX" and the kit has no
-  MDX integration.
-
-- **Town Events** (build-time date filter). (1) The one seed entry is dated 2026-01-01 and "keep its sample
-  entry unchanged", so the built home page is empty today, against "lists are not empty" and the
-  count-the-files test rule; nothing says what the page shows with no upcoming event. (2) "A page exists for
-  each event in the content, and its address is reachable from the home page listing" against "Events whose
-  date is before the build day are omitted". (3) No document says which clock gives the build day (the only
-  time-zone sentence is about a time-of-day field), the day cannot be injected, and the filter and sort have
-  no testable owner (tests may not import `.astro` files).
-
-**Round-12 totals (25 ideas).** Generated: 23 packets from 26 live runs (Budget Book failed once and passed
-once; Drink Reminder failed). Kits: 23 of 24 built packets pass every command (Net Rate fails). Audited: 19
-packets. **Agent-ready: 3** (Tip Split, Green Kitchen, Studio Folio). **Not agent-ready: 16.** No verdict: 5.
-By preset: GTK 0 of 5; Waybar 0 of 5; Astro 2 of 5; Android 1 of 3 audited (Drink Reminder no packet, Days
-Until no verdict); Tauri 0 of 1 audited (4 no verdict).
-
-**Where the session stopped (Alan's words, 2026-11-10): "this app approach of making the documents has flaws,
-it's not intelligent to repeat the same thing", then "stop the agents".** Nothing was fixed after the round.
-The lead's reading of the evidence, given to Alan and not yet decided by him:
-1. The compiler infers a screen shape from operations and falls back to "a list with an add form" when the
-   idea does not fit, silently. Patching one shape per round does not converge.
-2. Provider prose and provider-computed numbers are printed beside the compiler's own rules and contradict
-   them (bits against bytes, "0.0 kB/s", `--set Latitude`, 1800 seconds, one decimal against two).
-3. Kits are narrower than the documents promise (5-second floor, one-value reader, no per-author route, no
-   URL opener) and no check ties a declared need to what the kit ships.
-Proposed direction (not approved): **fail closed.** Each preset declares the building blocks its kit really
-supports; the provider picks a block per feature as a declared field and fills that block's fields; the
-compiler renders only declared blocks and rejects the rest with one clear sentence; provider prose is not
-printed where a declared field or compiler rule exists; the kept answers become a free
-regression set. They are saved in the repo: `tests/fixtures/round12-answers/` (one folder per run of the
-22-idea round with `answer-1.json` and, after a repair, `answer-2.json`; plus `step1-*.json` for Disk Free,
-Green Kitchen and Tip Split). The packets themselves are only in `/tmp/v4-round12e` and `/tmp/v4-round12f`
-(a RAM disk); recompile from the answers with `npm run -s cascade -- compile`.
-
-Alan's last word (2026-11-10): "its all non agent ready with flaws, lets talk about a different approach with
-the outcome I asked." The next step is that conversation, not more fixes.
-
-Kit builds, final: **20 of 21 pass every command** (GTK 5, Waybar 3 of 4, Tauri 5, Astro 4, Android 3). Only
-Net Rate fails.
-
-Class forming across presets: **the main-screen task prompt assumes "a list with an add form"** whatever the
-declared shape is. Seen for no data (Android Tip Split, fixed last session), app-stamped records (Focus
-Timer), a single settings record (Quiet Hours), and a row toggle stored as child records (Habit Streak).
-
-### 5.7 New direction (Alan's decision, 2026-11-10 evening): review and repair with a stronger model
-
-Alan: "My decision is that you do what you think will solve my problem ... non agent-ready docs." He has an
-Anthropic API key in the fish environment (`ANTHROPIC_API_KEY`; never print it) and asked whether Haiku 5.5 or
-Sonnet 5.5 is strong enough. The UI stays: write an idea, pick a preset, Generate.
-
-**The plan the lead chose.** Keep the compiler and its skeleton (task order, owners, files, commands and kits
-held up in every audit). After compile, add two steps by a Claude model: an independent **review** of the
-whole packet (the audit brief, one request), then a **repair** that returns exact text edits for the blocking
-findings, then a second review. Export shows the verdict: agent-ready (0 blocking) or not ready with the
-reasons. The edits must be recorded in `blueprint.json` so compile + edits reproduces the exported bytes
-(otherwise `verify --packet` fails). Compiler fixes for plain compiler bugs continue as a backlog fed by the
-review findings, so the repair step has less to do over time.
-
-**Tools (committed):** `scripts/agent-ready/review.ts` (one packet, one request, typed findings, every quote
-checked against the files) and `scripts/agent-ready/fix.ts` (edits applied to a copy; a non-matching edit is
-reported). Tests: `tests/review-tool.test.ts`. `@anthropic-ai/sdk` 1.7.0 is a dev dependency. Models:
-`claude-haiku-5-5` ($0.10 / $0.50 per million tokens), `claude-sonnet-5-5` ($2 / $10). A packet is 27k to 49k
-tokens. No fallback model in these tools on purpose (they measure the named model); add the server-side
-fallback when this becomes a product step.
-
-**Approved spend:** up to 40 Anthropic calls, about $5, stop and tell Alan before $8. Step A: both models
-review 9 packets with known truth (broken: Focus Timer, Quiet Hours, Net Rate, Field Notes, Link Shelf, Lift
-Log; clean: Studio Folio, Tip Split, Green Kitchen). Step B: the better model repairs 3 broken packets
-(planned: Focus Timer, Field Notes, Net Rate) and reviews them again, at most 2 rounds each; build the repaired
-kits with `build-round-kits.sh`. Results go in 5.8.
-
-Ground truth for step A (confirmed blocking causes): Focus Timer 3 (Add button and list with no add task; the
-count has no slot; local or UTC day). Quiet Hours 4 (SQLite against JSON; nothing creates the record; list rows
-and a mark control; the empty-state text in the status area). Net Rate 5 (wrong example and bits against
-bytes; examples measured over 5 seconds; the kit's 5-second floor; two first-sample rules; no mechanism for
-the service start). Field Notes 3 (one /author page; no author link target; the seed reference). Link Shelf 2
-(the summary host; nothing opens a URL). Lift Log 2 (two decimals accepted; the date in the edit form).
-
-## 6. What must be done to make the four stacks agent-ready
-
-"Agent-ready" was shown for one idea per stack. The work left is to prove it on more idea shapes and
-close the known gaps. Do the cross-stack steps first; they decide what else is real.
-
-### 6.1 Cross-stack, in this order
-
-1. **Run the four ideas live again** (Disk Free, Tip Split, Budget Book, Green Kitchen; paid, ask Alan).
-   Pass = Gate Clean with at most one repair, and an audit with 0 blocking. If the AI does not make a
-   repair in one request, shorten or sharpen that check's message first; do not weaken the check.
-2. **Run the full 25-idea round** (`fish scripts/agent-ready/run-round.fish /tmp/v4-round12`; paid, ask
-   Alan). For each packet: verify, build the kit, one read-only audit agent, confirm every blocking claim
-   against the files, then group by class. A clear rejection of something a preset cannot do is a pass.
-3. **Fix classes, not packets**, one failing test first per class, then re-audit only the failing packets.
-4. Read the Tauri HTTP status and the Astro Jev score when they appear, and tell Alan before changing
-   anything for them. Do not lower `JEV_VIABILITY_THRESHOLD` (src/jev.ts) without his explicit yes.
-   Suspect to check with the score in hand: the viability question asks for "one coherent application"
-   and the Astro ideas are websites.
-5. **Alan's own live check (his instruction, 2026-11-10).** After the 25-idea round and its fixes: rebuild
-   and install the app (`bash scripts/install-linux-app.sh`) so it has the fixes, then give Alan **five new
-   ideas, one per preset, none used in any earlier round**. Alan runs them alone in the app and exports.
-   Then verify each exported packet, build its kit from a temporary copy, audit it with one fresh read-only
-   agent, and tell Alan per packet whether it is agent-ready. His exported folders are read-only.
-6. **Decide with Alan: prose checks.** Three new checks read provider text with a pattern
-   (`waybar-label-decimals`, `waybar-class-example`, `tauri-no-detail-view`). They only send text back
-   for repair and never shape output, like the older Waybar text checks, but the old rule said "no new
-   prose regexes". Keep, or replace with declared fields.
-
-### 6.2 Waybar (`linux-hyprland-waybar-module`)
-
-Must:
-- Confirm live that the AI fixes decimals and class together. The provider-note example
-  "3,670,016,000 bytes is 3.67 GB" is the likely source of both errors; consider an example that cannot
-  be copied into a one-decimal label.
-- `capability.waybar-class-example` covers only "N bytes" and a number shown directly before a unit
-  that does not scale ("25%"). It skips rates, a label with no unit, and values with trailing zeros
-  ("2.50"). Load Meter (amber above 2.00) and Net Rate are therefore unchecked: extend it when one fails.
-- `settleWaybarLabel` gives the label to the first declared show-only feature, because no declared field
-  tells a label feature from a tooltip feature. Watch Load Meter and Battery Watch; add a declared field
-  if an audit finds the label contract on the wrong task.
-- Not yet run: Battery Watch, Net Rate, Weather Bar, Load Meter.
-
-Should (audit polish, each seen twice): click clauses in the launch check and completion evidence when
-no feature declares a click; "two hooks" where the kit has three; the unrendered `{app-id}` placeholder
-and no stated content for `src/platform/lifecyclecoordinator.rs`; no exact tooltip text or rule for
-total = 0; no stated signature for the feature function or where the class is asserted (`refresh_with`);
-the TASK-01 marker criterion reads a file copied in TASK-05; kit `units.rs` comment and test still say a
-size always has 2 decimals; the launch check never imports the module's CSS.
-
-### 6.3 Android (`android-kotlin-compose`)
-
-Must:
-- Storage boilerplate in a no-storage packet (each can mislead): Room in the Locked Stack and kit
-  dependencies, "the Room database opens on first use", `OWN-DATA-STORE` named in the ARD with no such
-  owner, "use SavedStateHandle for process death" against "nothing survives", the relaunch check "confirm
-  that the data the app saved is still present", "the shared view state (the loaded records ...)".
-  Render these only when a data object exists.
-- A feature with entered values and no data object gets no field contract: no messages, no testTags, no
-  rule for a third decimal or an empty field, no rounding rule, and "preserve the last valid state"
-  against "no results are shown". Give it a Form / Field rules block like a stored form.
-- Docs say build-tools 37.0.0 while the kit sets no `buildToolsVersion` (the AGP default is 36.0.0).
-  Check and make them agree. This comes from one audit and was not confirmed by the lead.
-- Not yet run: Shopping List, Lift Log, Drink Reminder (a real scheduled notification: it exercises the
-  notification rule in `settleBlueprint`), Days Until.
-
-### 6.4 Tauri (`tauri2-rust-typescript-desktop`)
-
-Must:
-- Confirm live that the AI rewrites all of it when `capability.tauri-no-detail-view` fires.
-- A search feature that forgets `narrowsListBy` is now treated as a summary (it would be told to write
-  nothing). Add an intake check or a provider sentence so a feature that narrows the list must declare how.
-- The current-month rule speaks of a record's "parsed date-time", but the month must use the user-entered
-  date field, not `created_at`. Name the field.
-- Money has no mechanical rule: accepted input, storage, rounding of sums, and the shown format.
-- Kit `src/style.css` styles no number or date input and has no form layout, and no task may edit it
-  (a kit change: run `npm run kit:check`).
-- Failure texts the PRD describes but does not quote have no fallback; the empty state is not hidden
-  while the load error shows; "no category" in an acceptance criterion cannot be reached with a picker
-  that always has a value; "Each row has a Delete button" is listed under the list task but built by the
-  delete task.
-- Not yet run: Link Shelf, Meeting Clock (tray), Day Journal (one entry per day, save to a file),
-  Clip Keeper (clipboard watch: expect a clear rejection or real support, never a contradictory packet).
-
-### 6.5 Astro (`astro-web`)
-
-Must:
-- `astroTagPages` plans a tag page only when the collection has exactly one choice field. A tag page over
-  an open set (one page per author in Field Notes) or with two choice fields gets no shell, no links, and
-  no page-set rule: the same defect Green Kitchen had. Handle it or reject it clearly.
-- A list field is a one-line flow list, so an item cannot contain a comma ("2 eggs, beaten"). Move to a
-  block list, or state the limit where the entry format is described.
-- Final validation runs `npm test` before `npm run build`, and the page tests read `dist/`.
-- Both seed lists hold the same two items, so a test cannot tell ingredients from steps.
-- Not yet run: Studio Folio, Town Events (build-time date filter), Field Notes (two linked collections),
-  Corner Cafe (grouped menu, prices with two decimals, about page).
-
-Should: the `/teas/` example route from another product; long-text and MDX wording when neither applies;
-the general "every field is rendered as the stored value" rule against list fields; a recovery contract
-that no test can assert.
-
-### 6.6 GTK (`linux-wayland-gtk4-desktop`), the fifth preset
-
-Not run in round 12 at all (Plant Care, Habit Streak, Word Bank, Focus Timer, Quiet Hours). The shapes
-fixed above for one preset are untested here: a product with no data object, and a read-only feature that
-shows derived values. Run it with the full round.
-
-### 6.7 Finish
-
-Rebuild and install, screenshot the app, export one packet per preset from the app itself, verify each,
-then report. Still open from this session: the UI does not show that a copy was settled; a Jev transport
-failure still hides its HTTP status; nothing was recorded in the vault.
-
-## 7. How to work
-
-- One failing test first per class, with a fixture shaped like the real answer (`tests/fixtures/*.json`
-  is the inner `blueprint` object; see `tests/round12-docs.test.ts`). Fix the shared code once. No special
-  case for a product name.
-- After each fix: `npm run typecheck`, `npx vitest run`, then `npm run check`. `npm run kit:check` only
-  when a starter kit changed (slow; keep at least 2 GB free in `/tmp`, a 7.5 GB RAM disk).
-- Keys `DEEPSEEK_API_KEY` and `TYPESAFE_API_KEY` live in the **fish** environment, not bash: run paid
-  commands through `fish -c`. Live generation: `npm run -s cascade -- generate --preset <id> --idea "<text>"
-  --out /tmp/<round>/<preset-id>`.
+- Checks: `npm run typecheck`, `npx vitest run`, `npm run check` (adds the frontend build and cargo fmt,
+  clippy, test). `npm run kit:check` only when a starter kit changed (slow; keep 2 GB free in `/tmp`).
+- Keys live in the **fish** environment: `DEEPSEEK_API_KEY`, `TYPESAFE_API_KEY`, `ANTHROPIC_API_KEY`. Run
+  paid commands through `fish -c`. Check a log for key text with a count only before reading it.
+- Live generation: `npm run -s cascade -- generate --preset <id> --idea "<text>" --out /tmp/<round>/<id>
+  --keep-answers <folder>`. A Gate Clean run prints `Repaired once: <rules>` when it used the repair.
+  `fish scripts/agent-ready/run-round.fish /tmp/v4-roundN` runs every `g` line and keeps `_logs/` and
+  `_answers/`. One generate is 3 to 5 calls (1 to 2 DeepSeek, 2 to 3 TypeSafe).
 - Per packet: `npm run -s cascade -- verify --packet <dir>`; `bash scripts/agent-ready/build-round-kits.sh
-  /tmp/<round>` (prints `-> 0` per command); one fresh read-only audit agent with
-  `scripts/agent-ready/audit-brief.md`. Confirm each blocking claim yourself before acting on it.
-- A re-audit can find a defect the first audit missed (Disk Free did). Re-audit after every fix.
-- Free regression: recompile a saved blueprint with `cascade -- compile`. It does not call the provider.
-- Vitest does not typecheck. Fixtures are typed as the zod output type, so a new schema field breaks
-  fixture literals. Rust `format!("{:.1}", 1.25)` gives "1.2"; the convention is round half away from zero.
-- Stop rule: two consecutive rounds with no systematic class and every kit building. Strict auditors
-  always find a few one-off items; judge by classes, not raw counts.
-
-## 8. Repo map
-
-- `src/schema.ts` provider schema, `providerSchemaFor`, prompt (`buildBlueprintInstructions`), intake rules.
-- `src/pipeline.ts` the flow, the one repair, failure messages. `src/jev.ts` Jev decisions.
-- `src/capabilities.ts` blueprint against preset. `src/compiler.ts` `settleBlueprint`, normalization,
-  graph, owners, tasks, the task-prompt line. `src/renderers.ts` the documents. `src/audit.ts` export gates.
-- `src/presets.ts` the five preset contracts and their `providerNotes`.
-- Per preset: `gtkContracts.ts`; `waybarContracts.ts` + `waybarKit.ts`; `tauriContracts.ts` + `tauriKit.ts`;
-  `astroWeb.ts` + `astroKit.ts`; `androidPlan.ts` + `androidForms.ts` + `androidKit.ts`; shared `kits.ts`.
-- `src/cli.ts`, `src/packet.ts` CLI. `src/app.ts`, `state.ts`, `bridge.ts` UI. `src-tauri/src/` Rust.
-- `tests/` unit and fixture tests; `tests/kit-build.test.ts` real kit builds.
-- `scripts/install-linux-app.sh`; `scripts/agent-ready/` (run-round.fish, build-round-kits.sh, audit-brief.md).
+  /tmp/<round>` (prints `-> 0` per command); `python3 scripts/agent-ready/make-audit-prompts.py /tmp/<round>
+  <out-folder>` then one fresh read-only agent per prompt file. Tell audit agents to judge only from the
+  packet. At most 20 agents run at once, and 20 audits use most of a 5-hour Claude limit.
+- Review and repair: `fish -c 'npx tsx scripts/agent-ready/review.ts --model claude-sonnet-5-5 --packet <dir>
+  --out review.json'`, then `fix.ts --model claude-sonnet-5-5 --packet <dir> --review review.json --out <new
+  dir>`, then build the kit of the new dir and review it.
+- One failing test first per fix, with a fixture shaped like the real provider answer. Fix the shared code
+  once. No special case for a product name. Commit locally with a message that says what and why.
+- Vitest does not typecheck. Rust `format!("{:.1}", 1.25)` gives "1.2"; the convention is round half away
+  from zero.
 
 ## 9. Rules
 
 - Never push; commit locally only. Alan says "push" when he wants it.
-- Never print, log, or echo API keys, and never put a request body with a key in a message or file.
+- Never print, log, or echo an API key, and never put a request body with a key in a message or file.
 - Never edit an exported packet folder (`/home/arch/dev/nodaysidle/<packet-name>/`). Read only.
-- Ask Alan before anything that spends API calls.
-- Do not weaken a check that protects document quality. Do not lower `JEV_VIABILITY_THRESHOLD` without
-  Alan's explicit yes.
-- Keep this file current: what is done, what is left, open questions. Commit it with your changes.
-- Tell Alan plainly what is not verified.
+- Ask Alan before anything that spends API calls, and say how many and about how much. The approved $5 for
+  the measurement is used (about $3.80 spent); ask again.
+- Do not weaken a check that protects document quality. Do not lower `JEV_VIABILITY_THRESHOLD` without Alan's
+  explicit yes.
+- Keep this file current and commit it with your changes. Tell Alan plainly what is not verified.
+- Do not tell Alan a packet is agent-ready unless an independent audit of that exact packet says so.
 
-## 10. Prompt for the next agent
+## 10. Not done, not verified
+
+- No independent audit or trial build of the repaired packets. The repaired Field Notes kit does not build.
+- Five round packets have no audit verdict: Budget Book (second run), Meeting Clock, Day Journal, Clip
+  Keeper, Days Until.
+- Nothing in the compiler was fixed after the round. The only code changes this session are tooling:
+  `--keep-answers`, the `Repaired once` line, `run-round.fish` logs, `make-audit-prompts.py`, `review.ts`,
+  `fix.ts`.
+- The installed app is the build of 2026-11-10 15:09, before this session. No screenshot, no packet exported
+  from the app.
+- Nothing was recorded in the vault or in Supermemory.
+
+## 11. Prompt for the next agent
 
 Open Claude Code in this repo folder and paste:
 
 ```text
 ALAN. You are taking over NODAYSIDLE Cascade V4 in /home/arch/dev/nodaysidle/nodaysidle-cascade-v4
-(branch main). It is a local-first compiler and Tauri 2 desktop app that turns one software idea plus
-one tech-stack preset into five Markdown contracts and a starter kit that a coding agent builds from.
+(branch main). It is a local-first compiler and Tauri 2 desktop app that turns one software idea plus one
+tech-stack preset into five Markdown contracts and a starter kit that a coding agent builds from.
 
 Read first, in this order: /home/arch/dev/nodaysidle/CLAUDE.md, this repo's AGENTS.md (it wins), then
-HANDOFF.md in full. Then run `git status`, `git log --oneline -14`, and `npm run check`. All must be
-green before you change anything. If something is red, tell me and stop.
+HANDOFF.md in full. Then run `git status`, `git log --oneline -14`, and `npm run check`. All must be green
+before you change anything. If something is red, tell me and stop.
 
 Hard rules, no exceptions:
 - Never push. Commit locally only.
-- Never print, log, or echo API keys (DEEPSEEK_API_KEY, TYPESAFE_API_KEY), and never put a request body
-  with a key into a message or a file. The keys live in the fish environment: use `fish -c`.
+- Never print, log, or echo API keys (DEEPSEEK_API_KEY, TYPESAFE_API_KEY, ANTHROPIC_API_KEY), and never put a
+  request body with a key into a message or a file. The keys live in the fish environment: use `fish -c`.
 - Never edit my exported packet folders (/home/arch/dev/nodaysidle/<packet-name>/). Read them only.
-- Ask me before anything that spends API calls: the CLI `generate` command or
-  scripts/agent-ready/run-round.fish. Say how many calls it will make.
-- Do not weaken a check that protects document quality, and do not lower JEV_VIABILITY_THRESHOLD
-  without my explicit yes.
+- Ask me before anything that spends API calls. Say how many calls and about how much money.
+- Do not weaken a check that protects document quality.
+- I have limited Claude usage. Do not start more than 3 subagents without asking, and keep your replies short.
 
-Goal: every preset produces agent-ready packets. Agent-ready means a coding agent can build exactly the
-idea from the packet alone, with no guesswork and no contradictions, and the kit builds with its own
-commands. The last session reached 0 blocking defects for one idea per stack on four stacks (Waybar,
-Android, Tauri, Astro). Two of those four were recompiled from blueprints repaired by hand, so they are
-not yet proven live. GTK was not run.
+The problem: the last live round gave 3 agent-ready packets out of 19 audited. The compiler guesses the screen
+(it falls back to "a list with an add form"), the AI's text contradicts the compiler's rules, and the kits
+are narrower than the documents promise. Patching one app shape per round did not converge.
+
+My decision: keep the compiler and its skeleton, and add a review step and a repair step by Claude Sonnet 5.5
+(model id `claude-sonnet-5-5`) after compile. The UI stays the same: I write an idea, pick a preset, press
+Generate. New is what follows the draft: review, repair, build the kit, review again, then a clear verdict
+(agent-ready, or not ready with the reasons). The repair edits are recorded in blueprint.json so a packet can
+be rebuilt exactly. HANDOFF.md section 4 describes the app idea in full; section 5 has the measurements: the
+reviewer found 17 of 19 known defects and the repair fixed two of three hard packets, but one repaired packet
+passed the review while its kit no longer builds, so a review alone is not enough.
 
 Do, in this order, and verify each step before the next:
-1. Ask me for a yes, then run the four ideas live by CLI: Disk Free, Tip Split, Budget Book, Green
-   Kitchen (the exact texts are in scripts/agent-ready/run-round.fish). For each: verify, build the kit
-   with scripts/agent-ready/build-round-kits.sh, and run one fresh read-only audit agent with
-   scripts/agent-ready/audit-brief.md. Tell me per packet: agent-ready or not, and why.
-2. Ask me for a yes, then run the full 25-idea round and audit every packet the same way. Confirm each
-   blocking claim against the packet files yourself before you believe it. Group the confirmed defects
-   by class. A clear, deliberate rejection of something a preset cannot do counts as a pass.
-3. Fix classes, never single packets, starting with the ones that appear in several packets or presets.
-   HANDOFF.md section 6 lists the known gaps per stack; treat its "Must" items as the starting list and
-   check each against a real packet before fixing it.
-4. If a Tauri run fails with provider.http-error, or an Astro idea is rejected by Jev, read me the full
-   message (it now shows the HTTP status or the score) before you change anything for it.
-5. Ask me whether to keep the three checks that read provider text with a pattern (HANDOFF.md 6.1,
-   item 5), or to replace them with declared fields.
+1. Check the repair independently first. Rebuild the repaired Focus Timer and Net Rate packets (HANDOFF.md
+   section 7 says how), build their kits, and run one fresh read-only audit agent on each with
+   scripts/agent-ready/audit-brief.md. Confirm each blocking claim against the files yourself. Tell me per
+   packet whether it is agent-ready by that audit. If the repair did not clearly help, stop and tell me; do
+   not build on it.
+2. Close the gap the Field Notes repair showed: give the repair tool file operations (create, move, delete),
+   build the kit after any repair that touches it, and repair Field Notes again. Ask me what the desktop app
+   should do where no build can run.
+3. Fix the plain compiler bugs listed in HANDOFF.md section 6 item 3, one failing test first each.
+4. Build the review and repair steps into the pipeline, the CLI and the desktop app as HANDOFF.md section 4
+   and section 6 item 4 describe. Use Sonnet 5.5. Read the claude-api skill before writing Claude API code.
+   Keys stay in memory only.
+5. Ask me for a yes, then run the loop on the 16 broken packets of the round and tell me how many reach 0
+   blocking with a passing kit build in 2 rounds and in 3.
+6. Rebuild the app with `bash scripts/install-linux-app.sh`, take a screenshot, and give me five new ideas,
+   one per preset, never used before. I run them in the app myself. Then verify, build the kits and audit
+   what I exported, and tell me per packet: agent-ready or not, and why.
 
-For each fix:
-- Write a test that fails first, with a fixture shaped like the real provider answer (see
-  tests/round12-docs.test.ts and tests/fixtures/*.json).
-- Fix the shared code once. No special case for a product name.
-- Run `npm run typecheck`, `npx vitest run`, and `npm run check`. Run `npm run kit:check` only if a
-  starter kit changed, and keep at least 2 GB free in /tmp first.
-- Recompile the affected saved blueprint with `npm run -s cascade -- compile` (free) and re-audit that
-  packet. A re-audit can find a defect the first audit missed, so re-audit after every fix.
-- Commit locally with a message that says what changed and why.
+For each code change: write a test that fails first, fix the shared code once with no special case for a
+product name, run `npm run typecheck`, `npx vitest run` and `npm run check`, and commit locally with a
+message that says what changed and why. Run `npm run kit:check` only if a starter kit changed.
 
-When two rounds in a row show no systematic defect class and every kit builds: rebuild the app with
-`bash scripts/install-linux-app.sh`, take a screenshot, export one packet per preset from the app
-itself, and run `npm run -s cascade -- verify --packet <dir>` on each.
-
-Keep HANDOFF.md current as you go (done, left, open questions) and commit it with your changes. Report
-to me in plain words: what was broken, what you changed, what you verified, and what you did not check.
-Do not tell me something is agent-ready unless an audit of that exact packet says so.
+Keep HANDOFF.md current as you go and commit it with your changes. Report to me in plain words: what was
+broken, what you changed, what you verified, and what you did not check. Do not tell me something is
+agent-ready unless an independent audit of that exact packet says so.
 ```

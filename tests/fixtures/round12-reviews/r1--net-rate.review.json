@@ -1,0 +1,78 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 73732,
+    "output_tokens": 7166
+  },
+  "review": {
+    "slug": "net-rate",
+    "blocking": [
+      {
+        "where": "PRD.md Feature Contracts / FEAT-DOWNLOAD-RATE-LABEL (also TRD.md CON-DOWNLOAD-RATE-LABEL-INTERFACE and TASKS.md TASK-05)",
+        "quote": "A refresh with a counter change of 500,000 bytes over 5 seconds writes the label '100.0 kB/s' with class normal.",
+        "why": "The same contract says a stored sample \"more than twice the refresh interval old\" is a restart that writes 0.0 kB/s. The declared interval is 2 s, so the cutoff is 4 s, and a sample 5 s old falls past it. At the default interval the 5 s examples (100.0 and 1250.0 kB/s) therefore produce 0.0 kB/s. TASK-05 only says the test sets \"a short interval\". A short interval such as 1 or 2 makes the 5 s case fail, and the packet never says the test must pass an interval of at least 3.",
+        "fix": "Change both acceptance examples to a gap within 2x the interval, for example 200,000 bytes over 2 s gives 100.0 kB/s and 2,500,000 bytes over 2 s gives 1250.0 kB/s. Alternatively state in TASK-05 that these tests inject interval >= 3 and keep the 5 s gap.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TASKS.md TASK-05-DOWNLOAD-RATE-LABEL",
+        "quote": "the feature function returns the interval it was given",
+        "why": "The function name and signature are not defined. This is a hidden-test-style requirement an agent has to invent, and the return type (plain u64 versus Result) is unspecified.",
+        "fix": "Give the exact signature, e.g. `pub fn measure(store, reader, now_ms: u64, interval_seconds: u64) -> Result<(ModuleOutput, u64), String>`.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-04-TOTAL-RECEIVED-NOTIFICATION",
+        "quote": "Files to modify: src/features/mod.rs; src/module.rs; src/config.rs; src/main.rs",
+        "why": "The task needs no change to src/config.rs or src/main.rs, since run_action in module.rs does the dispatch. The same applies to TASK-05. Listing them invites needless edits.",
+        "fix": "List only src/features/mod.rs and src/module.rs for TASK-04 and TASK-05.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-TOTAL-RECEIVED-NOTIFICATION-INTERFACE",
+        "quote": "sends a desktop notification whose body states the total data received since the module started",
+        "why": "The notification title is not specified. notify() requires a title, so the agent must invent the wording.",
+        "fix": "State the title, e.g. \"Net Rate\", and body such as \"Received since start: 3.67 GB\".",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-03-LIFECYCLE-COORDINATOR",
+        "quote": "CON-PERMISSION-NOTIFICATIONS needs no code here",
+        "why": "The contract is owned and listed as covered by tests/platform_lifecyclecoordinator_tests.rs, yet that owner builds nothing for it. The real behavior is tested in TASK-04, so the focused test has nothing to assert for it.",
+        "fix": "Reassign CON-PERMISSION-NOTIFICATIONS to OWN-TOTAL-RECEIVED-NOTIFICATION, or state the one trivial assertion the lifecycle test makes.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-PRESET-OPTIONS",
+        "quote": "refreshSeconds=15",
+        "why": "The bar re-reads the cache only every 15 s while the idea says the rate is read every 2 s. The user sees a reading up to 15 s old. This is not stated as a trade-off anywhere.",
+        "fix": "Add a note that the displayed rate lags up to 15 s, or set refreshSeconds=2.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-DOWNLOAD-RATE-LABEL-INTERFACE",
+        "quote": "an elapsed time of 0 seconds or less changes nothing in the store and writes the label '0.0 kB/s' with class normal",
+        "why": "A manual `--action refresh` in the same second as a service tick overwrites a real reading in the cache with 0.0 kB/s. The behavior is unclear and probably unintended.",
+        "fix": "On elapsed <= 0, leave the cache unchanged, or return the last cached label.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-RUNTIME-WIRING",
+        "quote": "the real HTTP client, SystemLauncher",
+        "why": "There is no HTTP client in this standalone app. The line is boilerplate that does not apply, as is the xdg-open and service-web-page paragraph in the runtime contracts.",
+        "fix": "Drop the HTTP and xdg-open wording for this blueprint.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-RUNTIME-WIRING / TASKS.md TASK-05",
+        "quote": "Set ModuleOutput.tooltip to the label text unless the acceptance criteria state tooltip wording.",
+        "why": "The `alt` and `percentage` fields of ModuleOutput are never specified for this feature. The agent must choose values, and tests would not pin them.",
+        "fix": "State alt = \"download\" and percentage = null.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "One blocking defect: the 5-second acceptance examples conflict with the rule that restarts the sample when it is more than twice the 2-second interval old, so the stated 100.0 and 1250.0 kB/s cannot be produced at the default interval. Otherwise the ownership map, task order, kit files, data contract and shared-file edits are consistent, and the agent could build the product once that is fixed. The rest is polish."
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 40868,
+    "output_tokens": 4768
+  },
+  "review": {
+    "slug": "tip-split",
+    "blocking": [
+      {
+        "where": "TRD.md — CON-RUNTIME-WIRING",
+        "quote": "Before completion, when an adb device is attached: install the APK, complete one acceptance outcome per feature, force-stop the app, relaunch, and confirm that the data the app saved is still present.",
+        "why": "This device check contradicts the product. The PRD, ACC-SPLIT-BILL-CALCULATOR-01 and CON-PERSISTENCE-DISABLED all say nothing is stored and that after a restart the fields show their starting values. The app saves no data, so an agent following this check would either fail it or add persistence.",
+        "fix": "Replace it with: after force-stop and relaunch, confirm the fields show their starting values (empty bill, 15%, 1 person) and 0.00 results, and that no entered or computed value is restored.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "PRD.md — Feature Contracts / FEAT-SPLIT-BILL-CALCULATOR Behavior (repeated in ARD, TRD, REQ)",
+        "quote": "(for example 84.50 means 2)",
+        "why": "The parenthetical is garbled. It looks like a corrupted example of two-decimal formatting and is meaningless as written.",
+        "fix": "Replace with a real example, e.g. 'each rounded to two decimals (for example 18.333 is shown as 18.33)'.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md — Feature Contracts / FEAT-SPLIT-BILL-CALCULATOR",
+        "quote": "If the bill amount is empty or the number of people is empty or less than 1, the results show 0.00 and nothing is computed.",
+        "why": "Several input cases are unspecified: negative or non-numeric bill text, a fractional people count, and the rounding mode (HALF_UP or HALF_EVEN). An agent must guess these.",
+        "fix": "State that a negative or unparseable bill or people count is treated like empty (0.00), and that rounding is HALF_UP to 2 decimals.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-03-SPLIT-BILL-CALCULATOR task prompt",
+        "quote": "enter the values, press the buttons, and assert the shown values and the field messages",
+        "why": "The feature has no buttons and no field messages, so these instructions are boilerplate that do not apply.",
+        "fix": "Reword to 'enter the values, pick the tip percentage, and assert the shown Tip/Total/Per person values'.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-03-SPLIT-BILL-CALCULATOR task prompt",
+        "quote": "the loaded records of every declared data object",
+        "why": "The product declares no data objects, and the slot and 'later feature tasks' language also does not apply because there is only one feature. The prompt invites an agent to invent state.",
+        "fix": "Drop the shared-view-state and later-slot boilerplate and say the screen state is the three inputs plus the three derived outputs.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — Runtime Architecture Contracts",
+        "quote": "use SavedStateHandle for process death",
+        "why": "This conflicts with the requirement that no entered value is restored after a restart and that no values survive process death (CON-PERSISTENCE-DISABLED). An agent may restore inputs after system process death.",
+        "fix": "Add: 'not used for this product: inputs are not saved across process death'.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-RUNTIME-WIRING",
+        "quote": "with each list holding several entries, one of them longer than the view is wide",
+        "why": "The checks about lists, empty-list messages and 'triggers one such failure ... confirms the message appears' do not apply. The app has no list, and its only failure behavior shows 0.00 rather than a message.",
+        "fix": "Limit the launch check to the single calculator screen and the 0.00 fallback.",
+        "quoteFound": true
+      },
+      {
+        "where": "ARD.md — State Ownership",
+        "quote": "Record placement: Room entities, DAO transactions, migrations, and repository APIs for durable records; export the schema and keep PRAGMA user_version-equivalent Room migrations.",
+        "why": "Persistence is disabled and there are no records. The same Room, 'Room database opens on first use', 'Room transactions', 'cache-file cleanup' and 'filesDir/files/' boilerplate appears in TRD and AGENTS and could lead an agent to add a database.",
+        "fix": "Remove the Room and file-storage boilerplate when persistence is disabled, or state explicitly that no Room database or entity is created.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — Errors and Recovery Contracts",
+        "quote": "Model loading, success, empty, denied, failed, and cancelled states explicitly in immutable UI state.",
+        "why": "The calculator has only a synchronous computation with a 0.00 fallback. The loading, denied and cancelled states, and the retry rules, are inapplicable and could cause over-building.",
+        "fix": "Say the UI state is just the three inputs and the derived Tip/Total/Per person strings, with a 0.00 fallback.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "One blocking defect: the TRD's CON-RUNTIME-WIRING device check requires 'data the app saved is still present' after relaunch, which contradicts the nothing-stored requirement and ACC-01. The rest of the packet is coherent: owners, files, task order, kit paths and commands line up, and the calculator math and acceptance examples are testable. The remaining issues are polish: persistence, list and recovery boilerplate, a garbled rounding example, and a few unspecified input edge cases."
+  }
+}

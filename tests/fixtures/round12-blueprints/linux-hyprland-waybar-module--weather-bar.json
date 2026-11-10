@@ -1,0 +1,288 @@
+{
+ "productName": "Weather Bar",
+ "summary": "A Waybar module that shows the current outdoor temperature for a saved latitude and longitude, fetched from the free Open-Meteo forecast API every 10 minutes, and opens the Open-Meteo page for that location when clicked.",
+ "targetUsers": [
+  "Waybar users on Linux who want the current outdoor temperature in their status bar",
+  "Users who know their latitude and longitude and prefer a lightweight, no-account weather readout"
+ ],
+ "goals": [
+  "Show the current outdoor temperature as a Waybar module label for a saved latitude and longitude",
+  "Refresh the temperature from Open-Meteo every 10 minutes",
+  "Let the user save latitude and longitude with a command",
+  "Open the Open-Meteo page for the saved location in the browser when the module is clicked"
+ ],
+ "nonGoals": [
+  "Providing forecasts, hourly series, precipitation, wind, or any reading other than the current temperature",
+  "Geocoding a place name into coordinates",
+  "Detecting or enforcing that a reading is valid only for one calendar day",
+  "Storing a history of past temperatures"
+ ],
+ "features": [
+  {
+   "name": "Show current temperature",
+   "userOutcome": "The user sees the current outdoor temperature for the saved location in the Waybar module.",
+   "trigger": "The Waybar module command re-reads the cached label, and the service loop refreshes the reading every 10 minutes.",
+   "behavior": "The module command with no action or --once never fetches; it re-reads the cached label and renders it with the module label template. The --service loop and --action refresh call fetch_output, which requests the Open-Meteo forecast endpoint with the saved Latitude and Longitude, reads the current temperature from the documented response path, formats it with 1 decimal and the unit \u00b0C, and writes the cache label atomically. The reading is the first element of any list-valued response; a null, missing, or empty value is a failed fetch. The label class is normal. The user sets each coordinate with --set Latitude=VALUE and --set Longitude=VALUE, one command per field, and --action refresh applies the saved values immediately.",
+   "failureOutcome": "When the fetch fails, the cache keeps the last good label text with class stale, and the module output rendered from that cache is that text with STALE_SUFFIX appended and class stale; no stored record changes. When no reading was ever stored, the label is --.",
+   "failureRecovery": "fallback",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With saved Latitude 52.52 and Longitude 13.41 and a successful fetch returning current.temperature_2m 21.34, the cache label text is 21.3 \u00b0C and the module output is 21.3 \u00b0C with class normal.",
+    "After a failed refresh, the module output is the last good label text with STALE_SUFFIX appended and class stale.",
+    "With no stored reading, the module output label is --.",
+    "The refresh pass returns runsEverySeconds 600 for this feature."
+   ],
+   "usesPlatformNeeds": [
+    "network",
+    "background-execution",
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Location settings",
+    "Latest temperature"
+   ],
+   "usesServices": [
+    "Open-Meteo forecast"
+   ],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Location settings",
+     "operations": [
+      "read"
+     ]
+    },
+    {
+     "data": "Latest temperature",
+     "operations": [
+      "create",
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "schedule",
+   "runsEverySeconds": 600,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "{value} \u00b0C",
+   "unit": "\u00b0C",
+   "valueDecimals": 1,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Open location page",
+   "userOutcome": "The user reaches the Open-Meteo page for the saved location in the browser.",
+   "trigger": "The user clicks the Waybar module.",
+   "behavior": "On click, the feature reads the stored Latest temperature record and the saved Latitude and Longitude, builds the Open-Meteo page address with the saved coordinates percent-encoded, and opens it in the default browser. With no stored record it sends nothing and exits non-zero. A failed click shows no JSON and makes the command exit non-zero.",
+   "failureOutcome": "With no stored record the click sends nothing and exits non-zero; a failed click shows no JSON and exits non-zero.",
+   "failureRecovery": "exit",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With a stored Latest temperature record and saved Latitude 52.52 and Longitude 13.41, a click requests the browser open the Open-Meteo page address containing the percent-encoded coordinates.",
+    "With no stored Latest temperature record, a click sends nothing and the command exits non-zero."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Location settings",
+    "Latest temperature"
+   ],
+   "usesServices": [
+    "Open-Meteo forecast"
+   ],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Show current temperature"
+   ],
+   "dataOperations": [
+    {
+     "data": "Location settings",
+     "operations": [
+      "read"
+     ]
+    },
+    {
+     "data": "Latest temperature",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "click",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Location settings",
+   "purpose": "The saved latitude and longitude the temperature fetch and the location page use.",
+   "sensitivity": "public",
+   "retentionIntent": "Kept until the user overwrites a coordinate with --set or by editing config.json.",
+   "storage": "settings",
+   "writeMode": "atomic-replace",
+   "fields": [
+    {
+     "name": "Latitude",
+     "valueType": "number",
+     "optional": false,
+     "min": -90,
+     "max": 90,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "Longitude",
+     "valueType": "number",
+     "optional": false,
+     "min": -180,
+     "max": 180,
+     "initial": null,
+     "appStamped": null
+    }
+   ],
+   "singleRecord": true,
+   "entryCount": null
+  },
+  {
+   "name": "Latest temperature",
+   "purpose": "The most recent successfully fetched current outdoor temperature for the saved location.",
+   "sensitivity": "public",
+   "retentionIntent": "Only the latest reading is kept; each successful refresh replaces the single stored row.",
+   "storage": "records",
+   "writeMode": "atomic-replace",
+   "fields": [
+    {
+     "name": "Latitude",
+     "valueType": "number",
+     "optional": false,
+     "min": -90,
+     "max": 90,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "Longitude",
+     "valueType": "number",
+     "optional": false,
+     "min": -180,
+     "max": 180,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "temperature",
+     "valueType": "number",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "fetched at",
+     "valueType": "date-time",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": true
+    }
+   ],
+   "singleRecord": true,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [
+  {
+   "name": "Open-Meteo forecast",
+   "purpose": "Provides the current outdoor temperature for the saved latitude and longitude.",
+   "dataSent": [
+    "Latitude",
+    "Longitude"
+   ],
+   "credentialRequired": false,
+   "endpoint": "https://api.open-meteo.com/v1/forecast?latitude={Latitude}&longitude={Longitude}&current=temperature_2m",
+   "webPage": "https://open-meteo.com/en/docs?latitude={Latitude}&longitude={Longitude}",
+   "requestValueFrom": "Location settings",
+   "requestValueType": "number",
+   "responseFields": [
+    {
+     "name": "temperature",
+     "valueType": "number",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null,
+     "path": "current.temperature_2m"
+    }
+   ]
+  }
+ ],
+ "platformNeeds": [
+  "network",
+  "background-execution",
+  "local-storage"
+ ],
+ "qualityRequirements": [
+  "The module label shows the temperature with exactly 1 decimal and the unit \u00b0C, for example 21.3 \u00b0C.",
+  "The cache label is written atomically per record after each successful fetch.",
+  "The module command with no action or --once performs no network request."
+ ],
+ "productConstraints": [
+  "The temperature source is the free Open-Meteo forecast API and requires no account or API key.",
+  "Coordinates are saved one field per command with --set Latitude=VALUE and --set Longitude=VALUE.",
+  "The refresh interval is fixed at 10 minutes."
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Show current temperature"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Show current temperature"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 3,
+   "features": [
+    "Open location page"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

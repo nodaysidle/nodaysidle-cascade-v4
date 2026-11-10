@@ -1,0 +1,63 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 46811,
+    "output_tokens": 4761
+  },
+  "review": {
+    "slug": "green-kitchen",
+    "blocking": [],
+    "polish": [
+      {
+        "where": "TRD.md — CON-RUNTIME-WIRING (list field rule)",
+        "quote": "A list field is one line holding a flow list ([first item, second item]) whose items contain no comma",
+        "why": "Recipe steps and ingredients are ordinary sentences that often contain commas (e.g. \"Chop the onion, then fry\"). The owner must reword every step to avoid commas, or the test's comma-splitting parser breaks.",
+        "fix": "State this comma restriction in the Content Seed Requirements for recipes, or allow quoted YAML items and have the test parse them accordingly.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md — FEAT-RECIPE-HOME-PAGE behavior",
+        "quote": "The list is ordered by recipe name alphabetically.",
+        "why": "Case sensitivity, locale comparison and ties between equal names are unspecified, while the catalog sorts by id. The home page and meal type page could use different comparators, and the tests have no defined way to compute the expected order.",
+        "fix": "Specify one comparator (e.g. localeCompare on name, case-insensitive, ties broken by entry id) for both pages and the tests.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-MEAL-TYPE-PAGE task prompt",
+        "quote": "it reads Recipes only through listRecipesEntries() from src/lib/contentcatalog.ts, builds the pages the route line lists",
+        "why": "The kit [tag].astro filters the id-sorted list and does not sort by name. The prompt never tells the agent to add the name sort that the acceptance criteria require, so the agent must infer it.",
+        "fix": "Add to the TASK-04 and TASK-03 prompts: sort the list by entry.data.name before rendering.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-05-RECIPE-PAGE task prompt",
+        "quote": "renders the declared fields (a long-text field in one element, a list field as one ol with one li per item in stored order)",
+        "why": "Recipes declare no long-text field, so this is boilerplate that does not apply. The kit [slug].astro also renders the markdown body with no stated requirement for it.",
+        "fix": "Drop the long-text clause for this collection and say whether the markdown body is rendered on the recipe page.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-MEAL-TYPE-PAGE task prompt",
+        "quote": "Depend only on OWN-DATA-STORE, OWN-RECIPE-HOME-PAGE;",
+        "why": "The meal type page and the recipe page use nothing from RecipeHomePage.astro. The declared dependency forces an artificial order and implies a use that does not exist.",
+        "fix": "Make TASK-04 and TASK-05 depend only on TASK-01 and TASK-02, or name what they take from OWN-RECIPE-HOME-PAGE.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/pages/recipes/[slug].astro",
+        "quote": "<BaseLayout title={entry.data.name} description={entry.data.mealType}>",
+        "why": "The meta description is just the bare meal type (e.g. \"breakfast\"), which is a weak SEO description for a recipe. Only the existence of a description is tested.",
+        "fix": "Use a descriptive string such as `${entry.data.name} — a ${entry.data.mealType} recipe`.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/README.md — Behavior to keep",
+        "quote": "Declared page routes (each a shell with one h1): /recipes/tags/breakfast/, /recipes/tags/lunch/, /recipes/tags/dinner/.",
+        "why": "The README says these routes are shells in the copied kit, but the same README lists src/pages/recipes/tags/[tag].astro as not copied before its task. Until TASK-04, the layout nav links point to pages that do not exist.",
+        "fix": "Reword to say the nav links exist from the start and the routes are built in TASK-04.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "No blocking defects. The packet is internally consistent: owners, files, phases and commands line up, and every modify target exists from the kit copy or an earlier task. Every idea sentence maps to a feature and acceptance criterion. The kit files TASKS.md names exist and match the tasks. The remaining items are polish: comparator details, a comma restriction on list fields, and a few boilerplate or over-declared dependencies."
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "usage": {
+    "model": "claude-haiku-5-5",
+    "input_tokens": 64504,
+    "output_tokens": 37137
+  },
+  "review": {
+    "slug": "lift-log",
+    "blocking": [
+      {
+        "where": "TRD.md — CON-ADD-SET-INTERFACE — Field rules (CON-EDIT-SET-INTERFACE repeats it)",
+        "quote": "a number matching ^[0-9]+([.][0-9]{1,2})?$",
+        "why": "PRD.md FEAT-ADD-SET acceptance requires 'Saving with Weight (kg) 82.55 stores nothing', and PRD Operational Constraints says 'at most one decimal place'. This regex accepts 82.55 and its rejection message names 2 places. The escape clause ('unless the behavior states another count') leaves the coder choosing between the literal regex and the PRD.",
+        "fix": "Change the regex to ^[0-9]+([.][0-9]?)?$ and the message to 'Weight (kg) must have at most 1 decimal place' in both interface contracts.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-RUNTIME-WIRING — Failure behavior",
+        "quote": "A production entry point that uses a test double, or a platform owner the running app never calls, blocks completion.",
+        "why": "TASKS.md TASK-08 exempts Packaging.assertProductionWiring and LifecycleCoordinator.stop() from this rule, and no production code calls either. TRD has higher authority than TASKS, so the coder cannot tell whether completion is blocked.",
+        "fix": "Amend the TRD CON-RUNTIME-WIRING failure line to name Packaging.assertProductionWiring and LifecycleCoordinator.stop() as exempt, matching TASKS.md TASK-08.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-SET-LIST — Task prompt",
+        "quote": "the inline form shell, which hosts whichever form (add or edit) is open, one at a time, so opening one closes the other",
+        "why": "The same prompt says open-form state lives in the later task's own feature file and never in shared view state. TASK-04 must build a shell that enforces one-open-form, but it cannot reference that state, and no slot API between the shell and the form tasks is specified.",
+        "fix": "Specify in TASK-04 that the shell takes a nullable open-form composable slot that App.kt fills from an open-state function each form task exports, and name those functions in TASK-05 and TASK-07.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TASKS.md — TASK-04-SET-LIST — Task prompt",
+        "quote": "build the main screen content area and the shared view state",
+        "why": "Files to create lists only SetListFeature.kt and Files to modify lists only App.kt, so the coder cannot tell which file holds the shared view state that later tasks extend.",
+        "fix": "Name the file that holds the shared view state (SetListFeature.kt) in the TASK-04 file list.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-02-DATA-STORE — Task prompt",
+        "quote": "Room writes the schema JSON app/schemas/(the AppDatabase class name)/1.json when the project builds",
+        "why": "Room names the schema directory by the database's canonical class name (com.lift.log.platform.datastore.AppDatabase), so the literal path is ambiguous and the committed schema file may land elsewhere.",
+        "fix": "Write the exact committed path app/schemas/com.lift.log.platform.datastore.AppDatabase/1.json.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-08-PACKAGING — Task prompt",
+        "quote": "An acceptance criterion listed here that a feature task already built (a rejected Save, a row action) is asserted by the packaging focused test as well",
+        "why": "TASK-08 lists no feature acceptance criteria, so 'listed here' refers to nothing. The coder cannot tell which Compose screen tests PackagingTest must contain.",
+        "fix": "Name the acceptance IDs (for example ACC-ADD-SET-03 and ACC-DELETE-SET-02) that PackagingTest must drive through App(container).",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — Owner-to-File and Focused-Test Map",
+        "quote": "OWN-FOUNDATION — Foundation — implementation settings.gradle.kts",
+        "why": "ARD.md lists about 20 files for OWN-FOUNDATION, while TRD narrows the implementation to one file. The owner's file set differs between documents.",
+        "fix": "Replace the TRD OWN-FOUNDATION implementation entry with the full ARD file list.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-SET-LIST — Task prompt",
+        "quote": "the Add button (testTag \"add-entry\")",
+        "why": "PRD.md calls it the 'Add set button' and no label is given, so the coder must guess the visible text.",
+        "fix": "Label the button 'Add set' with testTag add-entry to match PRD.md.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-DATA-SETS — Interface",
+        "quote": "a sort breaks ties by id in the sort's own direction",
+        "why": "PRD requires same-date sets ordered by creation time, and Created at is stored, yet TRD tie-breaks by id. The two give the same result, but the coder may sort by Created at with no stated tie-break.",
+        "fix": "State that the list sorts by Date then Created at descending, with id as the final tie-break.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Not buildable without guesswork. Three blocking defects: the weight decimal rule contradicts PRD acceptance, the completion-gate exemption contradicts TRD, and open-form state ownership is undefined. Fix these before a coding agent starts. blueprint.json was not provided and was not audited."
+  }
+}

@@ -1,0 +1,294 @@
+{
+ "productName": "Shopping List",
+ "summary": "A simple on-device shopping list where the user adds items with a name and quantity, checks items off as bought, and clears all checked items at once. Items persist on the device and are restored after restart.",
+ "targetUsers": [
+  "People who keep a shopping list of items to buy",
+  "Shoppers who want to track quantities and check off items while shopping"
+ ],
+ "goals": [
+  "Keep a list of items to buy with a name and quantity",
+  "Let the user check items off as bought",
+  "Let the user clear all checked items at once",
+  "Persist items on the device and restore them after restart"
+ ],
+ "nonGoals": [
+  "Price tracking or budgeting",
+  "Sharing lists with other people",
+  "Syncing across devices"
+ ],
+ "features": [
+  {
+   "name": "Shopping list",
+   "userOutcome": "The user sees all shopping items with their names, quantities, and checked state, and the list is restored after restart.",
+   "trigger": "The user opens the app.",
+   "behavior": "Shows every stored shopping item as a row with its name, its quantity, and a checkbox reflecting whether it is checked. Rows are ordered by newest created first. The list is loaded from on-device storage when the app opens, so items added earlier appear again after restart. When there are no items, the list area shows an empty state.",
+   "failureOutcome": "If stored items cannot be read, the app shows an empty list and continues running.",
+   "failureRecovery": "fallback",
+   "surface": "main",
+   "acceptanceSignals": [
+    "After adding an item and restarting the app, the item's name and quantity appear in the list.",
+    "Each row shows the item name, the quantity, and a checkbox.",
+    "With no stored items, the list area shows an empty state."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Shopping items"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Shopping items",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "launch",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Add item",
+   "userOutcome": "The user adds an item to buy with a name and a quantity.",
+   "trigger": "The user activates the Add button.",
+   "behavior": "The Add button opens a form with a Name text field and a Quantity number field. The Name field is trimmed and a trimmed-empty value counts as empty. The Quantity field accepts whole numbers of at least 1 and starts at 1. Activating Save stores a new item with the entered name, the entered quantity, and checked set to false, then closes the form and shows the item in the list. If the Name is empty or the Quantity is not a whole number of at least 1, nothing is stored and the user sees the field problem.",
+   "failureOutcome": "If the item cannot be written to storage, the form stays open and the user sees that the item was not saved.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Activating Save with Name \"Milk\" and Quantity 2 adds a row showing \"Milk\" and 2.",
+    "Activating Save with an empty or whitespace-only Name stores nothing and shows the Name field problem.",
+    "Activating Save with Quantity 0 stores nothing and shows the Quantity field problem.",
+    "A newly added item appears unchecked in the list."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Shopping items"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Shopping list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Shopping items",
+     "operations": [
+      "create"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Check off item",
+   "userOutcome": "The user marks an item as bought or unmarks it.",
+   "trigger": "The user toggles the checkbox on an item row.",
+   "behavior": "Toggling the checkbox on a row sets that item's checked value to the new state and stores it on the device. Checking a row shows it as checked; unchecking it shows it as unchecked. The item's name and quantity are unchanged.",
+   "failureOutcome": "If the new checked state cannot be written to storage, the checkbox returns to its previous state and the user sees that the change was not saved.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Toggling the checkbox of an unchecked item shows it checked and the state persists after restart.",
+    "Toggling the checkbox of a checked item shows it unchecked and the state persists after restart.",
+    "Checking an item leaves its name and quantity unchanged."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Shopping items"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Shopping list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Shopping items",
+     "operations": [
+      "update"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Clear checked items",
+   "userOutcome": "The user removes all checked items from the list at once.",
+   "trigger": "The user activates the Clear checked button.",
+   "behavior": "The Clear checked button removes every item whose checked value is true in one action. A confirmation dialog asks the user to confirm before anything is removed; confirming removes all checked items and leaves unchecked items in place, while cancelling removes nothing. When no items are checked, activating the button removes nothing.",
+   "failureOutcome": "If the removal cannot be written to storage, the checked items remain in the list and the user sees that the clear did not complete.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With two checked items and one unchecked item, confirming Clear checked leaves only the unchecked item in the list.",
+    "Cancelling the confirmation dialog removes no items.",
+    "With no checked items, activating Clear checked and confirming leaves the list unchanged."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Shopping items"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Shopping list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Shopping items",
+     "operations": [
+      "delete"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Shopping items",
+   "purpose": "Items the user intends to buy, each with a name, a quantity, and a checked state.",
+   "sensitivity": "personal",
+   "retentionIntent": "Kept on the device until the user clears checked items.",
+   "storage": "records",
+   "writeMode": "atomic-replace",
+   "fields": [
+    {
+     "name": "name",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "quantity",
+     "valueType": "whole-number",
+     "optional": false,
+     "min": 1,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "checked",
+     "valueType": "flag",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": "false",
+     "appStamped": null
+    },
+    {
+     "name": "created at",
+     "valueType": "date-time",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": "now",
+     "appStamped": null
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [
+  "local-storage"
+ ],
+ "qualityRequirements": [
+  "The list shows each item's name, quantity, and checked state in a single row.",
+  "Items added or checked remain present after the app is restarted."
+ ],
+ "productConstraints": [
+  "All data is stored on the device; no account or network connection is required."
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Shopping list"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Add item",
+    "Check off item",
+    "Clear checked items"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 3,
+   "features": [
+    "Shopping list"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

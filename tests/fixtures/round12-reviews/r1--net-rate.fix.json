@@ -1,0 +1,160 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 74107,
+    "output_tokens": 9181
+  },
+  "fix": {
+    "edits": [
+      {
+        "finding": 1,
+        "file": "PRD.md",
+        "find": "counter change times 8 divided by the elapsed seconds since the stored sample",
+        "replace": "counter change divided by the elapsed seconds since the stored sample (bytes per second)",
+        "all": true
+      },
+      {
+        "finding": 1,
+        "file": "ARD.md",
+        "find": "counter change times 8 divided by the elapsed seconds since the stored sample",
+        "replace": "counter change divided by the elapsed seconds since the stored sample (bytes per second)",
+        "all": true
+      },
+      {
+        "finding": 1,
+        "file": "TRD.md",
+        "find": "counter change times 8 divided by the elapsed seconds since the stored sample",
+        "replace": "counter change divided by the elapsed seconds since the stored sample (bytes per second)",
+        "all": true
+      },
+      {
+        "finding": 1,
+        "file": "PRD.md",
+        "find": "writes the label '10.0 kB/s' with class normal",
+        "replace": "writes the label '1250.0 kB/s' with class normal",
+        "all": true
+      },
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "writes the label '10.0 kB/s' with class normal",
+        "replace": "writes the label '1250.0 kB/s' with class normal",
+        "all": true
+      },
+      {
+        "finding": 1,
+        "file": "TRD.md",
+        "find": "a rate is the counter change divided by the whole seconds since that stored sample time, and an elapsed time of 0 or less stores no rate.",
+        "replace": "a rate in bytes per second is units::bytes_per_second(counter change, whole seconds since that stored sample time) with no multiplication by 8, and the label number is units::format_in_unit(rate, \"kB/s\", 1) (500,000 B over 5 s is 100,000 B/s, shown 100.0; 6,250,000 B over 5 s is 1,250,000 B/s, shown 1250.0); an elapsed time of 0 seconds or less changes nothing in the store and writes the label '0.0 kB/s' with class normal.",
+        "all": false
+      },
+      {
+        "finding": 2,
+        "file": "PRD.md",
+        "find": "The first refresh after the service loop starts, or after the stored sample time is more than twice the refresh interval old, stores the new counter and sample time",
+        "replace": "The first refresh with no stored record, or after the stored sample time is more than twice the refresh interval old, stores the new counter as both the received counter and the baseline, with the new sample time,",
+        "all": true
+      },
+      {
+        "finding": 2,
+        "file": "ARD.md",
+        "find": "The first refresh after the service loop starts, or after the stored sample time is more than twice the refresh interval old, stores the new counter and sample time",
+        "replace": "The first refresh with no stored record, or after the stored sample time is more than twice the refresh interval old, stores the new counter as both the received counter and the baseline, with the new sample time,",
+        "all": true
+      },
+      {
+        "finding": 2,
+        "file": "TRD.md",
+        "find": "The first refresh after the service loop starts, or after the stored sample time is more than twice the refresh interval old, stores the new counter and sample time",
+        "replace": "The first refresh with no stored record, or after the stored sample time is more than twice the refresh interval old, stores the new counter as both the received counter and the baseline, with the new sample time,",
+        "all": true
+      },
+      {
+        "finding": 2,
+        "file": "TRD.md",
+        "find": "With no stored record yet, the refresh stores the counter and the time without a rate and the label stays the empty label (class empty); a record without a rate also shows the empty label with class empty.",
+        "replace": "With no stored record yet, or when the stored sample time is more than twice the refresh interval old, the refresh stores the counter as both received bytes and baseline bytes with the new time and writes the label '0.0 kB/s' with class normal (the first refresh is detected only from the stored record, never from memory, so it works the same in --service and in --action refresh). The rate is not a stored field; it is computed only during a refresh. The empty label '--' with class empty is shown only while no refresh has ever written the cache. stored_output returns the label '0.0 kB/s' with value Some(0.0) for a stored record (the rate is not stored) and None with no record; refresh marks it stale.",
+        "all": false
+      },
+      {
+        "finding": 3,
+        "file": "PRD.md",
+        "find": "minus the counter stored when the service loop started",
+        "replace": "minus the stored baseline counter, never below 0 (received.saturating_sub(baseline))",
+        "all": true
+      },
+      {
+        "finding": 3,
+        "file": "ARD.md",
+        "find": "minus the counter stored when the service loop started",
+        "replace": "minus the stored baseline counter, never below 0 (received.saturating_sub(baseline))",
+        "all": true
+      },
+      {
+        "finding": 3,
+        "file": "TRD.md",
+        "find": "minus the counter stored when the service loop started",
+        "replace": "minus the stored baseline counter, never below 0 (received.saturating_sub(baseline))",
+        "all": true
+      },
+      {
+        "finding": 3,
+        "file": "TRD.md",
+        "find": "when the stored sample time is more than twice the refresh interval old, the refresh starts a new baseline at the new reading.",
+        "replace": "baseline bytes is set to the new counter only on the first insert (no stored record) and when the stored sample time is more than twice the refresh interval old; on every other insert the feature reads the stored record and passes its baseline through unchanged, except that a counter that went backwards sets baseline to min(baseline, new counter), so baseline never exceeds received bytes. The notification total is received bytes minus baseline bytes, saturating at 0.",
+        "all": true
+      },
+      {
+        "finding": 4,
+        "file": "TASKS.md",
+        "find": "without measuring or fetching, or None when no record is stored; refresh uses it",
+        "replace": "without measuring or fetching (the rate is not stored, so the label is '0.0 kB/s' with value Some(0.0)), or None when no record is stored; refresh uses it",
+        "all": false
+      },
+      {
+        "finding": 4,
+        "file": "TASKS.md",
+        "find": "module::interval_seconds(&Settings::default()) == 2",
+        "replace": "module::interval_seconds(&Settings::default()) == 2 (the kit's interval_seconds floor is 1 second, so 2 is returned unchanged)",
+        "all": false
+      },
+      {
+        "finding": 4,
+        "file": "kit/src/module.rs",
+        "find": "/// Service refresh interval in seconds, never below 5.",
+        "replace": "/// Service refresh interval in seconds, never below 1.",
+        "all": false
+      },
+      {
+        "finding": 4,
+        "file": "kit/src/module.rs",
+        "find": "settings.refresh_seconds.max(5)",
+        "replace": "settings.refresh_seconds.max(1)",
+        "all": false
+      },
+      {
+        "finding": 4,
+        "file": "kit/src/config.rs",
+        "find": "if seconds < 5 {",
+        "replace": "if seconds < 1 {",
+        "all": false
+      },
+      {
+        "finding": 4,
+        "file": "kit/src/config.rs",
+        "find": "refresh_seconds must be at least 5",
+        "replace": "refresh_seconds must be at least 1",
+        "all": false
+      },
+      {
+        "finding": 4,
+        "file": "kit/tests/contract_tests.rs",
+        "find": "settings.set(\"refresh_seconds\", \"4\").is_err()",
+        "replace": "settings.set(\"refresh_seconds\", \"0\").is_err()",
+        "all": false
+      }
+    ],
+    "notes": "Defect 1: I chose a plain bytes-per-second rate shown in kB/s, with no multiplication by 8, since the user asked for kilobytes per second. 500,000 B over 5 s is 100,000 B/s, which is '100.0 kB/s'. 6,250,000 B over 5 s is 1,250,000 B/s, which is '1250.0 kB/s'; I changed that example and removed 'times 8' from PRD, ARD and TRD. Defect 2: the first refresh is now detected only from the stored record, meaning no record or a sample older than twice the interval. It stores the counter as received and baseline and writes '0.0 kB/s' with class normal. '--' with class empty is shown only before any cache exists, so ACC-05 still holds. I dropped the 'record without a rate' clause, because the rate is not stored. stored_output returns '0.0 kB/s' for a stored record. Defect 3: baseline is set only on the first insert or after a stale gap, otherwise carried over unchanged, and on a counter decrease it becomes min(baseline, new counter). The click total is received.saturating_sub(baseline), written in PRD, ARD and TRD, and the retention text in TRD says the same. Defect 4: the kit's interval floor and the --set minimum are lowered from 5 to 1 (module.rs, config.rs) and its contract test now rejects 0. interval_seconds(&Settings::default()) now returns 2, and the TASK-05 assertion states that."
+  },
+  "failed": []
+}

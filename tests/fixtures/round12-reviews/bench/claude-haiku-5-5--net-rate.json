@@ -1,0 +1,120 @@
+{
+  "usage": {
+    "model": "claude-haiku-5-5",
+    "input_tokens": 72978,
+    "output_tokens": 31915
+  },
+  "review": {
+    "slug": "net-rate",
+    "blocking": [
+      {
+        "where": "PRD.md — FEAT-DOWNLOAD-RATE-LABEL",
+        "quote": "computes the rate as the counter change times 8 divided by the elapsed seconds since the stored sample, converts it to kB/s (1 kB = 1000 B)",
+        "why": "Bits per second divided by 1000 gives kb/s, not kB/s. The acceptance values contradict the formula: 500,000 B over 5 s gives 800.0 kB/s by this formula, but the outcome says 100.0. 6,250,000 B over 5 s gives 10,000.0 kB/s, but the outcome says 10.0 kB/s, which only matches 10.0 Mb/s. An agent cannot satisfy both the formula and the acceptance values.",
+        "fix": "Define the kB/s rate as bytes divided by seconds divided by 1000 (no times-8 step), and change the 6,250,000-byte outcome to 1250.0 kB/s.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-05-DOWNLOAD-RATE-LABEL",
+        "quote": "A refresh with a counter change of 500,000 bytes over 5 seconds writes the label '100.0 kB/s' with class normal.",
+        "why": "The reset rule in TRD.md says a stored sample more than twice the refresh interval old starts a new baseline and writes 0.0 kB/s. At the 2-second interval, a 5-second gap exceeds 4 seconds, so this case yields 0.0 kB/s, not 100.0. TASK-05 also says the test uses a short interval, which makes the reset fire even more.",
+        "fix": "State that the baseline reset applies only to a missing or stale record in a way that does not fire for a 5-second gap, or change the acceptance case to use an interval of at least 3 seconds.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-DOWNLOAD-RATE-LABEL-INTERFACE",
+        "quote": "With no stored record yet, the refresh stores the counter and the time without a rate and the label stays the empty label (class empty)",
+        "why": "The same paragraph says the first refresh after the service loop starts writes the label with 0.0 kB/s. A first-ever refresh is both a first refresh and a no-record refresh, so the agent cannot tell whether the label is 0.0 kB/s or the empty label.",
+        "fix": "Pick one: write 0.0 kB/s on the first refresh that stores a record, and keep the empty label only before any record exists.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-DATA-RATE-SAMPLE",
+        "quote": "Store operations, exactly these and no others: read (FEAT-DOWNLOAD-RATE-LABEL, FEAT-TOTAL-RECEIVED-NOTIFICATION); create (FEAT-DOWNLOAD-RATE-LABEL).",
+        "why": "The total is the counter minus the counter stored when the service loop started, but nothing writes that baseline at service start. serve_until and run_service have no store operation, refresh cannot tell a service start from an --action refresh, and the only baseline reset is the stale rule. The total therefore covers an arbitrary period, not the time since start.",
+        "fix": "Add a service-start operation that writes the baseline once, called from run_service by the lifecycle owner, and state how refresh carries the baseline forward unchanged.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/module.rs — interval_seconds",
+        "quote": "u64::from(settings.refresh_seconds.max(5))",
+        "why": "The declared 2-second service cadence is clamped to 5 seconds, so the loop waits 5 s and stale starts at 10 s. Settings::default() therefore gives 5, not the 2 that TASKS.md asserts in TASK-05, and kit/src/config.rs rejects refresh_seconds below 5 with a message, so 2 cannot be set either.",
+        "fix": "Return u64::from(settings.refresh_seconds) from interval_seconds, and lower the minimum in Settings::set in src/config.rs so 2 is accepted.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/tests/module_output_tests.rs — fresh_cache_is_shown_and_old_cache_is_marked_stale",
+        "quote": "assert_eq!(old[\"class\"], \"stale\");",
+        "why": "The test renders at age 5 with refresh_seconds 2. Because render_with uses interval_seconds (5), stale begins only past 10 s, so the class stays normal. The kit's own cargo test fails at TASK-01, which stops the first validation gate.",
+        "fix": "Fix interval_seconds as in the previous item so the stale threshold is 4 s for the 2-second default, and keep the test's 2-second setting.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-DATA-RATE-SAMPLE",
+        "quote": "Stored fields (one record each, plus a stable generated id): received bytes (whole number, at least 0); sampled at (date and time); baseline bytes (whole number, at least 0).",
+        "why": "Recovery requires stored_output to return the label of the stored record after a reboot, but no label or rate is stored. The record holds only counter, time, and baseline, so stored_output can only return the empty label, which contradicts the rule that the last good label text is kept.",
+        "fix": "Add a stored last-rate field to the record in this contract, or define stored_output to return None so the failed-refresh fallback is the empty state.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-03-LIFECYCLE-COORDINATOR",
+        "quote": "this task adds module::shutdown_cleanup(settings, cache_path)",
+        "why": "The lifecycle API is placed in src/module.rs, so src/platform/lifecyclecoordinator.rs is created but never called. TRD.md requires every owner to be reachable from the production entry point, and says a platform owner the running app never calls blocks completion.",
+        "fix": "Put shutdown_cleanup in src/platform/lifecyclecoordinator.rs and call it from module::run_service.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TRD.md — CON-DATA-RATE-SAMPLE",
+        "quote": "trait RateSampleStore with exactly: list, get, insert",
+        "why": "No signatures or key type are given for get or insert's return value, so two agents would write different trait APIs.",
+        "fix": "Give signatures, for example get(id: i64) -> Result<Option<RateSample>, StoreError> and insert(&RateSample) -> Result<(), StoreError>.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-TOTAL-RECEIVED-NOTIFICATION",
+        "quote": "Files to modify: src/features/mod.rs; src/module.rs; src/config.rs; src/main.rs",
+        "why": "src/config.rs and src/main.rs have no stated change for this task, which invites unplanned edits.",
+        "fix": "Limit the modify list to the registrations this task needs, src/features/mod.rs and src/module.rs.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-03-LIFECYCLE-COORDINATOR",
+        "quote": "CON-PERMISSION-NOTIFICATIONS needs no code here",
+        "why": "CON-PERMISSION-NOTIFICATIONS is owned by this owner, but its focused test has no defined check for it.",
+        "fix": "Add a test assertion that notify is invoked only from the click action, using the recording launcher.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md — FEAT-TOTAL-RECEIVED-NOTIFICATION",
+        "quote": "sends a desktop notification whose body states the total data received since the module started",
+        "why": "The notification title is never specified, but the kit's notify function takes a title.",
+        "fix": "Name the title in the contract, for example Net Rate.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-TOTAL-RECEIVED-NOTIFICATION-INTERFACE",
+        "quote": "With no stored record the click sends nothing and exits non-zero.",
+        "why": "The recovery text says exit 2 with a message on stderr, so the exit code is stated two ways.",
+        "fix": "Replace non-zero with exit 2 and a message on stderr in the Decision line.",
+        "quoteFound": true
+      },
+      {
+        "where": "ARD.md — Architectural Style",
+        "quote": "Display: the label is the labelTemplate of the one feature that composes it",
+        "why": "labelTemplate is not defined in any document or the kit; the actual template is the Label line in CON-DOWNLOAD-RATE-LABEL-INTERFACE.",
+        "fix": "Replace labelTemplate with the Label template of CON-DOWNLOAD-RATE-LABEL-INTERFACE.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-RUNTIME-WIRING",
+        "quote": "The launch check triggers one such failure per feature that has one (for example by making the service unreachable) and confirms the output shows it.",
+        "why": "The packet declares no remote service, so the example is boilerplate that does not apply and misleads the launch check.",
+        "fix": "Replace the example with making /proc/net/dev unreadable, which the feature treats as a failed read.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Not buildable as written. Eight blocking defects remain: the rate formula's units contradict the acceptance values; the 2-second reset rule defeats the 5-second acceptance case; the first-refresh label is both 0.0 kB/s and empty; nothing sets the total's baseline at service start; the 2-second interval is clamped to 5 s, which breaks the kit's own stale test; stored_output cannot rebuild a label from the stored fields; and the lifecycle owner file is never called. Fix these before TASK-01."
+  }
+}

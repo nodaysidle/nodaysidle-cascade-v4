@@ -1,0 +1,41 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 51322,
+    "output_tokens": 5270
+  },
+  "fix": {
+    "edits": [
+      {
+        "finding": 1,
+        "file": "TRD.md",
+        "find": "- Decision: Use gio::Notification through the freedesktop notification service; when no daemon is present, keep in-app status and do not retry in a loop.",
+        "replace": "- Decision: Use gio::Notification through the freedesktop notification service; when no daemon is present, keep in-app status and do not retry in a loop.\n- Interface: OWN-PERMISSION-COORDINATOR defines in src/platform/permissioncoordinator.rs the error enum NotifyError (thiserror; exactly one variant, Unavailable, which covers both a denied and an unavailable notification service) and trait Notifier with exactly one function, notify(&self, title: &str, body: &str) -> Result<(), NotifyError>. PermissionCoordinator implements Notifier. It is created by PermissionCoordinator::new() (production probe) or PermissionCoordinator::with_probe(probe: fn() -> bool) (tests). notify makes exactly one attempt and never retries: it returns Err(NotifyError::Unavailable) without sending when the probe returns false or when gio::Application::default() is None; otherwise it builds a gio::Notification with the given title and body, calls send_notification(Some(\"session-complete\"), &notification) on that application, and returns Ok(()). gio is used through the gtk::gio re-export. gio::Application::send_notification returns nothing, so the probe is the only way unavailability is detected. The production probe is the function notification_daemon_present() -> bool: it asks the session bus (gtk::gio::bus_get_sync, then DBusConnection::call_sync with a 500 ms timeout) org.freedesktop.DBus.NameHasOwner for the name org.freedesktop.Notifications, and returns false on any error or when the name has no owner. Features depend only on the Notifier trait; the feature test doubles live in tests/focussessiontimerfeature_tests.rs.",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "ARD.md",
+        "find": "- CON-PERMISSION-NOTIFICATIONS: Use gio::Notification through the freedesktop notification service; when no daemon is present, keep in-app status and do not retry in a loop.",
+        "replace": "- CON-PERMISSION-NOTIFICATIONS: Use gio::Notification through the freedesktop notification service; when no daemon is present, keep in-app status and do not retry in a loop. OWN-PERMISSION-COORDINATOR exposes trait Notifier (notify(&self, title: &str, body: &str) -> Result<(), NotifyError>) and detects an absent daemon with a session-bus NameHasOwner probe for org.freedesktop.Notifications; the exact interface is in TRD.md.",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "Create only these files: src/platform/permissioncoordinator.rs, tests/platform_permissioncoordinator_tests.rs. Modify only these files, which earlier tasks created: src/platform/mod.rs, src/state.rs, src/app.rs.",
+        "replace": "Create only these files: src/platform/permissioncoordinator.rs, tests/platform_permissioncoordinator_tests.rs. Modify only these files, which earlier tasks created: src/platform/mod.rs, src/state.rs, src/app.rs. Define exactly the interface rendered in TRD.md under CON-PERMISSION-NOTIFICATIONS: enum NotifyError (single variant Unavailable), trait Notifier with notify(&self, title: &str, body: &str) -> Result<(), NotifyError>, PermissionCoordinator::new(), PermissionCoordinator::with_probe(probe: fn() -> bool), and the production probe notification_daemon_present() -> bool. Add the field notifier: std::sync::Arc<PermissionCoordinator> to Services in src/app.rs and construct it in build_services with PermissionCoordinator::new(). Focused tests (no display, no real daemon): with_probe(|| false) makes notify return Err(NotifyError::Unavailable); with_probe(|| true) and no default gio::Application also returns Err(NotifyError::Unavailable); each notify call makes a single attempt with no loop or retry.",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "Notification status: when the notification request is denied or unavailable, the status area shows 'Desktop notifications are unavailable.' and nothing is retried;",
+        "replace": "Notification status: on completion call the Notifier trait from OWN-PERMISSION-COORDINATOR (notify(&self, title: &str, body: &str) -> Result<(), NotifyError>) exactly once with title 'Focus session complete' and body 'Your 25-minute focus session has ended.'; the timer view-model takes the notifier as &dyn Notifier and src/app.rs passes the Services notifier. In tests/focussessiontimerfeature_tests.rs define two test doubles implementing Notifier: a recording notifier that stores every (title, body) pair and returns Ok(()), and an unavailable notifier that returns Err(NotifyError::Unavailable). The tests assert that the recording notifier received exactly the one pair above on completion. When notify returns Err, the status area shows 'Desktop notifications are unavailable.' and nothing is retried;",
+        "all": false
+      }
+    ],
+    "notes": "Defined the missing notification interface in TRD CON-PERMISSION-NOTIFICATIONS: a Notifier trait with notify(title, body) -> Result<(), NotifyError>, a single-variant NotifyError::Unavailable covering both denied and no-daemon, and a PermissionCoordinator that implements it with a probe injected for tests. Because gio's send_notification returns nothing, unavailability is detected by a session-bus NameHasOwner probe for org.freedesktop.Notifications (500 ms timeout), plus a missing default gio::Application. TASK-04 now builds exactly this and puts the coordinator into Services as notifier. TASK-05 now consumes the trait as &dyn Notifier, and its tests define a recording notifier and an unavailable notifier. ARD gets a short pointer to the interface so the documents agree."
+  },
+  "failed": []
+}

@@ -1,0 +1,70 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 52551,
+    "output_tokens": 12700
+  },
+  "review": {
+    "slug": "focus-timer",
+    "blocking": [],
+    "polish": [
+      {
+        "where": "TASKS.md TASK-03-LIFECYCLE-COORDINATOR",
+        "quote": "Depend only on OWN-DATA-STORE; implement every documented decision, failure, cancellation, cleanup, and recovery branch.",
+        "why": "No struct, constructor or method signature is given for LifecycleCoordinator. It does not say how it receives the Option<Arc<DataStore>>, how it registers close-request and SIGTERM handlers, or what 'cancel active tasks' cancels. The agent must invent this API.",
+        "fix": "Add a short interface to TASK-03: LifecycleCoordinator::new(store: Option<Arc<DataStore>>), shutdown(&self) that closes the store if present, and where app.rs calls it from the window close-request and SIGTERM handlers.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/main.rs",
+        "quote": "let window = focus_timer::app::build_window(application);",
+        "why": "The activate handler builds a new window on every activation. The lifecycle contract requires exactly one primary window and reopening from the launcher, and no task may edit main.rs (TASK-01 says to verify the kit files unchanged).",
+        "fix": "Tell TASK-03 to make build_window return the existing application.active_window() when one exists, so main.rs stays unchanged.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/state.rs",
+        "quote": "#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]",
+        "why": "TASKS.md TASK-05 says to store the ToastOverlay, timer state, loaded records and status in 'the shared view state'. A GTK widget handle cannot live in this serde/Eq-derived AppState, and the packet does not say whether to add a new type.",
+        "fix": "State in TASK-05 that the view state is a new non-serde struct in src/state.rs, with the overlay held as an Option so display-free tests can construct it.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/app.rs",
+        "quote": "pub struct Services {}",
+        "why": "The struct derives Default and build_services uses Services::default(). After TASK-02 and TASK-04 it holds Option<Arc<DataStore>> and Arc<PermissionCoordinator>. The Arc field only derives Default if PermissionCoordinator implements it, and a real owner should not be built through a default.",
+        "fix": "In TASK-02, tell the agent to drop derive(Default) and construct Services explicitly in build_services.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-06-TODAY-S-COMPLETED-SESSION-COUNT",
+        "quote": "when the store's list returns Err the label shows 0.",
+        "why": "The label text format is never given (bare number or captioned). No display-free function is named that tests can assert for 'displayed count', and no mechanism is named by which the shared reload() updates the label.",
+        "fix": "Specify the label text (for example 'Sessions today: N'), a display-free fn count_label(count: usize) -> String, and a reload callback that sets the label.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-05-FOCUS-SESSION-TIMER",
+        "quote": "a today-count slot (an empty gtk::Box directly under the MM:SS display)",
+        "why": "The same prompt later lists the layout as 'a row of Start, Pause and Reset buttons sized to their labels, the today-count slot and the status area'. This puts the slot after the buttons, so the vertical order is stated two ways.",
+        "fix": "State one order, for example MM:SS, today-count slot, buttons, status area.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-05-FOCUS-SESSION-TIMER",
+        "quote": "the status area shows 'Desktop notifications are unavailable.' and nothing is retried",
+        "why": "Nothing says when the status text is cleared. It would stay forever after a later Start or Reset, and a later successful notification would still show the stale message.",
+        "fix": "Add: clear the status area on Start and Reset and on a successful notify.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-PERMISSION-NOTIFICATIONS",
+        "quote": "DBusConnection::call_sync with a 500 ms timeout",
+        "why": "The notify call (with its synchronous D-Bus probe) is made from the completion path. If that runs on the GTK main thread, it blocks the UI for up to 500 ms, which breaks the 'No blocking I/O runs on the main thread' rule. The packet does not say which thread calls notify. gio::Application is also not Send.",
+        "fix": "State that notify is called on the main thread and that the probe result is cached at startup, or run the probe via spawn_blocking before the call.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "No blocking defects found. The packet maps every idea sentence to a feature and a testable acceptance criterion. The task order, owner maps and shared-file lists agree, and the data and time rules are unambiguous (the day-bounds test vector checks out). The remaining items are underspecified details that a competent coder can resolve."
+  }
+}

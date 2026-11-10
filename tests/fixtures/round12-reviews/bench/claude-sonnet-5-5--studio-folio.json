@@ -1,0 +1,64 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 40724,
+    "output_tokens": 5470
+  },
+  "review": {
+    "slug": "studio-folio",
+    "blocking": [
+      {
+        "where": "TRD.md Validation Commands (same order in AGENTS.md Validation Gates and TASKS.md Final Validation Commands)",
+        "quote": "1. `npm run check`\n2. `npm test`\n3. `npm run build`",
+        "why": "`npm test` runs tests/projectlisthomepage.test.ts, tests/projectdetailpage.test.ts and tests/packaging.test.ts. TRD CON-RUNTIME-WIRING says these assert on dist/ and fail with a clear message when dist/ is missing. Only the accessibility and performance tests are excluded from `npm test`. Run in the listed final order on a clean tree, or after a stale build, step 2 fails or checks old output, because the build only happens at step 3. An agent following the gates literally would stall.",
+        "fix": "Put `npm run build` before `npm test` in the final validation order (check, build, test, test:a11y, audit:performance), as the per-task validation lists already do.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "kit/src/pages/projects/[slug].astro",
+        "quote": "<dt>Live project link</dt><dd>{entry.data.liveProjectLink}</dd>",
+        "why": "ACC-PROJECT-DETAIL-PAGE-02 requires a link whose target is the stored address. The kit shell renders the address as plain text with no anchor, yet TASKS says the page renders the declared fields starting from this shell. The agent must infer that this field needs an <a href>.",
+        "fix": "Render it as `<dd><a href={entry.data.liveProjectLink}>{entry.data.liveProjectLink}</a></dd>` in the kit, or state in the TASK-04 prompt that this field must be an anchor.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-03-PROJECT-LIST-HOME-PAGE",
+        "quote": "The list entries appear in descending order of project year.",
+        "why": "The catalog function returns entries sorted by id, and the home page must re-sort by year. Entries with the same year have no stated tie-break, and the test cannot assert a deterministic order for them.",
+        "fix": "State that the list sorts by year descending with ties broken by ascending entry id, and that the page sorts the result of listProjectsEntries().",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-RUNTIME-WIRING",
+        "quote": "renders each entry as one li containing one a, with the entry title, whose href is the detail route",
+        "why": "Each home list item must also show the year, and the field-label rule says each value goes in its own element. It is unspecified whether the year sits inside the <a> or beside it, or whether it needs a label. Tests select by li, so the markup is left to guesswork.",
+        "fix": "Specify the li markup, for example `<li><a href=...>name</a> <time>year</time></li>`, and say how the year is asserted.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-02-DATA-STORE",
+        "quote": "Content entry files under src/content/ are also yours, in addition to the create-only list above",
+        "why": "OWN-FOUNDATION owns src/content/projects/01-sample-entry.md, and this task says 'Modify no existing file'. The ownership rule for content files is therefore contradictory, although it does not bite in this build because the idea names no entries.",
+        "fix": "Drop this clause for packets that name no entries, or list the content files under Files to modify or delete.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/content/projects/01-sample-entry.md",
+        "quote": "liveProjectLink: Sample text",
+        "why": "The placeholder is not a URL. The detail page will emit an href of 'Sample text', which is a relative, broken link, and the a11y link check could be confused if the owner later stores a path starting with '/'.",
+        "fix": "Use a placeholder such as https://example.com in the seed, or state that the value is rendered as-is.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-RUNTIME-WIRING",
+        "quote": "open every declared route in a browser at a 320-pixel-wide and a desktop viewport",
+        "why": "This is a manual browser step that a headless coding agent cannot perform. It conflicts with the DONE criteria in AGENTS.md, which require every required command to pass and no required work to remain.",
+        "fix": "State that if no browser is available this step is reported as unverified evidence and does not block DONE.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "The packet is nearly buildable as written: the features, owners, task order, data interface and kit files are consistent. One blocking issue remains: the final validation order runs `npm test`, which needs dist/, before `npm run build`. The other findings are polish."
+  }
+}

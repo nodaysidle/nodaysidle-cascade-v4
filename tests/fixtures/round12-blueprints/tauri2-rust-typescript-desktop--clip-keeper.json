@@ -1,0 +1,191 @@
+{
+ "productName": "Clip Keeper",
+ "summary": "Clip Keeper remembers text the user copies while it runs, keeping the last 50 copied texts newest first. The user clicks an entry to copy it back to the clipboard or clears the whole history. The history is stored on the device and restored after restart.",
+ "targetUsers": [
+  "People who copy and paste text frequently and want to reuse recent clipboard contents",
+  "Users who need to recover text they copied earlier in the session or a previous session"
+ ],
+ "goals": [
+  "Capture copied text automatically while the app runs",
+  "Keep the 50 most recent copied texts, newest first",
+  "Let the user copy any stored entry back to the clipboard with one click",
+  "Let the user clear the entire history",
+  "Persist the history on the device and restore it after restart"
+ ],
+ "nonGoals": [
+  "Editing the content of stored clipboard entries",
+  "Searching or filtering the history",
+  "Exporting the history to a file",
+  "Syncing the history across devices"
+ ],
+ "features": [
+  {
+   "name": "Clipboard capture",
+   "userOutcome": "Copied text is remembered automatically without any action from the user",
+   "trigger": "The user copies text in any application while Clip Keeper is running",
+   "behavior": "While the app runs it reads the clipboard. When the clipboard text changes and is non-empty, the text is stored as a new history entry with the moment it was captured. The history keeps at most the 50 most recent entries; when a 51st text arrives, the oldest entry is dropped. Copying the same text again creates a new entry at the top rather than moving the old one. Empty clipboard content is ignored.",
+   "failureOutcome": "If the clipboard cannot be read, the app keeps watching and the history is left unchanged",
+   "failureRecovery": "fallback",
+   "surface": "main",
+   "acceptanceSignals": [
+    "After the clipboard text changes to a new non-empty value, reading the history returns that text as the newest entry",
+    "After 51 distinct texts are captured, the history contains exactly 50 entries and the first captured text is absent",
+    "When the clipboard text is empty, no new entry is added"
+   ],
+   "usesPlatformNeeds": [
+    "clipboard",
+    "background-execution"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "read",
+   "clipboardWatch": false,
+   "usesData": [
+    "Clipboard history"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Clipboard history",
+     "operations": [
+      "create",
+      "read",
+      "delete"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "launch",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "History list",
+   "userOutcome": "The user sees the stored copied texts, newest first, and can copy one back or clear the history",
+   "trigger": "The user opens the app window",
+   "behavior": "The main window shows the clipboard history as a list ordered newest first by capture time. Each row shows the copied text and the moment it was captured. When the history is empty the list shows the text 'No copied text yet'. Clicking a row copies that row's text back to the clipboard and shows a confirmation that the text was copied. A Clear history button asks 'Clear all clipboard history?' with the labels Clear and Cancel; confirming removes every entry and the list then shows 'No copied text yet'. The list is loaded from the device when the app starts; if that load fails, the list shows 'Could not load clipboard history' and no entries.",
+   "failureOutcome": "If loading the stored history fails, the list shows 'Could not load clipboard history' and no entries",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With three stored entries, the list shows them newest first by capture time",
+    "Clicking a row writes that row's text to the clipboard",
+    "Confirming Clear history leaves the history empty and the list shows 'No copied text yet'",
+    "When the stored history cannot be read, the list shows 'Could not load clipboard history'"
+   ],
+   "usesPlatformNeeds": [
+    "clipboard",
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "copy",
+   "clipboardWatch": false,
+   "usesData": [
+    "Clipboard history"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Clipboard capture"
+   ],
+   "dataOperations": [
+    {
+     "data": "Clipboard history",
+     "operations": [
+      "read",
+      "delete"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Clipboard history",
+   "purpose": "Stores the last 50 copied texts with their capture times so they survive a restart",
+   "sensitivity": "personal",
+   "retentionIntent": "Keeps at most the 50 most recent entries; older entries are dropped as new ones arrive, and all entries are removed when the user clears the history",
+   "storage": "records",
+   "writeMode": "direct",
+   "fields": [
+    {
+     "name": "text",
+     "valueType": "long-text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "captured at",
+     "valueType": "date-time",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": "now",
+     "appStamped": true
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [
+  "clipboard",
+  "local-storage",
+  "background-execution"
+ ],
+ "qualityRequirements": [
+  "The history never holds more than 50 entries at any time",
+  "The list is always ordered newest first by capture time"
+ ],
+ "productConstraints": [
+  "The app only captures text, not images or files",
+  "Capture happens only while the app is running"
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Clipboard capture"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Clipboard capture",
+    "History list"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 3,
+   "features": [
+    "History list"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

@@ -1,0 +1,99 @@
+{
+  "usage": {
+    "model": "claude-haiku-5-5",
+    "input_tokens": 40868,
+    "output_tokens": 24070
+  },
+  "review": {
+    "slug": "tip-split",
+    "blocking": [
+      {
+        "where": "TRD.md — CON-RUNTIME-WIRING (Runtime wiring, Packaging Contract)",
+        "quote": "with each list holding several entries, one of them longer than the view is wide",
+        "why": "The product has no list, and TASKS.md TASK-03 forbids any list, empty-list message, or status/error area. The launch check's list screenshots, the empty-list message rule, the per-feature failure-message check, and the step 'confirm that the data the app saved is still present' therefore cannot be satisfied, so an agent must invent UI or report a failing gate.",
+        "fix": "In CON-RUNTIME-WIRING replace the list, empty-list, error-view and saved-data clauses with: screenshot the single main screen and confirm every label, field, and result lies inside the view, and after relaunch confirm the fields show their starting values.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-03-SPLIT-BILL-CALCULATOR (Task prompt)",
+        "quote": "enter the values, press the buttons, and assert the shown values and the field messages",
+        "why": "PRD.md requires results to update with no separate calculate action and defines no buttons and no field messages for this feature, so the focused test cannot be written as specified. The same prompt also demands 'its buttons' in the section Column.",
+        "fix": "Replace that clause with: enter the values into the bill, tip choice, and people controls, and assert the shown Tip, Total, and Per person values and the 0.00 fallback; remove 'its buttons' and 'field messages'.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md — Feature Contracts, FEAT-SPLIT-BILL-CALCULATOR (Behavior)",
+        "quote": "each rounded to two decimals (for example 84.50 means 2)",
+        "why": "The rounding mode (HALF_UP or HALF_EVEN) and whether Total and Per person use rounded or unrounded intermediates are unstated. For example a bill of 0.10 at 15 percent gives a tip of 0.015, which rounds to 0.02 or 0.01 depending on the mode, changing Total and Per person. The example 'means 2' is also meaningless and no acceptance example covers a tie.",
+        "fix": "Replace the parenthetical with: rounded to two decimal places using HALF_UP, where Tip is rounded first, Total is the bill plus the rounded Tip, and Per person is the rounded Total divided by the people.",
+        "quoteFound": true
+      },
+      {
+        "where": "ARD.md — Architectural Style (also TRD.md — Runtime Architecture Contracts)",
+        "quote": "use SavedStateHandle for process death, and keep Activity instances free of durable state",
+        "why": "SavedStateHandle restores entered values after process death, which contradicts the PRD Problem Statement 'without storing, saving, or restoring any entered or computed values' and the acceptance 'no entered or computed value is restored' after restart. An agent cannot satisfy both.",
+        "fix": "Delete 'use SavedStateHandle for process death,' from ARD.md Architectural Style and the matching TRD.md sentence, so the bill, tip, and people values are never saved to a SavedStateHandle.",
+        "quoteFound": true
+      },
+      {
+        "where": "ARD.md — State Ownership (Settings placement) and Platform Lifecycle (CON-LIFECYCLE-APPLICATION-LAUNCH)",
+        "quote": "OWN-DATA-STORE is Room only: it adds no Jetpack DataStore key of its own.",
+        "why": "OWN-DATA-STORE appears in no owner map, task, or file list, so it is an undefined owner. Together with 'the Room database opens on first use' an agent may build a Room database, which contradicts 'Persistence: disabled' and 'No application record repository is created'.",
+        "fix": "Replace this sentence and the launch clause 'the Room database opens on first use' with: no database or DataStore is created or opened, and no OWN-DATA-STORE owner exists.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TASKS.md — TASK-03-SPLIT-BILL-CALCULATOR (Task prompt)",
+        "quote": "the loaded records of every declared data object",
+        "why": "No data object is declared, and no file is named for the shared view state (only App.kt is modified), so the agent must guess where the state lives and what it holds.",
+        "fix": "State that the shared view state is one immutable data class in App.kt holding only the bill amount, tip percentage, and people count.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md — Feature Contracts, FEAT-SPLIT-BILL-CALCULATOR (Behavior)",
+        "quote": "a 'Bill amount' number field",
+        "why": "Decimal places, negative amounts, and maximum length are unstated, so the fallback for invalid input is a guess.",
+        "fix": "Add: the bill amount accepts non-negative decimals with at most two fraction digits, and any other value shows 0.00.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md — Primary User Journeys / ACC-SPLIT-BILL-CALCULATOR-01",
+        "quote": "After entering values and restarting the app",
+        "why": "The restart test has no stated mechanism, so the agent must guess how restart is simulated in Robolectric or on a device.",
+        "fix": "Specify it as recreating the Activity in a new ActivityScenario and asserting the starting values are shown.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/README.md — Room paragraph",
+        "quote": "the schema JSON under app/schemas is generated by the build and committed",
+        "why": "No entity exists, so no schema is generated and nothing can be committed; the statement is boilerplate that the agent cannot satisfy.",
+        "fix": "Delete this clause and say that no Room schema is generated because the product declares no entity.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-PACKAGING (Task prompt)",
+        "quote": "a rejected Save, a row action",
+        "why": "These examples name UI that does not exist in this product, and the prompt's acceptance mention is boilerplate with no referent.",
+        "fix": "Delete the example from the TASK-04 prompt and state that only the Split bill calculator outcome is asserted through the production container.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-PACKAGING (Files to modify)",
+        "quote": "Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged.",
+        "why": "The task lists four files to modify, yet the prompt says to leave them unchanged unless a check fails, so the agent cannot tell whether an edit is required.",
+        "fix": "Remove the four files from TASK-04 Files to modify and keep only the conditional sentence.",
+        "quoteFound": true
+      },
+      {
+        "where": "ARD.md — Accessibility Boundary",
+        "quote": "Compose accessibility tests",
+        "why": "No task acceptance criterion requires semantics, 48dp targets, or accessibility tests, so this requirement has no owner or check.",
+        "fix": "Add to TASK-03 acceptance: each field, choice, and result has a Compose semantics label and every control is at least 48dp.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Not buildable without guesswork: five blocking contradictions (launch and runtime-wiring checks against a list-free product, a test that presses nonexistent buttons, SavedStateHandle against no-restore, an undefined rounding rule, and an undefined Room/DataStore owner) must be fixed before an agent can follow TASKS.md in order."
+  }
+}

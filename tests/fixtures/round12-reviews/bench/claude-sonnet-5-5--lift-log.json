@@ -1,0 +1,64 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 64504,
+    "output_tokens": 4670
+  },
+  "review": {
+    "slug": "lift-log",
+    "blocking": [
+      {
+        "where": "TRD.md — CON-ADD-SET-INTERFACE / CON-EDIT-SET-INTERFACE, Field rules (Weight (kg))",
+        "quote": "a number matching ^[0-9]+([.][0-9]{1,2})?$ (at most 2 decimal places: a number field accepts any finite non-negative number with at most 2 decimals unless the behavior states another count)",
+        "why": "PRD.md requires at most one decimal place (\"Weight (kg) (required number with at most one decimal place)\"). ACC-ADD-SET-04 says that saving 82.55 stores nothing and shows a field problem. The TRD regex and its 2-decimal rule accept 82.55, so the TRD blocks only 3 or more decimals. An agent following the TRD fails the PRD acceptance criterion, and the focused tests would assert opposite outcomes depending on which document the agent follows. The TRD's \"unless the behavior states another count\" exception is not applied: the behavior does state one decimal.",
+        "fix": "In both TRD form contracts, change the Weight (kg) rule to ^[0-9]+([.][0-9])?$ and the message to \"Weight (kg) must have at most 1 decimal place\", rejecting 2 or more decimals.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TRD.md — CON-EDIT-SET-INTERFACE, Form (Sets)",
+        "quote": "so no form (add or edit) has an input for them, no validate or form function takes them, and an edit leaves them unchanged. An edit form edits every field in the Field rules below and no other.",
+        "why": "This sits beside \"every other field, if any, is shown read-only (disabled, with its stored value)\", and PRD ACC-EDIT-SET-03 requires the date to be shown read-only in the edit form. No testTag or label is given for the read-only date, so ACC-EDIT-SET-03 cannot be tested mechanically.",
+        "fix": "State that the edit form shows a read-only Text with testTag \"field-date\" (\"Date: yyyy-MM-dd\"), and that this is not an input.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-ADD-SET-INTERFACE, Form (Sets)",
+        "quote": "whose visible label equals its name and whose testTag is \"field-\" plus the field's slug",
+        "why": "Slugs are not listed for \"Exercise name\", \"Weight (kg)\" and \"Repetitions\". For example, \"weight-kg\" and \"weight\" are both plausible, and the same slug drives the row- and error- testTags. Tests written by different tasks could disagree.",
+        "fix": "List the slugs explicitly: exercise-name, weight-kg, repetitions, date.",
+        "quoteFound": true
+      },
+      {
+        "where": "ARD.md — Component and Ownership Map / TRD.md — Owner-to-File map",
+        "quote": "OWN-DATA-STORE — DataStore owns app/src/main/java/com/lift/log/platform/datastore/DataStore.kt",
+        "why": "The owner and file are named \"DataStore\", but the docs say \"Room only: no Jetpack DataStore\". The name invites an agent to add Jetpack DataStore.",
+        "fix": "Add a note in TASK-02 that DataStore.kt holds the Room entity, DAO, database and repository and no Jetpack DataStore.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-SET-LIST, task prompt",
+        "quote": "the Add button (testTag \"add-entry\") plus the inline form shell",
+        "why": "The PRD calls the control the \"Add set\" button, but only the testTag is given and no visible label. TASK-04 builds the button while TASK-05 builds the form it opens, so the label and the open-state ownership are ambiguous.",
+        "fix": "State that the button label is \"Add set\" (testTag \"add-entry\") and that its click handler is wired by TASK-05.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-SET-LIST, task prompt (empty state)",
+        "quote": "the exact text an acceptance signal quotes, else a short plain sentence; tag \"empty-state\"",
+        "why": "No acceptance criterion quotes the empty-state text, so the tests can only assert the tag. An agent also has to invent the text, while the PRD only says \"an empty state\".",
+        "fix": "Specify the text, e.g. \"No sets yet. Tap Add set to record one.\"",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md — Operational Constraints vs Add set outcome",
+        "quote": "Repetitions are whole numbers of at least 1.",
+        "why": "Weight 0 is accepted by the TRD (\"at least 0\"), but the PRD gives no minimum for weight. A weight of 0.0 is therefore saved without any stated rule.",
+        "fix": "State in the PRD whether weight 0 is allowed, or require > 0.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "One blocking contradiction: the PRD and acceptance require at most one decimal place for weight (82.55 rejected), but the TRD field rules validate at most two decimals, so the TRD would accept 82.55. Fix that rule and message in both TRD form contracts. Task order, owner and shared-file maps, the data interface and the kit references are otherwise consistent, and the remaining items are polish."
+  }
+}

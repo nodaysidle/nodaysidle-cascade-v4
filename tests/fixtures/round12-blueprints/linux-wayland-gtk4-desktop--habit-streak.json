@@ -1,0 +1,328 @@
+{
+ "productName": "Habit Streak",
+ "summary": "Habit Streak is a local daily habit tracker. Users add named habits, mark them done for today, rename them, and see each habit's current streak of consecutive done days up to today. Habits and their done days persist on the device and are restored after restart.",
+ "targetUsers": [
+  "Individuals building daily routines",
+  "People who want a simple on-device habit log"
+ ],
+ "goals": [
+  "Let users keep a list of named daily habits",
+  "Let users mark a habit done for today",
+  "Let users rename an existing habit",
+  "Show each habit's consecutive done-day streak up to today",
+  "Persist habits and done days on the device and restore them after restart"
+ ],
+ "nonGoals": [
+  "No cloud sync or multi-device accounts",
+  "No reminders or notifications",
+  "No analytics dashboards or charts"
+ ],
+ "features": [
+  {
+   "name": "Habit list with streaks",
+   "userOutcome": "See every habit with the number of consecutive days it has been done up to today",
+   "trigger": "App opens or the habit list is shown",
+   "behavior": "Shows all stored habits, newest created first. For each habit, computes the streak as the count of consecutive calendar days ending today on which the habit was marked done; if today is not marked done, the streak counts back from yesterday so a habit done through yesterday still shows its run. A habit with no done days shows a streak of 0. The list is restored from device storage when the app starts.",
+   "failureOutcome": "If stored habits cannot be loaded, the list shows no habits and the app continues running",
+   "failureRecovery": "fallback",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With no stored habits, the list shows the text \"No habits yet. Add a habit to start your streak.\"",
+    "A habit marked done today and yesterday and the day before shows a streak of 3",
+    "A habit marked done yesterday but not today shows a streak of 1",
+    "After restarting the app, previously stored habits and their done days are shown again"
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Habits",
+    "Habit completions"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Habits",
+     "operations": [
+      "read"
+     ]
+    },
+    {
+     "data": "Habit completions",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "launch",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": true,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Add habit",
+   "userOutcome": "Create a new named daily habit",
+   "trigger": "User chooses Add in the window header bar",
+   "behavior": "Opens a dialog with a single name field. The name is trimmed; saving is disabled while the trimmed name is empty or longer than 80 Unicode scalar values. Saving creates a habit record with the entered name and closes the dialog.",
+   "failureOutcome": "If the habit cannot be stored, the dialog stays open with the entered name",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With an empty name field, the Add button is disabled",
+    "With a name of 81 characters, the Add button is disabled",
+    "With the name \"Read 10 pages\", pressing the button labeled Add creates a habit that appears in the habit list",
+    "The display-free validate function returns an error for a whitespace-only name without calling the store"
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Habits"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Habit list with streaks"
+   ],
+   "dataOperations": [
+    {
+     "data": "Habits",
+     "operations": [
+      "create"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Mark habit done for today",
+   "userOutcome": "Record that a habit was done today and see its streak grow",
+   "trigger": "User presses the done control on a habit row",
+   "behavior": "Records a completion for the selected habit for the current calendar day. If a completion for today already exists, the control shows the habit as done and pressing it again removes today's completion. The streak shown for that habit updates immediately.",
+   "failureOutcome": "If the completion cannot be stored, the habit row keeps its previous done state",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Pressing the done control on a habit with no completion today stores a completion dated today and the row shows it as done",
+    "Pressing the done control again on a habit done today removes today's completion and the row shows it as not done",
+    "After marking a habit done today, its displayed streak increases by one compared with before"
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Habits",
+    "Habit completions"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Habit list with streaks"
+   ],
+   "dataOperations": [
+    {
+     "data": "Habits",
+     "operations": [
+      "read"
+     ]
+    },
+    {
+     "data": "Habit completions",
+     "operations": [
+      "create",
+      "delete"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": true,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Rename habit",
+   "userOutcome": "Change the name of an existing habit",
+   "trigger": "User chooses rename on a habit row",
+   "behavior": "Opens a dialog with the habit's current name in a name field. The name is trimmed; saving is disabled while the trimmed name is empty or longer than 80 Unicode scalar values. Saving updates the habit's name and closes the dialog; the habit's done days and streak are unchanged.",
+   "failureOutcome": "If the new name cannot be stored, the dialog stays open with the entered name",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "The rename dialog opens with the habit's current name in the name field",
+    "With an empty name field, the Save button is disabled",
+    "Renaming a habit to \"Morning walk\" updates the name shown in the habit list while its streak value stays the same"
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Habits"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Habit list with streaks"
+   ],
+   "dataOperations": [
+    {
+     "data": "Habits",
+     "operations": [
+      "edit"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Habits",
+   "purpose": "Named daily habits the user tracks",
+   "sensitivity": "personal",
+   "retentionIntent": "Kept on the device until the user removes the app's data",
+   "storage": "records",
+   "writeMode": "atomic-replace",
+   "fields": [
+    {
+     "name": "name",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "created at",
+     "valueType": "date-time",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": "now",
+     "appStamped": null
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  },
+  {
+   "name": "Habit completions",
+   "purpose": "One record per habit per calendar day on which the habit was marked done",
+   "sensitivity": "personal",
+   "retentionIntent": "Kept on the device until the user removes the app's data",
+   "storage": "records",
+   "writeMode": "atomic-replace",
+   "fields": [
+    {
+     "name": "habit",
+     "valueType": "reference",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "done on",
+     "valueType": "date",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [
+  "local-storage"
+ ],
+ "qualityRequirements": [
+  "Streak computation for a habit counts consecutive calendar days in the device's local time zone",
+  "Habit names are limited to 80 Unicode scalar values of trimmed text"
+ ],
+ "productConstraints": [
+  "All habits and completions are stored on the device only",
+  "No network access is required for any feature"
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Habit list with streaks"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Add habit",
+    "Mark habit done for today",
+    "Rename habit",
+    "Habit list with streaks"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 3,
+   "features": [
+    "Habit list with streaks",
+    "Add habit",
+    "Mark habit done for today",
+    "Rename habit"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

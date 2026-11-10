@@ -1,0 +1,64 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 46205,
+    "output_tokens": 5246
+  },
+  "review": {
+    "slug": "field-notes",
+    "blocking": [
+      {
+        "where": "TASKS.md TASK-04-AUTHOR-PAGE (Task prompt) vs PRD.md Author page outcome",
+        "quote": "authors has no detail route, so it renders the declared fields of every entry in ascending id order, one li per entry or one element for a single entry, with no a and no href",
+        "why": "The PRD promises one page per author, with a name and that author's posts. The home and post pages must link to that author's page, and the post page must link its author name there. The only author route is the single static /author (src/pages/author.astro), and the task prompt makes it a flat list of all authors with no links and no per-author post filtering. No route, owner or link target exists for a per-author page, so ACC-AUTHOR-PAGE-01/02/03 and ACC-POST-PAGE-03 cannot be met and the agent has to invent a route.",
+        "fix": "Declare Authors as an item-page collection: add a route /author/[slug] (src/pages/author/[slug].astro, owned by OWN-AUTHOR-PAGE) with getStaticPaths over listAuthorsEntries(), and rewrite the TASK-04 prompt, the nav link and the kit shell to match.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-RUNTIME-WIRING",
+        "quote": "A page that lists entries renders each entry as one li containing one a, with the entry title",
+        "why": "Each home-list entry must link to both the post page and the author page, and show the author name and date. That means two anchors per li, which this rule forbids. Tests select entries by that li, so the agent must guess whether to break the rule or drop a link.",
+        "fix": "State that the home list li holds one title link to the post page plus a separate author-name link, and that the one-a rule applies only to lists without an author link.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/content/posts/01-sample-entry.md",
+        "quote": "author: sample-reference",
+        "why": "The only sample author has id 01-sample-entry, so this post's author resolves to nothing. The schema is a plain string (author: z.string(),) with no reference check, and no task implements the required build failure for an undefined author. The reference key is also unspecified: entry id or author name. With the unchanged seed, either the build fails or the home page cannot show an author name, and the author page lists no post.",
+        "fix": "Say the post author value is the author entry id. Seed the sample post with author: 01-sample-entry. Add a cross-collection check (a schema refinement or a build-time check in contentcatalog.ts) with a test, assigned to OWN-DATA-STORE, that fails the build naming the file and field.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "PRD.md Home post list outcome",
+        "quote": "ordered by publication date with the newest post first",
+        "why": "Posts sharing a publication date have no defined order. The catalog sorts by id ascending, so the tie-break is guesswork, and the test for the newest first post can be flaky.",
+        "fix": "Add a tie-break rule, e.g. equal dates fall back to ascending entry id.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-05-POST-PAGE (Task prompt)",
+        "quote": "Depend only on OWN-DATA-STORE, OWN-HOME-POST-LIST;",
+        "why": "The post page uses nothing from HomePostList, which is only a component. The declared dependency is spurious and forces phase ordering.",
+        "fix": "Drop OWN-HOME-POST-LIST from the post page dependencies, or state what it is used for.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-DATA-AUTHORS",
+        "quote": "bio (long text, optional)",
+        "why": "The idea says each author has a short biography, but nothing says whether the author or post page must show it. The author page criteria never mention bio, so an agent can omit it.",
+        "fix": "Either list bio as shown on the author page in the FEAT-AUTHOR-PAGE behavior, or note that it is stored but not displayed.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/pages/posts/[slug].astro",
+        "quote": "<dt>Body</dt><dd>{entry.data.body}</dd>",
+        "why": "The post page shows the frontmatter body field and also <Content />, so a post carries two body texts. The PRD's full body text is ambiguous: a one-line frontmatter value, the markdown body, or both. It is unclear which one a test reads.",
+        "fix": "State that the full body text shown on the post page is the frontmatter body field, with the markdown body as optional extra text, and have the test check the frontmatter value.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Not buildable as written. The per-author page the idea asks for has no route, owner or link target; the author page is specified as a flat, link-free list of authors. The home list also needs two links per entry, against a one-link rule, and the starter seed's post author does not match any author. The rest of the packet (data contract, task order, commands, kit) is coherent."
+  }
+}

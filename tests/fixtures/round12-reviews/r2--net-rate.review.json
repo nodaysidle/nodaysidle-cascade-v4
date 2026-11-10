@@ -1,0 +1,71 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 73807,
+    "output_tokens": 9524
+  },
+  "review": {
+    "slug": "net-rate",
+    "blocking": [
+      {
+        "where": "TASKS.md TASK-01-FOUNDATION acceptance criteria",
+        "quote": "The implementation marker is custom/ (the Waybar module key prefix; resources/waybar/config.jsonc declares the key \"custom/net-rate\").",
+        "why": "TASK-01 must add a test to tests/contract_tests.rs that checks this marker. resources/waybar/config.jsonc is only created in TASK-06-PACKAGING (\"Files to create\"), so a test in TASK-01 that reads the file would fail at that point in the order. The agent would have to guess whether to read the file, hard-code the string, or skip the check.",
+        "fix": "Move the custom/net-rate marker assertion into TASK-06 / tests/packaging_contract_tests.rs, or reword TASK-01 so it checks only a constant or the project slug and not the fragment file.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TRD.md CON-DOWNLOAD-RATE-LABEL-INTERFACE (Rate rule) and kit/src/module.rs fetch_output",
+        "quote": "units::bytes_per_second(counter change, whole seconds since that stored sample time)",
+        "why": "fetch_output receives now_unix in whole seconds, and the service period is 2 s plus pass time. Truncated second timestamps therefore give a delta of 2 or 3 s on some passes, so the label occasionally shows a rate about 33% too low (or 100% too high if a delta of 1 occurs). Rounding versus flooring of 'whole seconds' is also unstated.",
+        "fix": "Store and compare millisecond timestamps (pass a ms clock into the feature) and state that elapsed is computed from ms, with the rate as bytes divided by elapsed seconds as a float. Alternatively state the rounding rule.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-PRESET-OPTIONS",
+        "quote": "refreshSeconds=15; tooltip=true.",
+        "why": "The idea is a download rate read every 2 seconds, but the bar re-reads the cache only every 15 s, so the user sees a 2-second sample only once every 15 s. The PRD accepts this, but it contradicts the 'live readout' framing.",
+        "fix": "Set refreshSeconds to 2 for this blueprint (kit config.jsonc interval 2), or state in the PRD that the displayed value is refreshed every 15 s.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-03-LIFECYCLE-COORDINATOR task prompt",
+        "quote": "this task adds module::shutdown_cleanup(settings, cache_path), which runs after serve_until returns",
+        "why": "The owner's file src/platform/lifecyclecoordinator.rs is listed as the implementation file, but all the lifecycle code goes into src/module.rs. The prompt gives that file no content, so the agent must guess what it contains. CON-PERMISSION-NOTIFICATIONS is also 'covered' here with no code.",
+        "fix": "Say that shutdown_cleanup's body lives in lifecyclecoordinator.rs and module.rs only calls it, or name what the file exports.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-DATA-RATE-SAMPLE (Interface)",
+        "quote": "trait RateSampleStore with exactly: list, get, insert",
+        "why": "Signatures are not given: what get takes (an id?), whether insert takes a RateSample without an id, and the error type name. The concrete SQLite store type that click and fetch_output must construct is not named, so TASK-04 and TASK-05 must guess it.",
+        "fix": "Give the signatures and name the concrete store, for example SqliteRateSampleStore::open(path).",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-04-TOTAL-RECEIVED-NOTIFICATION",
+        "quote": "Files to modify: src/features/mod.rs; src/module.rs; src/config.rs; src/main.rs",
+        "why": "The task prompt gives no change to config.rs (no settings keys) or main.rs (run_action lives in module.rs). The agent is told to modify files it has no reason to touch. The same applies to config.rs and main.rs in TASK-05, and to main.rs in TASK-03.",
+        "fix": "Drop config.rs and main.rs from the modify lists, or state the required edit.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-04 task prompt",
+        "quote": "Send the notification with notify from src/platform/launcher.rs",
+        "why": "The notification title is not specified, only that the body contains the size text (for example '3.67 GB'). The exact body wording is also open. A test asserting 'contains' passes, but the user-facing wording is a guess.",
+        "fix": "State the title and body, for example title 'Net Rate' and body 'Received since start: {size}'.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-05 task prompt",
+        "quote": "Set ModuleOutput.value to the raw numeric reading as stored when the label shows one",
+        "why": "The rate is not stored, and the unit of value (B/s or kB/s) is unspecified. stored_output returns Some(0.0), and no thresholds are declared, so any choice works. It is still an unstated choice.",
+        "fix": "State that value is the rate in kB/s (the same number as the label), or None.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Nearly buildable. The product, the units, the 200,000 B over 2 s → '100.0 kB/s' example, the file ownership and the task order are consistent across the documents and the kit. One blocking defect: the TASK-01 'custom/' marker criterion depends on a file that TASK-06 creates. The rest is polish: whole-second timestamps make the rate jittery, the 15 s bar interval against a 2 s sample, and a few unspecified signatures and wordings."
+  }
+}

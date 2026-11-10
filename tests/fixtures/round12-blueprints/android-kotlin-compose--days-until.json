@@ -1,0 +1,232 @@
+{
+ "productName": "Days Until",
+ "summary": "Days Until counts down to events. The user adds an event with a name and a date, sees every event with the number of days left until it, nearest first, and deletes an event. Events are stored on the device and restored after restart.",
+ "targetUsers": [
+  "People tracking upcoming personal events such as birthdays, trips, and deadlines"
+ ],
+ "goals": [
+  "Let the user record an event with a name and a date",
+  "Show each event with the number of days left until it, nearest first",
+  "Let the user delete an event",
+  "Keep events on the device and restore them after restart"
+ ],
+ "nonGoals": [
+  "Calendar integration or syncing events from other calendars",
+  "Notifications or reminders for events",
+  "Editing an existing event after it is added"
+ ],
+ "features": [
+  {
+   "name": "Event countdown list",
+   "userOutcome": "The user sees every saved event with the number of days left until it, nearest first.",
+   "trigger": "The user opens the app or returns to the main screen.",
+   "behavior": "The main screen shows a list of all saved events. Each row shows the event name and the number of days left until its date, computed as the event date minus today's calendar day, so an event dated today shows 0 and a past event shows a negative number. Rows are ordered by date ascending, so the nearest upcoming event is first and past events follow after today's events. When no events are saved, the screen shows an empty list with the text 'No events yet'. Saved events are loaded from device storage when the app starts, so the list is restored after restart.",
+   "failureOutcome": "If saved events cannot be read from device storage, the app shows an empty list with the text 'No events yet' and continues running.",
+   "failureRecovery": "fallback",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With events dated 3 days from today and 10 days from today saved, the list shows the 3-day event above the 10-day event.",
+    "An event dated today shows 0 days left.",
+    "An event dated 5 days before today shows -5 days left and appears below all events dated today or later.",
+    "With no saved events, the screen shows the text 'No events yet'.",
+    "After adding an event and restarting the app, the event appears in the list with the same name and date."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Events"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Events",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "launch",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": true,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Add event",
+   "userOutcome": "The user records a new event with a name and a date so it appears in the countdown list.",
+   "trigger": "The user activates the 'Add Event' button on the main screen.",
+   "behavior": "The 'Add Event' button opens a form with a required 'Name' text field and a required 'Date' field picked with a date picker. The 'Save' button trims the name; a trimmed-empty name or an empty date stores nothing and the user sees the field problem. When both values are valid, the event is saved to device storage and the form closes, returning to the list where the new event appears in date order.",
+   "failureOutcome": "If the event cannot be written to device storage, nothing is added to the list and the user sees that the event could not be saved.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Activating 'Add Event' opens a form with a 'Name' field and a 'Date' field.",
+    "Submitting with a name of only spaces stores no event and the user sees the field problem.",
+    "Submitting with an empty 'Date' stores no event and the user sees the field problem.",
+    "Saving name 'Trip' with a date 7 days from today adds a row showing 'Trip' with 7 days left."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Events"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Event countdown list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Events",
+     "operations": [
+      "create"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Delete event",
+   "userOutcome": "The user removes an event that is no longer needed.",
+   "trigger": "The user activates the 'Delete' button on an event row.",
+   "behavior": "Each event row has a 'Delete' button. Activating it shows a confirmation dialog; confirming removes the event from device storage and from the list, and cancelling leaves the event unchanged.",
+   "failureOutcome": "If the event cannot be removed from device storage, the row stays in the list and the user sees that the event could not be deleted.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Activating 'Delete' on a row shows a confirmation dialog.",
+    "Confirming the dialog removes the row from the list.",
+    "Cancelling the dialog leaves the row in the list.",
+    "After deleting an event and restarting the app, the deleted event does not appear in the list."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Events"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Event countdown list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Events",
+     "operations": [
+      "delete"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Events",
+   "purpose": "Events the user tracks, each with a name and a date used to compute days left.",
+   "sensitivity": "personal",
+   "retentionIntent": "Kept on the device until the user deletes the event.",
+   "storage": "records",
+   "writeMode": "direct",
+   "fields": [
+    {
+     "name": "name",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "date",
+     "valueType": "date",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [
+  "local-storage"
+ ],
+ "qualityRequirements": [
+  "The days-left value is recomputed from today's calendar day each time the list is shown.",
+  "The list is ordered by event date ascending with no ties broken by name."
+ ],
+ "productConstraints": [
+  "Events are stored only on the device; no account or network is used.",
+  "An event has exactly a name and a date; no other fields are captured."
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Event countdown list"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Add event",
+    "Event countdown list",
+    "Delete event"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 3,
+   "features": [
+    "Event countdown list"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

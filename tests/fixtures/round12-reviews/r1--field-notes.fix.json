@@ -1,0 +1,244 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 46588,
+    "output_tokens": 16362
+  },
+  "fix": {
+    "edits": [
+      {
+        "finding": 1,
+        "file": "PRD.md",
+        "find": "- /author — src/pages/author.astro",
+        "replace": "- /author/[slug] — src/pages/author/[slug].astro (build-time content collection; slug is the author entry id)",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "ARD.md",
+        "find": "- /author — src/pages/author.astro",
+        "replace": "- /author/[slug] — src/pages/author/[slug].astro (build-time content collection; slug is the author entry id)",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "ARD.md",
+        "find": "AuthorPage owns src/pages/author.astro",
+        "replace": "AuthorPage owns src/pages/author/[slug].astro",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "ARD.md",
+        "find": "mutated through src/pages/author.astro",
+        "replace": "mutated through src/pages/author/[slug].astro",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TRD.md",
+        "find": "- /author — src/pages/author.astro",
+        "replace": "- /author/[slug] — src/pages/author/[slug].astro (build-time content collection; slug is the author entry id)",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TRD.md",
+        "find": "- src/pages/author.astro",
+        "replace": "- src/pages/author/[slug].astro",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TRD.md",
+        "find": "implementation src/pages/author.astro",
+        "replace": "implementation src/pages/author/[slug].astro",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "- /author — src/pages/author.astro",
+        "replace": "- /author/[slug] — src/pages/author/[slug].astro (build-time content collection; slug is the author entry id)",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "instead of inventing it: src/pages/author.astro,",
+        "replace": "instead of inventing it: src/pages/author.astro (the kit keeps this file at that name; its content is written for src/pages/author/[slug].astro),",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "Files to create: src/pages/author.astro; tests/authorpage.test.ts",
+        "replace": "Files to create: src/pages/author/[slug].astro; tests/authorpage.test.ts",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "(AuthorPage) in src/pages/author.astro and its",
+        "replace": "(AuthorPage) in src/pages/author/[slug].astro and its",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "Create only these files: src/pages/author.astro, tests/authorpage.test.ts.",
+        "replace": "Create only these files: src/pages/author/[slug].astro, tests/authorpage.test.ts.",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "Start from kit/src/pages/author.astro, a shell with the layout and one h1; it reads no data yet, so add the read of Posts through listPostsEntries() from src/lib/contentcatalog.ts and render the declared fields (a long-text field in one element); when it lists entries, it renders one li containing one a per entry, href the detail route plus the entry id and a trailing slash; it reads no data yet, so add the read of Authors through listAuthorsEntries() from src/lib/contentcatalog.ts and render the declared fields (a long-text field in one element); authors has no detail route, so it renders the declared fields of every entry in ascending id order, one li per entry or one element for a single entry, with no a and no href; its focused test asserts that the built HTML contains each field value read from the content files, whatever the values are, and hardcodes no wording the content owner supplies.",
+        "replace": "Start from kit/src/pages/author.astro (the kit keeps it at that path; move its content to src/pages/author/[slug].astro, its imports are already written for that depth). It has getStaticPaths over listAuthorsEntries() (one page per author, slug = the author entry id, props the entry), the author's name as the one h1, the bio in its own dd labelled by a dt when present, and the posts of that author read only through listPostsEntries(): keep only posts whose data.author equals the author's entry id, sort by data.published descending, and render an ol with one li per post holding one a (the post title, href /posts/<post id>/ with a trailing slash) and the publication date as YYYY-MM-DD in a time element. Posts of other authors are never listed. Its focused test reads the content files line by line and asserts, for every author file, that dist/author/<id>/index.html exists, contains the stored name, and lists exactly the posts whose author line equals that id, in descending published order; it hardcodes no wording the content owner supplies.",
+        "all": false
+      },
+      {
+        "finding": 2,
+        "file": "TASKS.md",
+        "find": "The component renders its part of the page only; src/pages/index.astro keeps the one h1.",
+        "replace": "The component renders its part of the page only; src/pages/index.astro keeps the one h1. It reads Posts through listPostsEntries() and Authors through listAuthorsEntries(), sorts posts by data.published descending, and renders an ol with one li per post. Each li holds exactly two a elements: the first is the post title (href /posts/<post id>/), the second is the author's stored name (href /author/<author id>/, where the author id is the post's data.author value); the publication date is shown as YYYY-MM-DD in its own time element. Its test selects each post by its li and the title link by the li's first a.",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "; it reads Authors only through listAuthorsEntries() from src/lib/contentcatalog.ts and renders the declared fields (a long-text field in one element, a list field as one ol with one li per item in stored order).",
+        "replace": "; it reads Authors only through listAuthorsEntries(), finds the author whose id equals the post's author value, and shows that author's stored name inside one a whose href is /author/<author id>/ (trailing slash), in the Author field's own element. Its test asserts that link for every post.",
+        "all": false
+      },
+      {
+        "finding": 3,
+        "file": "TASKS.md",
+        "find": "Start from kit/src/lib/contentcatalog.ts. Content entry files",
+        "replace": "Start from kit/src/lib/contentcatalog.ts, which already makes listPostsEntries() throw an Error naming the post file and the field author when the post's author value is not the id of an Authors entry; keep that check and test it (an unknown author id, besides the empty collection, the sort order and an unknown id; the astro:content mock returns both collections). A post's author value is the entry id (file name without extension) of its author's file. Content entry files",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "AGENTS.md",
+        "find": "- /author — src/pages/author.astro",
+        "replace": "- /author/[slug] — src/pages/author/[slug].astro (build-time content collection; slug is the author entry id)",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "AGENTS.md",
+        "find": "instead of inventing it: src/pages/author.astro,",
+        "replace": "instead of inventing it: src/pages/author.astro (the kit keeps this file at that name; its content is written for src/pages/author/[slug].astro),",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "AGENTS.md",
+        "find": "AuthorPage — src/pages/author.astro",
+        "replace": "AuthorPage — src/pages/author/[slug].astro",
+        "all": false
+      },
+      {
+        "finding": 2,
+        "file": "TRD.md",
+        "find": "only for a collection behind an item-page feature;",
+        "replace": "only for a collection behind an item-page feature (the home page post list is the one exception: each of its li holds exactly two a elements, the first the post title linking to /posts/<post id>/ and the second the author name linking to /author/<author id>/, plus the publication date in its own time element; tests select the li, and the title link is its first a);",
+        "all": false
+      },
+      {
+        "finding": 3,
+        "file": "TRD.md",
+        "find": "author (reference to another stored item)",
+        "replace": "author (reference to another stored item: the entry id, the file name without extension, of an Authors entry, for example 01-sample-entry)",
+        "all": false
+      },
+      {
+        "finding": 3,
+        "file": "TRD.md",
+        "find": "exporting listPostsEntries() (all entries of the \"posts\" collection read with getCollection, sorted ascending by id, the file name without extension)",
+        "replace": "exporting listPostsEntries() (all entries of the \"posts\" collection read with getCollection, sorted ascending by id, the file name without extension; it also reads the \"authors\" collection and throws an Error naming the file and the field, for example src/content/posts/02-x.md field author, when a post's author value is not the id of any authors entry, so the build fails; its test also covers that case with both collections mocked)",
+        "all": false
+      },
+      {
+        "finding": 3,
+        "file": "kit/src/content/posts/01-sample-entry.md",
+        "find": "author: sample-reference",
+        "replace": "author: 01-sample-entry",
+        "all": false
+      },
+      {
+        "finding": 3,
+        "file": "kit/src/lib/contentcatalog.ts",
+        "find": "export async function listPostsEntries() {\n  return byId(await getCollection(\"posts\"))\n}",
+        "replace": "export async function listPostsEntries() {\n  const posts = byId(await getCollection(\"posts\"))\n  const authorIds = new Set((await getCollection(\"authors\")).map(entry => entry.id))\n  for (const post of posts) {\n    if (!authorIds.has(post.data.author)) throw new Error(`src/content/posts/${post.id}: field \"author\" is \"${post.data.author}\", which is not the id of any entry in src/content/authors/`)\n  }\n  return posts\n}",
+        "all": false
+      },
+      {
+        "finding": 3,
+        "file": "kit/src/lib/contentcatalog.ts",
+        "find": "return (await getCollection(\"posts\")).find(entry => entry.id === id)",
+        "replace": "return (await listPostsEntries()).find(entry => entry.id === id)",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "kit/src/pages/author.astro",
+        "find": "import BaseLayout from \"../layouts/BaseLayout.astro\"\n---\n<BaseLayout title=\"Author — Field Notes\">\n  <h1>Author</h1>\n</BaseLayout>",
+        "replace": "import BaseLayout from \"../../layouts/BaseLayout.astro\"\nimport { listAuthorsEntries, listPostsEntries } from \"../../lib/contentcatalog\"\n\nexport async function getStaticPaths() {\n  const entries = await listAuthorsEntries()\n  return entries.map(entry => ({ params: { slug: entry.id }, props: { entry } }))\n}\n\nconst { entry } = Astro.props\nconst posts = (await listPostsEntries())\n  .filter(post => post.data.author === entry.id)\n  .sort((a, b) => b.data.published.getTime() - a.data.published.getTime())\n---\n<BaseLayout title={`${entry.data.name} — Field Notes`} description={entry.data.bio ?? entry.data.name}>\n  <h1>{entry.data.name}</h1>\n  {entry.data.bio && <dl><dt>Bio</dt><dd>{entry.data.bio}</dd></dl>}\n  <ol>\n    {posts.map(post => (\n      <li>\n        <a href={`/posts/${post.id}/`}>{post.data.title}</a>\n        <time datetime={post.data.published.toISOString().slice(0, 10)}>{post.data.published.toISOString().slice(0, 10)}</time>\n      </li>\n    ))}\n  </ol>\n</BaseLayout>",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "kit/src/pages/posts/[slug].astro",
+        "find": "import { listPostsEntries } from \"../../lib/contentcatalog\"",
+        "replace": "import { listAuthorsEntries, listPostsEntries } from \"../../lib/contentcatalog\"",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "kit/src/pages/posts/[slug].astro",
+        "find": "const { Content } = await render(entry)",
+        "replace": "const { Content } = await render(entry)\nconst author = (await listAuthorsEntries()).find(item => item.id === entry.data.author)!",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "kit/src/pages/posts/[slug].astro",
+        "find": "<dt>Author</dt><dd>{entry.data.author}</dd>",
+        "replace": "<dt>Author</dt><dd><a href={`/author/${author.id}/`}>{author.data.name}</a></dd>",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "kit/src/layouts/BaseLayout.astro",
+        "find": "<a href=\"/author/\">Author</a>",
+        "replace": "",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "kit/tests/contract.test.ts",
+        "find": "[\"/\",\"/author/\"]",
+        "replace": "[\"/\"]",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "kit/README.md",
+        "find": "Declared page routes (each a shell with one h1): /author/.",
+        "replace": "Author pages are dynamic (/author/[slug]/), so the primary nav has no author link; every author page is reached from the home page and the post pages.",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "kit/README.md",
+        "find": "- src/pages/author.astro",
+        "replace": "- src/pages/author.astro (its content is written for src/pages/author/[slug].astro)",
+        "all": false
+      }
+    ],
+    "notes": "Defect 1: Authors now have a detail route /author/[slug] (src/pages/author/[slug].astro, owned by OWN-AUTHOR-PAGE) with getStaticPaths over listAuthorsEntries(), the author name as h1, and only that author's posts newest first. I updated routes, owner maps, layout, TASK-04 files and prompt, and TASK-05 and TASK-03 prompts so post and home pages link to /author/<id>/. The kit file name author.astro is kept because edits cannot create files; the task says to move its content to author/[slug].astro, with imports already written for that depth. The static Author nav link is removed (and the kit contract test and README updated) because it would point at no built page. Defect 2: the one-a-per-li rule in CON-RUNTIME-WIRING now has an explicit exception for the home post list: two anchors per li, the title link first (to the post) and the author-name link second (to the author page), plus a time element for the date. Defect 3: a post's author value is defined as the author's entry id; the sample post now uses 01-sample-entry. listPostsEntries() in the kit catalog throws an error naming the post file and the field author when the id matches no author, so the build fails; TRD and TASK-02 require this and a test of it, owned by OWN-DATA-STORE."
+  },
+  "failed": []
+}

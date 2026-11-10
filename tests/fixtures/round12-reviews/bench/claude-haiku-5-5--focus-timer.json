@@ -1,0 +1,99 @@
+{
+  "usage": {
+    "model": "claude-haiku-5-5",
+    "input_tokens": 50501,
+    "output_tokens": 23465
+  },
+  "review": {
+    "slug": "focus-timer",
+    "blocking": [
+      {
+        "where": "TASKS.md — TASK-05-FOCUS-SESSION-TIMER",
+        "quote": "Expose exactly these named slots in the shared files, no others",
+        "why": "The idea's core controls (Start, Pause, Reset buttons and the MM:SS display) are not in any named slot, and no task builds them. The prompt also says to build no control that no later task names, so the timer UI has no owner. The display-free start, pause, reset, and tick functions that the focused tests need are not named either.",
+        "fix": "Add to the TASK-05 prompt: build Start, Pause, and Reset buttons and an MM:SS label in focussessiontimerfeature.rs, mounted in the main content area, and name display-free start, pause, reset, and tick functions that the tests call.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-05-FOCUS-SESSION-TIMER",
+        "quote": "an add-entry control that opens the entry form shell (the add task builds the form fields and validation; an edit task reuses them)",
+        "why": "No add or edit feature exists in the idea, PRD, or TASKS. Records are created only by completing a session. The prompt therefore demands an Add button, an AdwDialog form, and a failed-add path that no task builds. The empty-state text it requires must also name this nonexistent Add button, so the agent has to invent a feature or skip a required slot.",
+        "fix": "Delete the add-entry slot, the AdwDialog shell, the failed-add and empty-list-names-Add-button language from TASK-05, and any other add or edit wording, so the main screen holds only the timer controls, the status area, and the count.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-06-TODAY-S-COMPLETED-SESSION-COUNT",
+        "quote": "Your controls mount into the slots exposed by TASK-05-FOCUS-SESSION-TIMER (the filter area or the list region)",
+        "why": "TASK-05 exposes only a status area and an add-entry control. No filter area or list region exists, so the count number has no defined place on the screen and the agent must guess where to render it.",
+        "fix": "Replace the parenthetical with the named slot that TASK-05 exposes for the count label (for example, a count label slot in the main content area) and have TASK-05 name that slot.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-PERMISSION-NOTIFICATIONS",
+        "quote": "Use gio::Notification through the freedesktop notification service; when no daemon is present, keep in-app status and do not retry in a loop.",
+        "why": "No trait or function is named for requesting a desktop notification, so TASK-04 has no interface and TASK-05 cannot be tested against a notification request. The text of the in-app status shown when no daemon is present is also undefined, and the status area is only specified for the empty-state message.",
+        "fix": "Add to TASK-04 an explicit trait such as Notifier with notify(title, body) returning Result<(), NotifyError>, injected into FocusSessionTimerFeature, and name the in-app status message for the no-daemon and denied paths.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-DATA-COMPLETED-SESSIONS",
+        "quote": "completed_at INTEGER NOT NULL (i64 epoch milliseconds, UTC)",
+        "why": "The PRD counts records whose completion date is the current calendar day, but the packet never says whether that day is the UTC day or the local-time day. Acceptance tests with two records dated today and one dated yesterday give different results depending on the choice, so the agent would have to guess.",
+        "fix": "Add one sentence to CON-DATA-COMPLETED-SESSIONS stating which time zone defines the calendar day (for example, local time zone at the moment of counting, converted from completed_at) and have the count feature use that rule.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-RUNTIME-WIRING",
+        "quote": "complete one acceptance outcome per feature, quit, relaunch, and confirm that every declared stored data object is still present.",
+        "why": "The timer's acceptance outcome requires a 25-minute countdown to reach 00:00, and the packet declares no shortened or test-only path for the running app. The packet also requires the launch check to trigger one failure per feature without naming how a store failure is forced in the running app. An agent cannot complete this gate as written, so it would stall or fake the result.",
+        "fix": "State that the launch check waits the real 25 minutes for the completion outcome and names one non-production way to force a store failure, or else reports that check as PARTIAL.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "kit/resources/com.focus.timer.metainfo.xml",
+        "quote": "<summary>A focus timer that runs 25-minute sessions with start, pause</summary>",
+        "why": "The summary is a truncated sentence fragment that would ship as the store listing text.",
+        "fix": "Replace it with a complete short summary such as Run 25-minute focus sessions and count today's completions.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-05-FOCUS-SESSION-TIMER",
+        "quote": "each list row is an AdwActionRow whose suffix box is the per-row action area",
+        "why": "Boilerplate for a list of rows that this product never has, so it does not apply to any feature.",
+        "fix": "Delete the sentence and the other list-row and per-row action wording from TASK-05.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/Cargo.toml",
+        "quote": "[dev-dependencies]",
+        "why": "tempfile is declared in both [dependencies] and [dev-dependencies]. This is redundant and would be flagged in review.",
+        "fix": "Delete the [dev-dependencies] section, since tempfile is already in [dependencies].",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — Owner-to-File and Focused-Test Map",
+        "quote": "focused test tests/contract_tests.rs — command cargo fmt --check",
+        "why": "The map's focused command is a format check, but TASKS names tests/contract_tests.rs as the focused test, so the two documents disagree on what to run.",
+        "fix": "Change the command to cargo test --test contract_tests.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-DATA-COMPLETED-SESSIONS",
+        "quote": "NewCompletedSessions (the same fields without id)",
+        "why": "NewCompletedSessions includes completed_at, but the same section says completed_at is set from the clock and never typed by the user. It is unclear whether the feature or the store stamps the time.",
+        "fix": "State that the feature sets completed_at from the injected Clock and the store stores the value it is given.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-RUNTIME-WIRING",
+        "quote": "asserts that every injected platform dependency in Services is the concrete production type",
+        "why": "Rust has no direct runtime type check on struct fields, so the agent must invent a compile-time or type-level technique for this assertion.",
+        "fix": "Name the assertion technique, for example a generic function that only compiles when each field has the concrete production type.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Not buildable as written. The timer's Start, Pause, Reset, and MM:SS controls have no owner, TASK-05 invents an Add and list feature the idea never asked for, and the count has no slot to render into. The notification seam, the calendar-day rule, and the 25-minute launch-check path also have to be fixed before the agent starts. blueprint.json was not provided, so its consistency with the packet could not be checked."
+  }
+}

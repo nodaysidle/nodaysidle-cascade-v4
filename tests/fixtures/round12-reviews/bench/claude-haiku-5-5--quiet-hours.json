@@ -1,0 +1,113 @@
+{
+  "usage": {
+    "model": "claude-haiku-5-5",
+    "input_tokens": 42837,
+    "output_tokens": 27778
+  },
+  "review": {
+    "slug": "quiet-hours",
+    "blocking": [
+      {
+        "where": "TRD.md - CON-DATA-QUIET-HOURS-SETTINGS (Data Contracts) and CON-PERSISTENCE-QUIET-HOURS-SETTINGS",
+        "quote": "DataStore creates table quiet_hours_settings",
+        "why": "The storage model contradicts itself. TRD specifies a SQLite table, a PRAGMA user_version migration, and StoreError::Sqlite, but the locked stack has no SQLite crate, the kit opens no database, and ARD.md says 'the app creates no database' while TRD persistence says atomic JSON in XDG config. DataStore::open(path) names no file, so an agent cannot know whether to build SQLite or JSON.",
+        "fix": "Replace the SQLite contract with one atomic JSON settings record at $XDG_CONFIG_HOME/com.quiet.hours/settings.json (keys schema_version, start_time, end_time) owned by DataStore, and remove the Sqlite variant, PRAGMA, and table text.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md - CON-DATA-QUIET-HOURS-SETTINGS (Data Contracts)",
+        "quote": "update returns StoreError::NotFound for an id that is not stored",
+        "why": "The store has no create operation (operations are only read and update, 'exactly these and no others') and nothing seeds a row, so on first run no id exists. The first user change calls update and gets NotFound, which shows the save toast, and the 22:00/07:00 defaults are never stored.",
+        "fix": "Seed the single settings record (start_time 22:00, end_time 07:00) at migration or first open and state that update on that record is the only write path.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/tests/contract_tests.rs - settings_default_is_stable",
+        "quote": "assert_eq!(Settings::default().theme, \"system\");",
+        "why": "The stored fields are only start and end time, but the kit Settings struct has an unrequested theme field that this kit test asserts. TASKS Working Rules require keeping kit tests passing, so an agent must either keep out-of-scope theme storage or break a rule. kit/src/config.rs also gives a second JSON settings path that conflicts with DataStore.",
+        "fix": "Add to TASKS Working Rules that kit/src/config.rs Settings is replaced by the start_time and end_time settings record and that the kit theme test is removed.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md - TASK-04-QUIET-HOURS-SETTINGS-AND-STATUS (Task prompt)",
+        "quote": "You build the mark control (a GtkCheckButton or GtkToggleButton) in the per-row action area",
+        "why": "The prompt describes a list of rows with a mark flag and an empty-list message, which the PRD does not contain. The required start and end time inputs (defaults 22:00 and 07:00) have no owner or build instruction, and the status area is redefined as an empty-state message slot, while the PRD's status area shows Inside or Outside quiet hours. An agent cannot build the PRD screen from this task.",
+        "fix": "Replace the mark, list, and row paragraphs in the TASK-04 prompt with: build a start time input and an end time input (defaults 22:00 and 07:00) that call QuietHoursSettingsStore.update, and a status label whose text comes from a display-free quiet_status function.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md - TASK-04-QUIET-HOURS-SETTINGS-AND-STATUS (Acceptance criteria)",
+        "quote": "The status area updates at least once per second while the app is open.",
+        "why": "TRD requires cargo test to pass without a display and reserves widget checks for the launch check, yet TASK-04's only focused test is cargo test. No display-free function, injected clock, or timer is named, so the restart check (start input shows 21:00) and the one-second refresh cannot be verified by the named focused test, and the 'current local time' examples have no injectable time input.",
+        "fix": "Name a pure function quiet_status(start, end, now) in TASK-04 that the focused test asserts for every ACC example, and move the restart and one-second refresh checks to the launch check.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md - TASK-03-LIFECYCLE-COORDINATOR (Task prompt)",
+        "quote": "Implement owner OWN-LIFECYCLE-COORDINATOR (LifecycleCoordinator) in src/platform/lifecyclecoordinator.rs",
+        "why": "No type, function, or signature is named for LifecycleCoordinator, so the focused test and the Services registration in src/app.rs have nothing to call. The required window-close and SIGTERM cancellation (CON-LIFECYCLE-PRESET) has no named function or wiring point.",
+        "fix": "Name the struct and its functions (for example LifecycleCoordinator::new and cancel_all) and state that src/app.rs connects window close and SIGTERM to cancel_all.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md - CON-RUNTIME-WIRING (Decision)",
+        "quote": "with each list holding several entries, one of them longer than the view is wide",
+        "why": "The product has one settings record and no list, so this launch-check requirement cannot be satisfied without inventing entries. Completion would be unverifiable and the agent cannot honestly report DONE.",
+        "fix": "Replace that clause with a statement that the product has no list, so no list entries are checked, and that the two time inputs and status label are checked for clipping.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "kit/src/main.rs - main",
+        "quote": "application.connect_activate(|application| {",
+        "why": "Each activation builds a new AdwApplicationWindow, so a second launch creates a second window, which violates 'keep exactly one primary window'.",
+        "fix": "Return application.active_window() when one exists and build a window only when none exists.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md - TASK-04-QUIET-HOURS-SETTINGS-AND-STATUS (Task prompt)",
+        "quote": "build_window stores the overlay in the shared view state",
+        "why": "The kit AppState derives Serialize and has no overlay field, and kit build_window keeps the toast overlay in a local variable, so the agent must invent the holder for the ToastOverlay and loaded records.",
+        "fix": "Add a non-serialized ViewState struct in src/state.rs with fields toast_overlay: adw::ToastOverlay and loaded: Vec<QuietHoursSettings>.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md - CON-RUNTIME-WIRING (Decision)",
+        "quote": "an empty list shows one centered message",
+        "why": "Boilerplate for lists, disabled commands, and button sizing does not apply to a screen with two time inputs and one status label, and it invites checks that cannot be satisfied.",
+        "fix": "Delete the list, command, and button sentences and keep only the system-font and label-on-left rules where they apply.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/resources/com.quiet.hours.metainfo.xml - summary",
+        "quote": "<summary>Quiet Hours lets the user set a start time and an end time for a daily quiet</summary>",
+        "why": "The summary is cut mid-sentence, which reads as an error in the AppStream metadata.",
+        "fix": "Change it to <summary>Shows whether the current time is inside your daily quiet hours</summary>.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md - TASK-02-DATA-STORE (Task prompt)",
+        "quote": "Modify only these files, which earlier tasks created: src/platform/mod.rs, src/state.rs, src/app.rs.",
+        "why": "Those files were created by the kit copy before TASK-01, not by an earlier task, so a literal reading leaves the modify rule unsatisfiable.",
+        "fix": "Change 'which earlier tasks created' to 'which the kit copy created'.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/PKGBUILD - url",
+        "quote": "url=\"https://github.com/nodaysidle\"",
+        "why": "The URL is a placeholder that does not point to the project.",
+        "fix": "Set url to the real project homepage.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md - Validation Commands",
+        "quote": "Arch host only: makepkg --printsrcinfo and the Wayland launch check need an Arch-based host with a Wayland session",
+        "why": "desktop-file-validate and appstreamcli are required gates with no stated host or install requirement, so a non-Arch dev environment may stall on missing tools.",
+        "fix": "State that desktop-file-validate and appstreamcli must be installed on every host and name their package names.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Not buildable as written. The storage model contradicts itself (SQLite versus JSON, and the first save fails with NotFound), the kit forces an unrequested theme setting, the lifecycle coordinator has no API, and TASK-04 describes a list-and-mark feature instead of the PRD's two time inputs and Inside/Outside status."
+  }
+}

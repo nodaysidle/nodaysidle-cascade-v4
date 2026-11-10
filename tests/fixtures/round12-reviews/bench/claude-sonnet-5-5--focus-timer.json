@@ -1,0 +1,99 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 50501,
+    "output_tokens": 8029
+  },
+  "review": {
+    "slug": "focus-timer",
+    "blocking": [
+      {
+        "where": "TASKS.md TASK-05-FOCUS-SESSION-TIMER task prompt",
+        "quote": "an add-entry control that opens the entry form shell (the add task builds the form fields and validation; an edit task reuses them)",
+        "why": "The packet has no add or edit task, no add form and no record list. The product only starts, pauses and resets a timer and shows a count. The agent is told to build an Add button, an AdwDialog shell and AdwActionRow list rows. The same prompt says to build no control that no later task names, and no later task uses any of them. It also leaves the agent guessing about the timer's own controls.",
+        "fix": "Delete the add-entry control, dialog shell, list-row and 'failed add keeps its dialog open' language from TASK-05. Name the slots the timer needs: the Start/Pause/Reset controls, the MM:SS display, the status area and the count slot.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-05-FOCUS-SESSION-TIMER task prompt",
+        "quote": "it is one sentence that names the Add button and never says where it sits",
+        "why": "The main screen would show an empty-list message about an Add button whenever there are no records. That is the normal state of the count feature (ACC-02 expects the count 0). The product has no Add button, so the message tells the user to do something impossible, and no acceptance criterion supplies empty-list text.",
+        "fix": "Remove the empty-state rule from TASK-05. State that the main screen has no list and shows 0 for no sessions today. Make the status area carry only the notification-unavailable status and store-failure messages.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-06-TODAY-S-COMPLETED-SESSION-COUNT task prompt",
+        "quote": "Your controls mount into the slots exposed by TASK-05-FOCUS-SESSION-TIMER (the filter area or the list region)",
+        "why": "TASK-05 exposes exactly two slots, a status area and an add-entry control. It exposes no filter area, no list region and no count slot. The count label has no named place to mount, and TASK-06 may edit only shared registration files.",
+        "fix": "Have TASK-05 expose a named 'today count' slot beside the timer display. Have TASK-06 mount its count label into that slot.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md Feature Contracts, FEAT-TODAY-S-COMPLETED-SESSION-COUNT Behavior",
+        "quote": "counts stored completed session records whose completion date is the current calendar day",
+        "why": "Records are stored as UTC epoch milliseconds (TRD data contract). The packet does not say whether 'calendar day' is the local day or the UTC day. The locked stack has no date or time crate, and the Clock trait only returns epoch milliseconds. Acceptance criterion 03 ('dated yesterday') depends on the midnight boundary. An agent has to guess the timezone and the mechanism for finding local midnight.",
+        "fix": "State that the day is the user's local calendar day. Name the mechanism, for example glib::DateTime::from_unix_local. Say that the day-start computation takes a Clock and an injectable UTC offset so tests are deterministic.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TASKS.md TASK-05-FOCUS-SESSION-TIMER task prompt",
+        "quote": "Tests define their own Clock in tests/ that returns a fixed time or advances on every call",
+        "why": "The Clock trait only gives now_millis. The packet does not say how the countdown advances (a glib timeout tick against a deadline, or a counted tick). It does not say how tests drive 'one second per second' and 'unchanged across two seconds' without real sleeping.",
+        "fix": "Specify a display-free timer state machine with tick(now_millis) or tick_second(). The UI timeout calls it, and tests step it with a fake Clock.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-04-PERMISSION-COORDINATOR task prompt",
+        "quote": "Depend only on the locked foundation; implement every documented decision, failure, cancellation, cleanup, and recovery branch.",
+        "why": "No notification trait or signature is defined (for example notify(title, body) -> Result<(), NotifyError>). TASK-05's test must assert that a request with the exact title and body was made. gio::Notification also needs a gio::Application, which complicates display-free tests.",
+        "fix": "Define a Notifier trait in TASK-04, with a Gio-backed implementation and an error enum. Say TASK-05 takes it as a trait object.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-05-FOCUS-SESSION-TIMER task prompt",
+        "quote": "the shared view state (the loaded records of every declared data object",
+        "why": "The kit's AppState derives Serialize, Deserialize and PartialEq. The prompt also says build_window stores the ToastOverlay in the shared view state, which breaks those derives and the display-free tests.",
+        "fix": "Say the view state is a new struct beside AppState, or drop the serde derives, and keep the widget handles out of the display-free part.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-05-FOCUS-SESSION-TIMER, Dependencies",
+        "quote": "Depend only on OWN-DATA-STORE, OWN-LIFECYCLE-COORDINATOR, OWN-PERMISSION-COORDINATOR",
+        "why": "Nothing in the timer feature calls the lifecycle coordinator. Meanwhile TASK-03's 'cancel active tasks' has no timer to cancel when it is built.",
+        "fix": "Drop the lifecycle dependency from TASK-05. Or say how the timer registers its tick source for cancellation on shutdown.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-PERSISTENCE-COMPLETED-SESSIONS Failure behavior",
+        "quote": "the owning feature task shows an AdwToast reading \"Could not save the change. Try again.\"",
+        "why": "The toast says to try again, but the product has no retry control. The completed session was already stopped at 00:00. The packet does not say whether a failed insert leaves the count unchanged or whether the user can do anything.",
+        "fix": "Say that on insert failure the timer still stops at 00:00 and the toast shows. Say the count is unchanged and there is no retry. Reword the toast or drop 'Try again'.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md Primary User Journeys, Focus session timer outcome",
+        "quote": "When the countdown reaches 00:00 the session is complete: the timer stops at 00:00",
+        "why": "The packet does not say what Start does at 00:00 (restart from 25:00, or disabled until Reset). It also does not say what Pause and Reset do while idle. The wiring rule says commands with no target are disabled.",
+        "fix": "Add a state table: Start is enabled when idle or paused and restarts at 25:00 if the timer is at 00:00. Pause is enabled only while running. Reset is always enabled.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-PERMISSION-NOTIFICATIONS Purpose",
+        "quote": "Deliver user-enabled status or reminder notifications.",
+        "why": "This is template wording. There is no user setting to enable notifications and no 'explicit user action' to recheck authorization. 'Keep in-app status' is also not tied to any named UI element.",
+        "fix": "Reword to 'Notify when a session ends'. Drop the recheck wording. Name the status-area text shown when no notification daemon is present.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/resources/com.focus.timer.metainfo.xml",
+        "quote": "<summary>A focus timer that runs 25-minute sessions with start, pause</summary>",
+        "why": "The summary is cut off mid-sentence. It is also longer than the short one-line summary appstreamcli expects, so validation may warn.",
+        "fix": "Use a short summary such as 'Run 25-minute focus sessions and count them daily'.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Not buildable without guessing. The TASK-05 prompt is boilerplate for a list/add/edit app (Add button, dialog shell, list rows, empty-list message naming the Add button), and this product has none of those. TASK-06 mounts into slots that TASK-05 never exposes. The 'current calendar day' rule has no timezone or date mechanism. The rest of the packet (owner map, shared-file edits, data contract, kit files, packaging) is consistent."
+  }
+}

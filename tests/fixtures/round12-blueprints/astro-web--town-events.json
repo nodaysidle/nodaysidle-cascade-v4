@@ -1,0 +1,194 @@
+{
+ "productName": "Town Events",
+ "summary": "A static website for a community center that lists upcoming events on its home page, soonest first, with each event's date, time, and venue, omits events whose date has passed at build time, and gives every event its own page.",
+ "targetUsers": [
+  "Community center staff who publish event content",
+  "Community members looking for upcoming events"
+ ],
+ "goals": [
+  "Show upcoming events on the home page ordered soonest first",
+  "Show each event's date, time, and venue in the home page listing",
+  "Exclude events whose date has passed at build time",
+  "Provide one page per event"
+ ],
+ "nonGoals": [
+  "Online registration or ticketing for events",
+  "Visitor accounts or sign-in",
+  "Editing event content from the website"
+ ],
+ "features": [
+  {
+   "name": "Upcoming events home page",
+   "userOutcome": "A visitor sees the upcoming events listed soonest first with date, time, and venue.",
+   "trigger": "A visitor opens the site's home page.",
+   "behavior": "The home page lists every event whose date is today or later, ordered by date and time ascending so the soonest event appears first. Each list entry shows the event's date, time, venue, and title, and links to that event's page. Events whose date is before the build day are omitted from the built page.",
+   "failureOutcome": "The build fails when an event content file is missing a required value such as its date, time, venue, or title.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "The built home page lists events in ascending date and time order, with the soonest event first.",
+    "Each listed event shows its date, time, venue, and title.",
+    "An event whose date is before the build day does not appear on the built home page.",
+    "Each listed event links to a page for that event."
+   ],
+   "usesPlatformNeeds": [],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Events"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Events",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "click",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": true,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Event page",
+   "userOutcome": "A visitor reads the full details of a single event on its own page.",
+   "trigger": "A visitor follows the link for an event from the home page listing.",
+   "behavior": "Each event has its own page showing the event's title, date, time, venue, and description. The page is built from the same event content as the home page listing.",
+   "failureOutcome": "The build fails when an event content file is missing a required value such as its date, time, venue, or title.",
+   "failureRecovery": "retry",
+   "surface": "item-page",
+   "acceptanceSignals": [
+    "A page exists for each event in the content, and its address is reachable from the home page listing.",
+    "The event page shows the event's title, date, time, venue, and description.",
+    "An address that matches no event page shows the site's 404 page."
+   ],
+   "usesPlatformNeeds": [],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Events"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Upcoming events home page"
+   ],
+   "dataOperations": [
+    {
+     "data": "Events",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "click",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Events",
+   "purpose": "Event entries published by the community center, each with a date, time, venue, title, and description.",
+   "sensitivity": "public",
+   "retentionIntent": "Kept as site content; events whose date has passed are omitted from the built pages.",
+   "storage": "records",
+   "writeMode": "direct",
+   "fields": [
+    {
+     "name": "title",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "date",
+     "valueType": "date",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "time",
+     "valueType": "time",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "venue",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "description",
+     "valueType": "long-text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [],
+ "qualityRequirements": [
+  "The home page listing is ordered by event date and time ascending with no ties left unordered.",
+  "Every event in the content has exactly one event page reachable from the home page listing."
+ ],
+ "productConstraints": [
+  "The site is static: pages are built once from event content files.",
+  "Events whose date is before the build day are excluded from the built home page."
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [],
+   "outsideFeatures": "product"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Upcoming events home page",
+    "Event page"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

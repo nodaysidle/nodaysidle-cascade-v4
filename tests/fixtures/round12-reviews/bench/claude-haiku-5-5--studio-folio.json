@@ -1,0 +1,85 @@
+{
+  "usage": {
+    "model": "claude-haiku-5-5",
+    "input_tokens": 40724,
+    "output_tokens": 29751
+  },
+  "review": {
+    "slug": "studio-folio",
+    "blocking": [
+      {
+        "where": "kit/src/pages/projects/[slug].astro — TASKS.md TASK-04-PROJECT-DETAIL-PAGE",
+        "quote": "<dt>Live project link</dt><dd>{entry.data.liveProjectLink}</dd>",
+        "why": "The kit renders the live address as plain text, so the built project page has no a element whose href is the stored address. TASK-04 requires such a link, but its task prompt only says the page renders the declared fields, so an agent following the kit builds a page that fails ACC-PROJECT-DETAIL-PAGE-02.",
+        "fix": "Wrap the value in the kit page: <dd><a href={entry.data.liveProjectLink}>{entry.data.liveProjectLink}</a></dd>",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-PACKAGING-RELEASE and Completion Evidence",
+        "quote": "Run accessibility, link, SEO metadata, and performance gates against the production build.",
+        "why": "The canonical URL that BaseLayout must emit has no assertion anywhere. The kit accessibility test checks only the meta description, the TRD packaging test scope names no canonical check, and no command runs an SEO gate.",
+        "fix": "Add to tests/packaging.test.ts an assertion that every dist HTML page has a link rel=canonical with an absolute href, and name that assertion under CON-PACKAGING-RELEASE.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/package.json — devDependencies",
+        "quote": "\"typescript\": \"^5.0.0\"",
+        "why": "kit/tests/contract.test.ts and the other kit tests import node:fs, and kit/tsconfig.json includes **/* so astro check typechecks them. No @types/node is declared, so npm run check in TASK-01 can fail with Cannot find module node:fs.",
+        "fix": "Add \"@types/node\" to devDependencies in kit/package.json and run npm install once before TASK-01.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TRD.md — CON-PROJECT-LIST-HOME-PAGE-INTERFACE link rule (Page-level list rule in Content Seed Requirements)",
+        "quote": "for example /teas/01-sample-entry/",
+        "why": "The example route is left over from another product and conflicts with the real /projects/[slug] route, which could confuse a test writer.",
+        "fix": "Change the example to /projects/01-sample-entry/.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-04-PROJECT-DETAIL-PAGE acceptance",
+        "quote": "An address that matches no project page shows the site's 404 page.",
+        "why": "No task names the assertion for this criterion. The agent must guess that tests/projectdetailpage.test.ts should check dist/404.html exists and links home.",
+        "fix": "Add to TASK-04 focused-test scope: assert dist/404.html exists and contains a link with href / .",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — Content Seed Requirements (field rendering rule)",
+        "quote": "in its own element next to the declared field name as its label",
+        "why": "The kit uses prose labels such as Year, Client and Live project link, which do not match the declared field names, and projectName has no label element. The rule and the kit disagree.",
+        "fix": "Either make each label the exact declared field name or reword the rule to say the label is a human label.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — Content Seed Requirements (field rendering rule)",
+        "quote": "a test asserts that the element's text contains the stored value, never a reformatted one",
+        "why": "Astro HTML-escapes values, so a stored value with an ampersand or angle bracket appears as &amp; or &lt; in dist/. A raw substring check then fails even though the value is correct.",
+        "fix": "State that the test must HTML-escape the stored value before the substring comparison, and apply the same rule to the href comparison.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — TASK-03-PROJECT-LIST-HOME-PAGE acceptance",
+        "quote": "The list entries appear in descending order of project year.",
+        "why": "The rule is silent on ties. Two projects with the same year can be ordered either way, so a test written for one order can fail the other.",
+        "fix": "Add a tie-break, for example ascending entry id within the same year.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-PERSISTENCE-PROJECTS and Signing Contract",
+        "quote": "No application code signature applies; deploy the verified production artifact over HTTPS with immutable asset hashes.",
+        "why": "This is boilerplate for a native or hosted app. It conflicts with the Installation Contract, which says deploying dist/ is outside these tasks.",
+        "fix": "Delete the signing and deploy-over-HTTPS sentence, or state that it does not apply to this packet.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — CON-RUNTIME-WIRING",
+        "quote": "This is manual evidence to report, not a test or a validation command",
+        "why": "An autonomous agent may not have a browser, so the manual check cannot pass and the completion status is unclear. AGENTS treats it only as a PARTIAL reason.",
+        "fix": "Say in AGENTS Completion Reporting that a missing manual browser check is reported as PARTIAL, naming the routes and viewports.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Not buildable without guesses yet. Three blocking defects: the kit detail page omits the live-project link that ACC-PROJECT-DETAIL-PAGE-02 requires, the canonical-URL gate has no test, and astro check may fail on node:fs imports because @types/node is not declared. Fix those, then the rest of the packet is buildable in task order."
+  }
+}

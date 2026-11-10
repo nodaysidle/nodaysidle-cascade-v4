@@ -1,0 +1,63 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 47573,
+    "output_tokens": 7691
+  },
+  "review": {
+    "slug": "field-notes",
+    "blocking": [],
+    "polish": [
+      {
+        "where": "kit/src/lib/contentcatalog.ts (listPostsEntries) vs TRD.md CON-DATA-POSTS",
+        "quote": "src/content/posts/${post.id}: field \"author\" is \"${post.data.author}\"",
+        "why": "TRD's example error is `src/content/posts/02-x.md field author`, with the .md extension and an unquoted field name. The kit message uses post.id, which has no extension, and quotes the field name. A test written from the TRD example would fail against the kit code the task says to keep.",
+        "fix": "State in TASK-02 that the test asserts only that the message contains the post id and the word author, or change the kit message to use `${post.id}.md`.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md Information Architecture and Routes",
+        "quote": "Only a collection behind an item-page feature has [slug] detail routes",
+        "why": "Authors is a collection with an /author/[slug] route, but the Screen Map calls FEAT-AUTHOR-PAGE a plain `page`, not an `item-page`. The generic rule that a detail-route-less collection lists every field and links nowhere then looks as if it covers authors. The rule and the routes contradict each other.",
+        "fix": "Mark the Author page as an item-page in the Screen Map, or reword the rule to cover any collection with a declared [slug] route.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md Content Seed Requirements",
+        "quote": "Every field value is rendered as the stored value alone, in its own element next to the declared field name as its label",
+        "why": "The home list entries and author-page list items render the title, author and date with no field-name label. The author page renders the name as the h1 with no label. The post-page task follows the label rule, so the tests an agent writes for each page could be inconsistent.",
+        "fix": "Scope the labelled-field rule to detail pages, or exempt list pages and the author h1 explicitly.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md FEAT-HOME-POST-LIST Behavior",
+        "quote": "ordered by publication date with the newest post first",
+        "why": "Posts published on the same day have no tie-break. The kit sorts by id and then by published, which depends on a stable sort, and the PRD does not say how ties should come out. Tests that compare orders may flake.",
+        "fix": "Add: ties on published are broken by ascending entry id, on the home page and on author pages.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-05-POST-PAGE",
+        "quote": "Depend only on OWN-DATA-STORE, OWN-HOME-POST-LIST",
+        "why": "The post page uses nothing the home list creates, since HomePostList.astro is not imported. The dependency only forces an ordering and suggests shared code that does not exist. TASK-04 has the same issue.",
+        "fix": "Drop the OWN-HOME-POST-LIST dependency from TASK-04 and TASK-05, or say what they consume from it.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md Target Users",
+        "quote": "Authors who publish posts under their own name",
+        "why": "No journey, feature or acceptance outcome serves authors as actors. Every journey is for readers, and publishing is a non-goal. This persona is unused.",
+        "fix": "Remove it, or describe authors as the subjects of author pages.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/README.md",
+        "quote": "src/pages/author.astro (its content is written for src/pages/author/[slug].astro)",
+        "why": "kit/src/pages/author.astro imports \"../../layouts/BaseLayout.astro\", which does not resolve from its kit location. If kit/ stays in the project root, astro check may try to type-check it and fail.",
+        "fix": "Tell the agent to delete or move the kit/ directory after copying, or confirm that astro check ignores it.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "No blocking defects. Every idea sentence maps to one feature with testable acceptance criteria. The data contract, task order, owner map, kit files and the build, test and a11y commands are consistent, and each command can pass at the point where the tasks run it. The remaining items are polish: an error-message mismatch with the kit, an item-page wording conflict, an undefined tie-break for equal dates, and a few unused dependencies and personas."
+  }
+}

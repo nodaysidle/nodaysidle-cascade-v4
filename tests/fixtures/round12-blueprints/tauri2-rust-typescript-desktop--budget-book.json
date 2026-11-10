@@ -1,0 +1,308 @@
+{
+ "productName": "Budget Book",
+ "summary": "Budget Book is a personal expense tracker that keeps expenses on the device. The user adds an expense with an amount in euros with two decimals, a category of food, rent, travel, or other, and a date, deletes an expense after confirming, and sees the total per category for the current month. Expenses persist across restarts.",
+ "targetUsers": [
+  "Individuals tracking their personal monthly spending by category"
+ ],
+ "goals": [
+  "Record expenses with amount, category, and date",
+  "Remove an expense after confirmation",
+  "Show the current month's total spending per category",
+  "Keep expenses on the device and restore them after restart"
+ ],
+ "nonGoals": [
+  "Multi-user accounts or sharing budgets",
+  "Bank or card synchronization",
+  "Income tracking or budgeting limits"
+ ],
+ "features": [
+  {
+   "name": "Expense list",
+   "userOutcome": "The user sees all recorded expenses and the app restores them after restart.",
+   "trigger": "The app opens.",
+   "behavior": "Shows every stored expense as a row with its amount written in euros with two decimals (for example 12.50 \u20ac), its category, and its date written as YYYY-MM-DD. Rows are ordered newest first by creation time. When no expenses exist the list shows the text 'No expenses yet.' The list loads stored expenses when the app starts; if that load fails, the list shows one error message 'Could not load expenses.' and stays empty.",
+   "failureOutcome": "Stored expenses cannot be loaded at startup and the list shows 'Could not load expenses.'",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With two stored expenses, the list shows both rows newest first by creation time.",
+    "An expense read back from the store shows its saved amount, category, and date.",
+    "With no stored expenses the list shows 'No expenses yet.'",
+    "When the store read fails, the list shows 'Could not load expenses.' and no rows."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Expense"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Expense",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "launch",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Add expense",
+   "userOutcome": "The user records a new expense with an amount, a category, and a date.",
+   "trigger": "The user chooses to add an expense.",
+   "behavior": "Presents a form with an amount field in euros with two decimals, a category choice list named Category with options food, rent, travel, and other (initially food), and a date field (initially today). The form checks that the amount is a number greater than zero with at most two decimals and that a date is present; invalid input keeps the form open with the problem shown. Saving creates the expense with the entered values and the creation time stamped by the app, then returns to the expense list.",
+   "failureOutcome": "The expense cannot be saved and the form stays open with its entered values.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Saving amount 12.50, category travel, and date 2024-05-03 creates an expense whose stored values read back as 12.50, travel, and 2024-05-03.",
+    "An amount of 0 or one with three decimals is rejected and no expense is created.",
+    "The category choice list offers food, rent, travel, and other with food selected initially.",
+    "A failed write leaves the form open with the entered values and creates no expense."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Expense"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [
+    {
+     "name": "Category",
+     "options": [
+      "food",
+      "rent",
+      "travel",
+      "other"
+     ],
+     "initial": "food"
+    }
+   ],
+   "buildsOn": [
+    "Expense list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Expense",
+     "operations": [
+      "create"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Delete expense",
+   "userOutcome": "The user removes an expense after confirming.",
+   "trigger": "The user chooses to delete an expense from its row in the expense list.",
+   "behavior": "Asks for confirmation with the message Delete \"<amount> \u20ac <category> <date>\"? and the label Delete. Confirming removes the expense from the store and from the list; cancelling keeps it. If the removal fails, the row stays in the list and shows the error 'Could not delete expense.'",
+   "failureOutcome": "The expense cannot be removed and its row stays in the list with 'Could not delete expense.'",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Confirming the delete removes the expense so a store read returns no record for it.",
+    "Cancelling the confirmation leaves the expense in the store and in the list.",
+    "A failed delete leaves the expense in the store and shows 'Could not delete expense.' in its row."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Expense"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Expense list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Expense",
+     "operations": [
+      "delete"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Monthly category totals",
+   "userOutcome": "The user sees the total spending per category for the current month.",
+   "trigger": "The user views the totals while the expense list is shown.",
+   "behavior": "Shows one total for each of the four categories food, rent, travel, and other, computed from expenses whose date falls in the current calendar month. Each total is written in euros with two decimals (for example 45.00 \u20ac); a category with no expenses in the month shows 0.00 \u20ac. The totals update when an expense is added or deleted.",
+   "failureOutcome": "The totals cannot be computed and the section shows 'Could not compute totals.'",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With expenses of 10.00 food and 5.50 food dated in the current month, the food total reads 15.50 \u20ac.",
+    "An expense dated in a previous month is not counted in any current-month total.",
+    "A category with no expenses in the current month shows 0.00 \u20ac.",
+    "After deleting an expense, the affected category total decreases by that amount."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Expense"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Expense list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Expense",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "showsCurrentTime": false,
+   "readsCurrentDay": true,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Expense",
+   "purpose": "A single recorded expense with its amount, category, and date.",
+   "sensitivity": "personal",
+   "retentionIntent": "Kept on the device until the user deletes it.",
+   "storage": "records",
+   "writeMode": "direct",
+   "fields": [
+    {
+     "name": "amount",
+     "valueType": "number",
+     "optional": false,
+     "min": 0,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "category",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "date",
+     "valueType": "date",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "created at",
+     "valueType": "date-time",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": "now",
+     "appStamped": true
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [
+  "local-storage"
+ ],
+ "qualityRequirements": [
+  "Amounts are always displayed in euros with two decimals.",
+  "Expenses survive an app restart and read back with their saved values."
+ ],
+ "productConstraints": [
+  "Categories are limited to food, rent, travel, and other.",
+  "An expense amount must be greater than zero with at most two decimals."
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Expense list",
+    "Add expense"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Add expense",
+    "Delete expense",
+    "Monthly category totals"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 3,
+   "features": [
+    "Expense list"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

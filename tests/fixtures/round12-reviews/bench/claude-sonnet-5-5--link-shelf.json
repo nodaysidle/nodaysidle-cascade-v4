@@ -1,0 +1,78 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 70428,
+    "output_tokens": 5577
+  },
+  "review": {
+    "slug": "link-shelf",
+    "blocking": [
+      {
+        "where": "TASKS.md TASK-06-OPEN-BOOKMARK",
+        "quote": "Choosing it asks the operating system to open the bookmark's web address in the default browser.",
+        "why": "No document names the mechanism that opens the URL. TRD allows exactly three Rust commands (list_bookmarks, get_bookmarks, create_bookmarks) and TASK-06 says to add no Rust command. TRD lists no opener plugin, and Permission Contracts say 'No permission contract is required'. TASK-06 may edit only src/main.ts, and TASK-08 touches Cargo.toml and capabilities only if its wiring check fails. The task also names no injected opener dependency for the factory, so ACC-OPEN-BOOKMARK-01 ('one request to open that row's exact web address') has nothing to assert against and the real app cannot open anything.",
+        "fix": "Name the opener (for example tauri-plugin-opener with its capability permission, or an owned Rust command). Add it to Cargo.toml, lib.rs and capabilities in a task that owns those files, and make TASK-06 take an injected open function in its dependency object.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-06-OPEN-BOOKMARK",
+        "quote": "Your controls mount into the slots exposed by TASK-04-BOOKMARK-LIST (the \"summary\" host)",
+        "why": "TASK-04 says it exposes 'exactly these named slots ... no others': status, add, filter. No 'summary' host exists, and TASK-04 never renders a per-row slot (slots.row/mountRow) in its list rows. The per-row Open button therefore has no place to mount.",
+        "fix": "Have TASK-04 render slots.row(\"row-actions\", bookmark) inside every list row, and have TASK-06 call slots.mountRow(\"row-actions\", ...). Remove the 'summary' reference.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-06-OPEN-BOOKMARK",
+        "quote": "Show every failure message the PRD states for your feature exactly as written, through errors.show(message) (or where the feature places it: in the form, in the row, the status area, or the confirmation)",
+        "why": "PRD requires 'Could not open this bookmark' to appear in that row, and ACC-OPEN-BOOKMARK-02 says 'in that row'. errors.show renders the global banner, not a row. The shared store shape { bookmarks, loadError, query } has no per-row error state, and the list owner re-renders rows from the store. The agent must guess where the row message lives and how it survives re-renders.",
+        "fix": "Add a per-row error field (for example openErrorId or rowErrors) to the TASK-04 store shape. State that TASK-06 sets it with store.set and the list renders it inside the row, not via the banner.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TRD.md CON-DATA-BOOKMARKS",
+        "quote": "create and update return AppError invalid for an empty or whitespace-only required text field",
+        "why": "No update command exists and the PRD excludes editing. This is leftover boilerplate. The line 'an update carries the stored value back unchanged' is the same.",
+        "fix": "Drop the update wording from the Bookmarks data contract.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-05-ADD-BOOKMARK",
+        "quote": "show one message with a retry action that repeats the same command with the same input: pass errors.show(message, repeat)",
+        "why": "PRD says the form itself shows 'Bookmark could not be saved' and stays open. The task text defaults to the global banner. The placement of that message, and of the empty-field rejection message (whose text the PRD never states), is left to guesswork. The kit's slots.handle/SubmitResult mechanism is not mentioned.",
+        "fix": "State that the save-failure text is shown in the form's message area (optionally also with Retry), and give the exact validation message text for an empty title or empty web address.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md CON-SEARCH-BOOKMARKS-INTERFACE",
+        "quote": "Failure behavior: The search text cannot be applied and the list keeps showing the previous results.",
+        "why": "TASK-07 says the feature has no failure path, while the contract and recovery text describe one. The test cannot exercise an unreachable branch.",
+        "fix": "Say the failure branch is satisfied by keeping the previous query in the store, with no separate test.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md Search bookmarks outcome",
+        "quote": "When no bookmark matches, the list area shows \"No bookmarks match your search\".",
+        "why": "With zero saved bookmarks and a non-empty query, the PRD is ambiguous. TASK-04 decides it shows 'No bookmarks yet', which is a behavior choice made only in TASKS.",
+        "fix": "State in the PRD that the empty-store message takes precedence over the no-match message.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md Add bookmark outcome",
+        "quote": "The title and the web address are required",
+        "why": "No URL scheme or format rule is given. Opening an arbitrary string such as 'foo' with the OS will probably be rejected. The PRD does not say whether to prepend https:// or just accept it.",
+        "fix": "State that the web address is stored as typed (trimmed) with no scheme validation, and that a rejected open shows the row error.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md TASK-04-BOOKMARK-LIST",
+        "quote": "the acceptance criteria that say which records match and what the no-match text is are tested in your focused test by setting query with store.set",
+        "why": "ACC-SEARCH-BOOKMARKS-01 to 03 are traced to OWN-SEARCH-BOOKMARKS/TASK-07, but their actual matching logic and tests sit in TASK-04's file. The traceability and ownership are split and confusing.",
+        "fix": "Either move the matching function into the search feature file and import it, or list ACC-SEARCH-BOOKMARKS-01..03 under TASK-04's verification.",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Not buildable as written without guessing. The Open bookmark feature has no stated mechanism for opening the URL, targets a 'summary' slot that TASK-04 does not build, and has no per-row error state. The other features (list, add, search, data store, lifecycle, packaging) are consistent and traceable."
+  }
+}

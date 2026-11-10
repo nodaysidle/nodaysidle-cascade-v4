@@ -1,0 +1,111 @@
+{
+  "usage": {
+    "model": "claude-sonnet-5-5",
+    "input_tokens": 51094,
+    "output_tokens": 11648
+  },
+  "fix": {
+    "edits": [
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "(the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need)",
+        "replace": "(the timer state, the loaded completed-session records, and the status message)",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "Expose exactly these named slots in the shared files, no others: a status area shared by every message the main screen shows (empty state); an add-entry control that opens the entry form shell (the add task builds the form fields and validation; an edit task reuses them). Later feature tasks build their controls in their own files and mount them into these slots, editing only the shared registration files; build no control that no later task names.",
+        "replace": "The main screen has no list, no Add button and no dialog. Build in your own file the MM:SS display, the Start, Pause and Reset buttons and a display-free timer state (it starts at 1500 seconds; tick() lowers it by one second while running and returns true when it reaches 0, where it stops). Expose exactly these two named slots in the shared files, no others: a status area (one label under the buttons that shows only the in-app notification status and is hidden when empty); a today-count slot (an empty gtk::Box directly under the MM:SS display). TASK-06 mounts its count label into the today-count slot, editing only the shared registration files; build no other control.",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "Your tests insert records through the store trait, never through the add form (a later task builds it); an ordering check inserts two records and asserts on the display-free list function.",
+        "replace": "Your tests read completed records back through the store trait and assert that completion inserts exactly one record stamped with the Clock's time.",
+        "all": false
+      },
+      {
+        "finding": 2,
+        "file": "TASKS.md",
+        "find": "Show the exact load-error text when an acceptance criterion of yours gives one; otherwise render an empty list with the empty-state text and no error message, and the status area then shows no separate error.",
+        "replace": "No acceptance criterion gives a load-error text: when list returns Err, keep the loaded records empty and show no message; the count then displays 0 under TASK-06's rule.",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "GTK shape of the slots: the add-entry control is an Add button in the AdwHeaderBar that opens an empty AdwDialog shell (title, Cancel, a content area and a Save slot) that the add task fills with its form and closes on a successful save; the status area is one label or AdwStatusPage above the list that shows the empty-state message; each list row is an AdwActionRow whose suffix box is the per-row action area. Empty state: you own the empty-list message of the main screen. Show it in the status area whenever the loaded list has no records, chosen by a display-free function that your tests assert on. Its text is the exact empty-list text that an acceptance criterion gives; when none does, it is one sentence that names the Add button and never says where it sits.",
+        "replace": "GTK shape of the screen: one centered vertical gtk::Box holding the large MM:SS label, a row of Start, Pause and Reset buttons sized to their labels, the today-count slot and the status area. Button state comes from a display-free function: Start is enabled only when the timer is not running and has time left, Pause only while running, Reset whenever the time is not 25:00 or the timer is running. Notification status: when the notification request is denied or unavailable, the status area shows 'Desktop notifications are unavailable.' and nothing is retried; the session still completes and is still recorded. Completion: after a successful insert, call reload(). There is no empty-list message because the screen has no list; with no sessions today the screen shows the count 0.",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TASKS.md",
+        "find": "; a failed add keeps its dialog open with the entered values.",
+        "replace": "; the timer stays stopped at 00:00 and the user presses Reset to continue.",
+        "all": false
+      },
+      {
+        "finding": 3,
+        "file": "TASKS.md",
+        "find": "Your controls mount into the slots exposed by TASK-05-FOCUS-SESSION-TIMER (the filter area or the list region): build them in src/features/todayscompletedsessioncountfeature.rs and mount them from the shared registration file; do not rebuild the screen.",
+        "replace": "Your count label mounts into the today-count slot exposed by TASK-05-FOCUS-SESSION-TIMER: build it in src/features/todayscompletedsessioncountfeature.rs and mount it from the shared registration file; do not rebuild the screen. Local-day rule: 'today' is the user's local calendar day. Implement display-free `pub fn day_bounds(now_millis: i64, utc_offset_millis: i64) -> (i64, i64)` returning (start, end) with start = (now_millis + utc_offset_millis).div_euclid(86_400_000) * 86_400_000 - utc_offset_millis and end = start + 86_400_000; `pub fn count_today(records: &[CompletedSessions], now_millis: i64, utc_offset_millis: i64) -> usize` counting records with start <= completed_at < end; and `pub fn local_utc_offset_millis(now_millis: i64) -> i64` (production: glib::DateTime::from_unix_local(now_millis / 1000), then utc_offset().as_microseconds() / 1000, and 0 when from_unix_local returns Err). The view-model takes a &dyn Clock and an offset function fn(i64) -> i64; src/app.rs passes SystemClock and local_utc_offset_millis; tests pass a fixed clock and a fixed offset. Use no date crate. Test vector: now_millis 1_700_000_000_000 with offset 7_200_000 gives (1_699_999_200_000, 1_700_085_600_000); completed_at values 1_699_999_200_000 and 1_700_000_000_000 count and 1_699_999_199_999 does not, so those three records give 2. Compute the count on app start and from the shared reload() so a completion updates the label without a restart; when the store's list returns Err the label shows 0.",
+        "all": false
+      },
+      {
+        "finding": 4,
+        "file": "PRD.md",
+        "find": "whose completion date is the current calendar day",
+        "replace": "whose completion moment falls within the current local calendar day (the user's local time zone, midnight to midnight)",
+        "all": true
+      },
+      {
+        "finding": 4,
+        "file": "ARD.md",
+        "find": "whose completion date is the current calendar day",
+        "replace": "whose completion moment falls within the current local calendar day (the user's local time zone, midnight to midnight)",
+        "all": true
+      },
+      {
+        "finding": 4,
+        "file": "TRD.md",
+        "find": "whose completion date is the current calendar day",
+        "replace": "whose completion moment falls within the current local calendar day (the user's local time zone, midnight to midnight)",
+        "all": true
+      },
+      {
+        "finding": 4,
+        "file": "TRD.md",
+        "find": "- Inputs: The app is open and a session completes.",
+        "replace": "- Local day rule: today is the user's local calendar day, the half-open range [start, end) where start is the most recent local midnight computed from the Clock's epoch milliseconds and the local UTC offset (read through glib::DateTime utc_offset) and end = start + 86_400_000. The offset is injectable so tests are deterministic; stored completed_at stays UTC epoch milliseconds.\n- Inputs: The app is open and a session completes.",
+        "all": false
+      },
+      {
+        "finding": 1,
+        "file": "TRD.md",
+        "find": "a failed add leaves its dialog open.",
+        "replace": "a failed insert leaves the timer stopped at 00:00 until the user presses Reset.",
+        "all": false
+      },
+      {
+        "finding": 2,
+        "file": "TRD.md",
+        "find": "the list loads as empty under the list task's load-error rule",
+        "replace": "the today count displays 0",
+        "all": false
+      },
+      {
+        "finding": 2,
+        "file": "TRD.md",
+        "find": "- Every screen follows the platform's conventions: an empty list shows one centered message",
+        "replace": "- Every screen follows the platform's conventions (this product has no list, so the empty-list rule does not apply; with no sessions today the screen shows the count 0): an empty list shows one centered message",
+        "all": false
+      }
+    ],
+    "notes": "Defects 1 and 2: TASK-05 no longer mentions an Add button, entry dialog, list rows or an empty-list message. It now builds the MM:SS display, Start/Pause/Reset buttons with simple enable rules, a display-free timer state, and exposes only a status area (notification-unavailable text) and a today-count slot. The load-error rule no longer shows any message, and the stale 'dialog open' wording in TRD is replaced; TRD runtime wiring now says the count displays 0 when the store is absent. Defect 3: TASK-05 exposes a named today-count slot and TASK-06 mounts its count label there, refreshing from reload(). Defect 4: 'calendar day' is now the user's local day in PRD, ARD and TRD. TASK-06 specifies day_bounds, count_today and local_utc_offset_millis (glib::DateTime::from_unix_local), takes a Clock and an injectable offset function, and gives a worked test vector. I computed that vector: with offset +2h and now 1_700_000_000_000, the day is [1_699_999_200_000, 1_700_085_600_000), giving a count of 2 for two records today and one just before the start."
+  },
+  "failed": []
+}

@@ -1,0 +1,78 @@
+{
+  "usage": {
+    "model": "claude-haiku-5-5",
+    "input_tokens": 46811,
+    "output_tokens": 40951
+  },
+  "review": {
+    "slug": "green-kitchen",
+    "blocking": [
+      {
+        "where": "kit/src/pages/recipes/[slug].astro — detail page field labels, against TRD.md Content Seed Requirements",
+        "quote": "<dt>Meal type</dt><dd>{entry.data.mealType}</dd>",
+        "why": "TRD.md says every field value is rendered 'in its own element next to the declared field name as its label', and says the field names are 'spelled exactly like this ... every page'. The kit labels the field 'Meal type', 'Ingredients', and 'Steps', not the declared names mealType, ingredients, and steps. An agent cannot tell whether the label must be the declared name or a readable form, and a test that checks the label text would fail on the kit as written.",
+        "fix": "In TRD.md Content Seed Requirements, state the label text exactly (for example 'mealType', 'ingredients', 'steps'), and change the kit recipe page labels to match.",
+        "quoteFound": true
+      },
+      {
+        "where": "TASKS.md — ### TASK-04-MEAL-TYPE-PAGE — Implement MealTypePage",
+        "quote": "shows the entries of that value as one li each",
+        "why": "The kit tag page (kit/src/pages/recipes/tags/[tag].astro) passes entries from listRecipesEntries(), which sorts by id, not by name. The acceptance criteria require 'alphabetical order by recipe name', but the task prompt says only 'one li each' and does not name a sort. A coder who starts from the kit as written ships id-ordered meal type pages and fails the acceptance criterion.",
+        "fix": "Add to the TASK-04 and TASK-03 task prompts: sort the list by the name field (state the comparator) before rendering each li, and keep the kit's id order for any other use.",
+        "quoteFound": true
+      }
+    ],
+    "polish": [
+      {
+        "where": "TASKS.md — ### TASK-01-FOUNDATION — Create the locked project foundation",
+        "quote": "The implementation marker is astro.config.mjs.",
+        "why": "The phrase 'implementation marker' is not defined in any document, so the acceptance criterion cannot be checked mechanically.",
+        "fix": "Replace it with 'astro.config.mjs exists at the project root', or delete it.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — ### CON-PACKAGING-RELEASE — Astro Web packaging",
+        "quote": "Installation: No deployment host is declared",
+        "why": "TRD.md — Signing Contract says 'deploy the verified production artifact over HTTPS with immutable asset hashes', which conflicts with the installation statement that deploying dist/ is outside these tasks. An agent could try to deploy.",
+        "fix": "In TRD.md — Signing Contract, change the sentence to 'No signing or deployment step applies in these tasks; the packet ends at the verified dist/ build.'",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — Owner-to-File and Focused-Test Map",
+        "quote": "OWN-FOUNDATION — Foundation — implementation package.json — focused test tests/contract.test.ts — command npm run check",
+        "why": "The focused test is tests/contract.test.ts, but the listed command is npm run check. TASKS.md TASK-01 runs npm run check and npm test, and never runs tests/contract.test.ts as a focused command.",
+        "fix": "Change the command to 'npm test -- tests/contract.test.ts' in TRD.md and add that command to TASK-01 validation.",
+        "quoteFound": true
+      },
+      {
+        "where": "PRD.md — ## Primary User Journeys — Recipe home page outcome",
+        "quote": "The list is ordered by recipe name alphabetically.",
+        "why": "'Alphabetically' is not defined. An agent must choose case sensitivity, locale collation, and tie-breaking for two recipes with the same name, and the acceptance test cannot be written without that choice.",
+        "fix": "Add to PRD.md Operational Constraints: 'Name order compares the name strings with plain code-unit comparison; equal names keep ascending id order.'",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/src/content/recipes/01-sample-entry.md",
+        "quote": "Sample content. Keep it when the idea supplies no entries; the site owner replaces it with real entries after delivery.",
+        "why": "The body of the placeholder entry renders publicly on its recipe page (through Content in kit/src/pages/recipes/[slug].astro), so visitors see internal owner instructions.",
+        "fix": "Replace the body with neutral placeholder text such as 'Placeholder content.' and keep the owner note in the packet documents only.",
+        "quoteFound": true
+      },
+      {
+        "where": "kit/astro.config.mjs",
+        "quote": "export default defineConfig({",
+        "why": "TRD.md CON-PRESET-OPTIONS requires 'outputMode=static', but the config never sets output. It relies on the Astro default, and CON-PRESET-OPTIONS says the compiler never guesses an option.",
+        "fix": "Add output: \"static\" to the defineConfig object in kit/astro.config.mjs.",
+        "quoteFound": true
+      },
+      {
+        "where": "TRD.md — ## Packaging Contract / CON-RUNTIME-WIRING",
+        "quote": "This is manual evidence to report, not a test or a validation command",
+        "why": "The 320px and desktop browser check is required before completion, but AGENTS.md defines DONE only by passing commands and says nothing about manual checks. A coder cannot tell whether a missing manual check makes the status PARTIAL or DONE.",
+        "fix": "Add to AGENTS.md Completion Reporting: 'If the manual browser check cannot be run, report PARTIAL and list the unchecked routes.'",
+        "quoteFound": true
+      }
+    ],
+    "verdict": "Not buildable without guesswork as written: the detail page labels contradict the declared-field-label rule, and the kit meal type page sorts by id while the acceptance criteria require name order. Fix those two and the remaining documents are consistent with the kit and the task order."
+  }
+}
