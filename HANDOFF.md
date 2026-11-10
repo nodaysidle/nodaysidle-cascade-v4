@@ -318,9 +318,7 @@ end in two rounds: each round fixed what was flagged and the reviewer then raise
   benchmark on all 16 broken round-12 packets: 14/16 in 2 rounds, 16/16 in 3 rounds; `DEFAULT_REVIEW_ROUNDS = 3`)
   are complete. Note that "0 blocking by Sonnet 5.5 + passing kit build" on the remaining 14 packets has not
   had a separate subagent audit beyond the 2 independent audits in Step 1 (`focus-timer`, `net-rate`).
-- Step 6 (rebuild/install app, screenshot, 5 new ideas) is next.
-- The installed app is the build of 2026-11-10 15:09, before this session. No screenshot, no packet exported
-  from the app.
+- Step 6: Rebuilt and installed the desktop app (`bash scripts/install-linux-app.sh` -> `/home/arch/.local/bin/nodaysidle-cascade-v4`), captured a window screenshot, and gave Alan five new ideas (one per preset, never used before) to run in the app. Waiting for Alan's exported packets to verify, build kits, and audit.
 - Nothing was recorded in the vault or in Supermemory.
 
 ## 11. Prompt for the next agent
