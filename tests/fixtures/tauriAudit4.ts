@@ -47,7 +47,7 @@ export const ideaBoxBlueprint: SemanticBlueprint = {
     feature("Idea list", "List ideas newest first by creation time.", "Saved ideas are listed after launch.", { usesData: ["Ideas"], dataOperations: ops("Ideas", "read") }),
     feature("Add idea", "Add an idea with a title and notes.", "A new idea appears in the list.", { usesData: ["Ideas"], dataOperations: ops("Ideas", "create"), buildsOn: ["Idea list"] }),
     feature("Edit idea", "Edit an idea's title and notes; the creation time stays.", "The edited title shows after reload.", { usesData: ["Ideas"], dataOperations: ops("Ideas", "read", "edit"), buildsOn: ["Idea list"] }),
-    feature("Search ideas by title", "Narrow the list to ideas whose title contains the typed text, ignoring case.", "Typing 'tea' lists only matching titles.", { usesData: ["Ideas"], dataOperations: ops("Ideas", "read"), buildsOn: ["Idea list"], failureRecovery: "fallback" }),
+    feature("Search ideas by title", "Narrow the list to ideas whose title contains the typed text, ignoring case.", "Typing 'tea' lists only matching titles.", { usesData: ["Ideas"], dataOperations: ops("Ideas", "read"), buildsOn: ["Idea list"], failureRecovery: "fallback", narrowsListBy: "text" }),
     feature("Export ideas", "Write every idea into one Markdown file at a path the user chooses, with its creation time as YYYY-MM-DD HH:MM.", "An empty list exports only '# Ideas'.", { usesData: ["Ideas", "Ideas export"], dataOperations: [{ data: "Ideas", operations: ["read"] }, { data: "Ideas export", operations: ["create"] }], userFileAccess: "saves", buildsOn: ["Idea list"] }),
   ],
   dataObjects: [

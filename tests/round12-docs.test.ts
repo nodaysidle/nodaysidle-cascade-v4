@@ -64,3 +64,29 @@ describe("Waybar: label examples use the declared number of decimals (round 12)"
     expect(packet.documents["TASKS.md"]).toContain("the label text is 3.7 GB")
   })
 })
+
+// Budget Book: "Monthly category totals" only reads the records and narrows nothing, yet it was compiled as a list
+// filter: mounted in "the filter area or the list region", told to write a query, and told it has no failure path
+// while the PRD requires a could-not-load state.
+describe("Tauri: a read-only feature that derives values is a summary, not a filter (round 12)", () => {
+  it("gets its own host, writes nothing to the store, and states its load-failure state", async () => {
+    const packet = await compilePacket(load("tauri-budget-book.json"), "tauri2-rust-typescript-desktop")
+    expect(packet.failures).toEqual([])
+    const tasks = packet.documents["TASKS.md"]
+    const list = section(tasks, "### TASK-04-EXPENSE-LIST")
+    const totals = section(tasks, "### TASK-07-MONTHLY-CATEGORY-TOTALS")
+    expect(list).toContain('a "summary" host above the list')
+    expect(list).toContain('slots.host("summary")')
+    for (const text of ["query: string", "a filter area above the list", "match rule"]) expect(list, text).not.toContain(text)
+    expect(totals).toContain('(the "summary" host)')
+    expect(totals).toContain("writes nothing to the shared view state")
+    expect(totals).toContain("loadError")
+    for (const text of ["narrows or reorders", "the filter area or the list region", "so it has no failure path", "writing its control's value with store.set"]) expect(totals, text).not.toContain(text)
+  })
+
+  it("keeps a declared filter a filter", async () => {
+    const tasks = (await compilePacket(load("tauri-reading-list.json"), "tauri2-rust-typescript-desktop")).documents["TASKS.md"]
+    expect(tasks).toContain("a filter area above the list")
+    expect(tasks).not.toContain('"summary" host')
+  })
+})

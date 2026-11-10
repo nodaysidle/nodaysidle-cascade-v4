@@ -90,7 +90,8 @@ describe("Tauri timer app: no slots for controls nobody builds", () => {
     const shortcut = task(tasks, "TASK-06-SHORTCUT-TOGGLE")
     expect(shortcut).toContain("(no named slot: your own controls, if any")
     expect(shortcut).not.toContain("build the edit form in your own file")
-    expect(task(tasks, "TASK-07-TODAY-TOTALS")).toContain("(the filter area or the list region)")
+    // Round 12: totals narrow nothing, so they render in the summary host, not the filter area.
+    expect(task(tasks, "TASK-07-TODAY-TOTALS")).toContain('(the "summary" host)')
     expect(task(tasks, "TASK-08-ENTRY-EDITING")).toContain("build the edit form in your own file")
     // Round 10: a whole-list export mounts into the actions host the first main task exposes.
     expect(task(tasks, "TASK-09-WEEK-EXPORT")).toContain('(the "actions" host')
