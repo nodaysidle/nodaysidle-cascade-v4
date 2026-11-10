@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
-import { applyEdits, buildFixPrompt } from "../scripts/agent-ready/fix"
+import { applyEdits, buildFixPrompt, touchedKit, writePacketEdits } from "../scripts/agent-ready/fix"
 import { buildReviewPrompt, quoteFound, readPacket } from "../scripts/agent-ready/review"
 
 const roots: string[] = []
@@ -67,5 +67,48 @@ describe("packet repair tool", () => {
     expect(prompt).toContain('<file path="kit/a.rs">\nlet floor = 5;')
     expect(prompt).toContain('The user\'s idea: "Disk Free shows free space."')
     expect(prompt).toContain("1. Where: PRD.md\n   Quote: The class is normal.")
+    expect(prompt).toContain("create")
+    expect(prompt).toContain("move")
+    expect(prompt).toContain("delete")
+  })
+
+  it("creates, moves and deletes kit files and updates the packet folder on disk", () => {
+    const folder = packet()
+    const before = readPacket(folder).files
+    const edits = [
+      { finding: 1, op: "move" as const, file: "kit/src/page.astro", to: "kit/src/pages/author/[slug].astro", find: "<h1>Teas</h1>", replace: "<h1>Author</h1>", all: false },
+      { finding: 1, op: "create" as const, file: "kit/src/lib/helper.ts", find: "", replace: "export const ok = true\n", all: false },
+      { finding: 1, op: "delete" as const, file: "kit/src/lib/helper.ts", find: "", replace: "", all: false },
+      { finding: 1, op: "create" as const, file: "kit/src/lib/kept.ts", find: "", replace: "export const kept = 1\n", all: false },
+    ]
+    const result = applyEdits(before, edits)
+    expect(result.failed).toEqual([])
+    expect(touchedKit(edits, result.failed)).toBe(true)
+    expect(result.files.map(file => file.path)).toEqual(["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS.md", "kit/src/lib/kept.ts", "kit/src/pages/author/[slug].astro"])
+    writePacketEdits(folder, before, result.files)
+    expect(existsSync(join(folder, "kit", "src", "page.astro"))).toBe(false)
+    expect(readFileSync(join(folder, "kit", "src", "pages", "author", "[slug].astro"), "utf8")).toBe("<h1>Author</h1>\n")
+    expect(readFileSync(join(folder, "kit", "src", "lib", "kept.ts"), "utf8")).toBe("export const kept = 1\n")
+  })
+
+  it("rejects invalid file operations without touching the files", () => {
+    const result = applyEdits(files, [
+      { finding: 1, op: "create", file: "PRD.md", find: "", replace: "x", all: false },
+      { finding: 1, op: "create", file: "../escape.txt", find: "", replace: "x", all: false },
+      { finding: 1, op: "move", file: "kit/a.rs", to: "PRD.md", find: "", replace: "", all: false },
+      { finding: 1, op: "move", file: "kit/a.rs", find: "", replace: "", all: false },
+      { finding: 1, op: "delete", file: "PRD.md", find: "", replace: "", all: false },
+      { finding: 1, op: "delete", file: "kit/missing.rs", find: "", replace: "", all: false },
+    ])
+    expect(result.failed.map(item => item.reason)).toEqual([
+      "the file already exists in the packet",
+      "invalid packet file path",
+      "the target file already exists in the packet",
+      "move requires a valid target path in to",
+      "cannot delete a required contract document",
+      "no such file in the packet",
+    ])
+    expect(result.files).toEqual(files)
+    expect(touchedKit([{ finding: 1, file: "PRD.md", find: "is normal", replace: "is critical", all: true }], [])).toBe(false)
   })
 })

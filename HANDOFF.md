@@ -190,15 +190,21 @@ end in two rounds: each round fixed what was flagged and the reviewer then raise
 
 ## 6. What to do next, in order
 
-1. **Check the repair independently (first, before building anything).** Take the repaired Focus Timer and
-   Net Rate packets (section 7 says how to rebuild them). Run one fresh read-only audit agent per packet with
-   `scripts/agent-ready/audit-brief.md` (make the prompts with `make-audit-prompts.py`), and confirm each
-   blocking claim against the files. If the repaired packets are not clearly better than the originals by
-   that audit, stop and tell Alan: the direction needs rethinking.
-2. **Close the gap Field Notes showed.** Give `fix.ts` file operations (create, move, delete) with a test,
-   and make the loop build the kit after any repair that touches it. Then repair Field Notes again and see
-   whether its kit builds. Decide with Alan what the desktop app does, where no build can run: refuse kit
-   edits and report "not ready", or run the build when the tools are installed.
+1. **Check the repair independently (done).** Rebuilt the repaired Focus Timer (`14 + 4` edits) and Net Rate
+   (`21 + 8` edits) packets in `/tmp/v4-step1-rebuilt`, built both kits (`cargo fmt --check`, `cargo clippy`,
+   `cargo test` all passed), and ran one fresh read-only audit agent per packet with
+   `scripts/agent-ready/audit-brief.md`. Both returned **0 blocking findings** (`verdict: "PASS"`), confirmed
+   against the files: Focus Timer has no Add button/dialog/list, defines the `today-count` and `status` slots,
+   the local calendar-day rule (`day_bounds`, `count_today`, `local_utc_offset_millis`), and `Notifier` on
+   `OWN-PERMISSION-COORDINATOR`; Net Rate fixes the `100.0`/`1250.0 kB/s` 2-second examples, byte-rate rule,
+   first-sample rule, `baseline_bytes`, and the kit interval floor.
+2. **Close the gap Field Notes showed (code done; awaiting Alan's API approval for Field Notes re-repair and
+   desktop-app build decision).** `scripts/agent-ready/fix.ts` now supports file operations (`op`: `replace`,
+   `create`, `move`, `delete`, and `to`), updates the packet folder on disk (`writePacketEdits`), and builds
+   the kit (`buildKit`) after any repair that touches `kit/`, discarding a repair that breaks the kit. Next:
+   repair Field Notes again and review it (2 Anthropic calls, about $0.40), and decide with Alan what the
+   desktop app does where no build can run: refuse kit edits and report "not ready", or run the build when the
+   tools are installed.
 3. **Fix the plain compiler bugs the reviewer keeps finding** (deterministic, one failing test first each),
    so the repair loop has less to do: the kit's 5-second interval floor against a declared shorter interval;
    final validation runs `npm test` before `npm run build` (Astro); the TASK-01 marker criterion reads a file
@@ -279,7 +285,9 @@ end in two rounds: each round fixed what was flagged and the reviewer then raise
 
 ## 10. Not done, not verified
 
-- No independent audit or trial build of the repaired packets. The repaired Field Notes kit does not build.
+- Independent read-only audits of repaired Focus Timer and Net Rate passed (0 blocking, kits build). Field
+  Notes re-repair with file operations (`create`, `move`, `delete`) + kit build check has not been run yet
+  (awaiting API approval).
 - Five round packets have no audit verdict: Budget Book (second run), Meeting Clock, Day Journal, Clip
   Keeper, Days Until.
 - Nothing in the compiler was fixed after the round. The only code changes this session are tooling:
