@@ -208,14 +208,19 @@ end in two rounds: each round fixed what was flagged and the reviewer then raise
    fixed that gate order and reached **0 blocking** (`8` polish) with a passing kit build. For the desktop app,
    when a repair touches `kit/`, the Tauri backend will run the kit build in a temporary folder and, if the
    build fails or the toolchain is missing, discard the kit repair and report **Not ready** with the reason.
-3. **Fix the plain compiler bugs the reviewer keeps finding** (deterministic, one failing test first each),
-   so the repair loop has less to do: the kit's 5-second interval floor against a declared shorter interval;
-   final validation runs `npm test` before `npm run build` (Astro); the TASK-01 marker criterion reads a file
-   a later task creates (Waybar); the relaunch check asks for saved data when nothing is stored (Android);
-   the Save label taken from the first quoted string of an acceptance sentence (GTK, Habit Streak);
-   `isTauriSummary` catching an action that is not a summary (Link Shelf); `valueDecimals` without a unit
-   rejected (Load Meter); the provider-note examples that get copied ("30 minutes is 1800", "6,250,000 bytes
-   in 5 seconds is 10.0 Mb/s", "84.50 means 2").
+3. **Fix the plain compiler bugs the reviewer keeps finding (done).** All 8 deterministic fixes landed with a
+   failing test first each (`ace8edd`, `79f724e`, `d414879`, `8c038de`, `2fd4a20`, `a8e3616`, `a9e9e87`, plus
+   the provider-note example cleanup): the Waybar kit's 1-second refresh interval floor (`src/kits.ts`);
+   final validation runs `npm run build` before `npm test` on Astro (`src/presets.ts`, `src/compiler.ts`);
+   the Waybar `TASK-01-FOUNDATION` marker criterion no longer references packaging-owned
+   `resources/waybar/config.jsonc` (`src/compiler.ts`, `src/presets.ts`); the Android relaunch check confirms
+   starting state when `blueprint.domainData.length === 0` (`src/presets.ts`); the GTK Save button label only
+   extracts a quoted string attached to `button` (`src/gtkContracts.ts`); `isTauriRowAction` mounts per-row
+   read-only actions (`invokedBy: "click"` or row actions) into `row-actions` instead of `"summary"`
+   (`src/compiler.ts`, `src/tauriContracts.ts`); Waybar unitless readings can declare `valueDecimals`
+   (`src/waybarContracts.ts`); and the copied provider-note examples (`"30 minutes is 1800"`, `"6,250,000 bytes
+   in 5 seconds is 10.0 Mb/s"`, `"84.50 means 2"`) were replaced with rule-based wording (`src/waybarContracts.ts`,
+   `src/presets.ts`).
 4. **Build the review and repair steps into the pipeline** (section 4): `src/pipeline.ts` stages, the edits
    recorded in the manifest and replayed by `verify`, the CLI `generate` path with the SDK, a Rust command
    for the desktop app like `deepseek_complete` (keys in memory only), the third key field, the new progress
@@ -289,13 +294,12 @@ end in two rounds: each round fixed what was flagged and the reviewer then raise
 ## 10. Not done, not verified
 
 - Independent read-only audits of repaired Focus Timer and Net Rate passed (0 blocking, kits build). Field
-  Notes re-repair with file operations (`create`, `move`, `delete`) + kit build check has not been run yet
-  (awaiting API approval).
+  Notes re-repair with file operations (`create`, `move`, `delete`) + kit build check passed in 2 rounds
+  (0 blocking, kit builds).
 - Five round packets have no audit verdict: Budget Book (second run), Meeting Clock, Day Journal, Clip
   Keeper, Days Until.
-- Nothing in the compiler was fixed after the round. The only code changes this session are tooling:
-  `--keep-answers`, the `Repaired once` line, `run-round.fish` logs, `make-audit-prompts.py`, `review.ts`,
-  `fix.ts`.
+- All 8 plain deterministic compiler bugs from section 6 item 3 are fixed and tested. Step 4 (pipeline,
+  CLI, and desktop app review/repair integration) is next.
 - The installed app is the build of 2026-11-10 15:09, before this session. No screenshot, no packet exported
   from the app.
 - Nothing was recorded in the vault or in Supermemory.

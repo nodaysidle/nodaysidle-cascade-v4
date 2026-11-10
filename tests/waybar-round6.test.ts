@@ -60,8 +60,9 @@ describe("Waybar audit round 6", () => {
 
   it("tells the provider how to convert an interval and not to invent request parameters", () => {
     const notes = PRESETS[ID].providerNotes!.join("\n")
-    expect(notes).toContain("30 seconds is 30")
-    expect(notes).toContain("30 minutes is 1800")
+    expect(notes).toContain("multiply minutes by 60")
+    expect(notes).not.toContain("30 minutes is 1800")
+    expect(notes).not.toContain("6,250,000 bytes in 5 seconds is 10.0 Mb/s")
     expect(notes).toContain("never write both numbers in one sentence")
     expect(notes).toContain("never invent a parameter")
     expect(notes).toContain("a place name or one saved identifier directly")
@@ -69,6 +70,8 @@ describe("Waybar audit round 6", () => {
     expect(notes).toContain("insert-or-replace")
     expect(notes).toContain("'{value}%'")
     expect(notes).toContain("Show a numeric size example (3.67 GB) only where a surface")
+    const androidNotes = PRESETS["android-kotlin-compose"].providerNotes!.join("\n")
+    expect(androidNotes).not.toContain("84.50 means 2")
   })
 
   it("renders a create-only single record as insert-or-replace with no update or delete", async () => {
