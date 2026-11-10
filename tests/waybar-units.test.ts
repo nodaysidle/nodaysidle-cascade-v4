@@ -26,6 +26,11 @@ describe("Waybar declared response paths, label units, and rate sources", () => 
     const orphan = windLabel()
     orphan.features[1]!.unit = ""
     expect(rules(orphan)).toContain("capability.waybar-label-unit")
+    const unitlessDecimals = windLabel()
+    unitlessDecimals.features[1]!.labelTemplate = "{value}"
+    unitlessDecimals.features[1]!.unit = ""
+    unitlessDecimals.features[1]!.valueDecimals = 2
+    expect(rules(unitlessDecimals)).toEqual([])
   })
 
   it("documents the key path and the fixed-unit label, and ships the rounding rule without a system source", async () => {
@@ -40,6 +45,14 @@ describe("Waybar declared response paths, label units, and rate sources", () => 
     expect(names).not.toContain("kit/src/platform/system_source.rs")
     const units = packet.kit.find(file => file.name === "kit/tests/units_tests.rs")!.content
     expect(units).toContain('format_decimals(1.25, 1), "1.3"')
+
+    const unitless = windLabel()
+    unitless.features[1]!.labelTemplate = "{value}"
+    unitless.features[1]!.unit = ""
+    unitless.features[1]!.valueDecimals = 2
+    const unitlessPacket = await compilePacket(unitless, ID)
+    expect(unitlessPacket.failures).toEqual([])
+    expect(unitlessPacket.documents["TRD.md"]).toContain('with exactly 2 decimals, rounded half away from zero (12 is shown as "12.00")')
   })
 
   it("reads disk bytes from /proc/diskstats, keeps the previous sample in the stored record, and ships no statvfs or time zone code", async () => {

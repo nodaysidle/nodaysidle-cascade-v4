@@ -201,8 +201,10 @@ function waybarValueIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
   }
   for (const { feature, index } of labelled) {
     const unit = (feature.unit ?? "").trim()
-    if (unit !== "" && !(feature.labelTemplate ?? "").includes(unit)) issues.push({ path: `features[${index}].labelTemplate`, rule: "capability.waybar-label-unit", message: `Feature '${feature.name}' declares the unit '${unit}' but its labelTemplate '${feature.labelTemplate}' does not contain it. {value} is only the number in that unit, so the template carries the unit text (for example "{value} ${unit}").` })
-    if (unit === "" && (feature.valueDecimals ?? null) !== null) issues.push({ path: `features[${index}].valueDecimals`, rule: "capability.waybar-label-unit", message: `Feature '${feature.name}' declares valueDecimals without a unit; set unit to the symbol the label shows (or valueDecimals to null).` })
+    const template = feature.labelTemplate ?? ""
+    if (unit !== "" && !template.includes(unit)) issues.push({ path: `features[${index}].labelTemplate`, rule: "capability.waybar-label-unit", message: `Feature '${feature.name}' declares the unit '${unit}' but its labelTemplate '${feature.labelTemplate}' does not contain it. {value} is only the number in that unit, so the template carries the unit text (for example "{value} ${unit}").` })
+    const templateUnit = /\s*([A-Za-z%/\u00b0]+)$/.exec(template.replace("{value}", "").trim())?.[1]
+    if (unit === "" && (feature.valueDecimals ?? null) !== null && templateUnit && /^(?:[kMGT]?B|[kMG]?b)(?:\/s)?$|^(?:km\/h|m\/s|mph|kn|%|°[CF]?)$/i.test(templateUnit)) issues.push({ path: `features[${index}].unit`, rule: "capability.waybar-label-unit", message: `Feature '${feature.name}' carries the unit '${templateUnit}' in its labelTemplate '${feature.labelTemplate}' without setting unit; set unit to '${templateUnit}'.` })
     const decimals = feature.valueDecimals ?? null
     if (unit !== "" && decimals !== null) {
       // A number directly before the label's unit, in a signal about the label; a tooltip or notification is not the label.
@@ -473,9 +475,12 @@ export function waybarResponseDetail(service: NormalizedBlueprint["externalServi
 // Interface lines for the feature that composes the label and declares severity limits.
 export function waybarFeatureDetail(feature: NormalizedBlueprint["features"][number]): string[] {
   const lines: string[] = []
+  const decimalsText = feature.valueDecimals !== null ? ` with exactly ${feature.valueDecimals} decimal${feature.valueDecimals === 1 ? "" : "s"}, rounded half away from zero (${feature.valueDecimals === 0 ? '12.5 is shown as "13"' : `12 is shown as "${(12).toFixed(feature.valueDecimals)}"`})` : ""
   const shown = feature.unit !== ""
-    ? `the bare number of the reading in the fixed unit ${feature.unit} (the number is scaled to that unit; the units rule does not choose a unit)${feature.valueDecimals !== null ? ` with exactly ${feature.valueDecimals} decimal${feature.valueDecimals === 1 ? "" : "s"}, rounded half away from zero (${feature.valueDecimals === 0 ? '12.5 is shown as "13"' : `12 is shown as "${(12).toFixed(feature.valueDecimals)}"`})` : ", with the units rule's decimals"}; the template carries the unit text ${feature.unit}`
-    : "the reading as the label shows it (a size or rate in the units rule's format and an instant as HH:MM where this document states those rules; any other number as stored, a whole number without decimals; the template carries any unit symbol such as %)"
+    ? `the bare number of the reading in the fixed unit ${feature.unit} (the number is scaled to that unit; the units rule does not choose a unit)${decimalsText || ", with the units rule's decimals"}; the template carries the unit text ${feature.unit}`
+    : feature.valueDecimals !== null
+      ? `the bare number of the reading${decimalsText} (src/platform/units.rs format_decimals)`
+      : "the reading as the label shows it (a size or rate in the units rule's format and an instant as HH:MM where this document states those rules; any other number as stored, a whole number without decimals; the template carries any unit symbol such as %)"
   if (feature.labelTemplate !== "") lines.push(`Label: exactly "${feature.labelTemplate}" with {value} replaced by ${shown}; before the first successful refresh the label is "${WAYBAR_EMPTY_LABEL}", the kit default of Settings.text in src/config.rs, which no task changes.`)
   if (feature.thresholds.length) {
     const rows = feature.thresholds.map(item => `${item.state === "critical" ? "critical (red)" : "warning (amber)"} when the raw value is ${item.comparison === "above" ? "above" : "below"} ${item.value}`)
