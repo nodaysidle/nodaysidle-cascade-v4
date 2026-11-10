@@ -73,7 +73,42 @@ all five presets.** Done means all of these hold:
 
 ### RESUME HERE — round 12 live run failed at the intake stage (2026-11-10)
 
-**Read this block first.** The next session's job is to make the *intake stage* (Jev check, AI provider call, blueprint
+**Status after the intake-repair session (2026-11-10, Fable 5.2). Read this first; the older text below it is the
+original brief.**
+
+Done (one commit, failing-first tests in `tests/round12-intake.test.ts`, 454 tests pass):
+- **Failures say why.** `provider.http-error` now reads "The provider rejected the request. HTTP 429 (rate limit
+  reached; wait and retry). Provider code: rate_limit_exceeded." (`providerIssue`, src/pipeline.ts; the CLI provider
+  now forwards `error.code` too, and only allowlisted codes survive `normalizeProviderFailure`). `jev.intake-rejected`
+  now reads "... Viability score 0.41; it needs 0.65." plus the preset Jev would pick when it differs
+  (`jevIntakeRejectedIssue`, src/jev.ts). Jev returns numbers and one preset id, never prose, so there is no text
+  reason to show.
+- **Bar-only keys are not offered outside Waybar.** `providerSchemaFor(presetId)` (src/schema.ts) removes
+  systemSource, thresholds, labelTemplate, unit and valueDecimals from the response schema of the four other presets.
+  Cause of the Tip Split failure: the one shared schema made the AI fill `valueDecimals` for "two decimals". The
+  capability checks (capability.waybar-label, capability.system-source) stay for hand-made blueprints.
+- **`settleBlueprint`** (src/compiler.ts) runs on the parsed answer before any check (src/pipeline.ts
+  `compileProviderText`). Waybar: identical labelTemplate/unit/valueDecimals or thresholds copies stay on one feature
+  (`settleWaybarLabel`, src/waybarContracts.ts): the first non-click feature that only shows data, else the scheduled
+  measuring feature. Copies that differ are untouched and rejected as before. All presets: a `scheduledNotification`
+  with no schedule is set to null when no feature uses the notifications need.
+- AGENTS.md states these exceptions to "never drop provider content".
+
+Not done / open:
+1. **Tauri HTTP status is still unknown.** Nothing records it; it needs one re-run from the rebuilt app. Request size
+   is ruled out: the Tauri request is the second smallest (19,150 instruction chars; Waybar is 30,736 and passed
+   step 02). Likely transient (429/5xx) or key/balance (401/402). Do not change anything for it before Alan reports
+   the status.
+2. **Jev rejection (Astro):** needs one re-run to read the score. Suspect to check with the score in hand: the
+   viability question asks for "one coherent application" and the Astro ideas are websites. Do not lower
+   `JEV_VIABILITY_THRESHOLD` or reword the question without Alan's yes.
+3. **No live run yet.** The fixtures are passing blueprints changed into the reported shape; the real failing answers
+   were never saved. A live run must confirm Disk Free and Tip Split pass. Ask Alan before any paid run.
+4. Label owner limit: with several show-only Waybar features the first declared one gets the label lines (no declared
+   field tells a label feature from a tooltip feature). Watch for it in the Disk Free and Load Meter audits.
+5. Not built: showing in the UI that a copy was settled; the Jev transport failure still hides its HTTP status.
+
+**Original brief.** The next session's job is to make the *intake stage* (Jev check, AI provider call, blueprint
 checks + the one repair) stop failing on ordinary ideas. The *document stage* is in good shape: round 11 ended 5/5
 agent-ready (see the next block). Repo state: `main` at the commit after 7c8b06e, clean, 441 tests pass, `npm run check`
 green, kit:check 18/18, app installed from 7134db7 (`scripts/install-linux-app.sh`). Nothing pushed.

@@ -3,6 +3,7 @@ import {
   compileNormalizedPacket,
   GraphConstructionError,
   normalizeBlueprint,
+  settleBlueprint,
   NormalizationError,
   type CompiledPacket,
   type LocalCompileStage,
@@ -27,7 +28,7 @@ import {
   buildBlueprintInstructions,
   MAX_IDEA_SENTENCES,
   parseBlueprintJson,
-  providerJsonSchema,
+  providerSchemaFor,
   redactSecretMaterial,
   splitIdeaSentences,
   type SemanticBlueprint,
@@ -63,7 +64,7 @@ export interface ProviderRequest {
   readonly model: ProviderModel
   readonly maxOutputTokens: number
   readonly reasoningEffort: "none"
-  readonly schema: typeof providerJsonSchema
+  readonly schema: ReturnType<typeof providerSchemaFor>
   readonly instructions: string
   readonly input: string
 }
@@ -145,7 +146,6 @@ const allowlistedWrapperOutputTypes = new Set([
 const PROVIDER_SETTINGS = {
   maxOutputTokens: MAX_BLUEPRINT_OUTPUT_TOKENS,
   reasoningEffort: "none",
-  schema: providerJsonSchema,
 } as const
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -229,6 +229,7 @@ function providerRequest(input: GeneratePacketInput, repair?: RepairContext): Pr
     apiKey: input.apiKey,
     model: input.model,
     ...PROVIDER_SETTINGS,
+    schema: providerSchemaFor(input.presetId),
     instructions: buildBlueprintInstructions({ idea: input.idea, trayAvailable: PRESETS[input.presetId].capabilities.tray, backgroundAvailable: PRESETS[input.presetId].capabilities.background, presetNotes: PRESETS[input.presetId].providerNotes }),
     input: repair ? buildRepairInput(repair) : BLUEPRINT_INPUT,
   }
@@ -238,11 +239,23 @@ function cancelled(input: GeneratePacketInput): boolean {
   return input.signal?.aborted === true
 }
 
+// What the provider's documented error statuses mean, in plain words.
+const HTTP_STATUS_HINTS: Readonly<Record<number, string>> = {
+  400: "the request body was not accepted",
+  401: "the API key was not accepted",
+  402: "the account balance is too low",
+  413: "the request is too large",
+  422: "a request parameter was not accepted",
+  429: "rate limit reached; wait and retry",
+  500: "provider server error; retry later",
+  503: "provider overloaded; retry later",
+}
+
 function providerIssue(failure: ProviderFailure): SemanticIssue {
   const messages: Readonly<Record<ProviderFailureKind, string>> = {
     transport: "The provider request could not establish a safe connection.",
     timeout: "The provider request did not complete before the model-aware timeout.",
-    http: "The provider rejected the request with a safe HTTP failure classification.",
+    http: "The provider rejected the request.",
     incomplete: "The provider stopped before completing the structured response.",
     "failed-response": "The provider returned a failed completion wrapper.",
     "invalid-wrapper": "The provider completion wrapper was not safely usable.",
@@ -251,7 +264,10 @@ function providerIssue(failure: ProviderFailure): SemanticIssue {
     cancelled: "The provider request was cancelled before compilation.",
     unknown: "The provider request failed with an unknown safe classification.",
   }
-  return { path: "$provider", rule: `provider.${failure.classification}`, message: messages[failure.kind] }
+  // Only the status number and an allowlisted code are shown (normalizeProviderFailure keeps nothing else): never a body or a key.
+  const status = failure.httpStatus === undefined ? "" : ` HTTP ${failure.httpStatus}${HTTP_STATUS_HINTS[failure.httpStatus] ? ` (${HTTP_STATUS_HINTS[failure.httpStatus]})` : ""}.`
+  const code = failure.providerCode === undefined ? "" : ` Provider code: ${failure.providerCode}.`
+  return { path: "$provider", rule: `provider.${failure.classification}`, message: `${messages[failure.kind]}${status}${code}` }
 }
 
 function failureResult(
@@ -308,7 +324,7 @@ export async function generatePacket(
       return failureResult("cancelled", [providerIssue(failure)], failure)
     }
     if (!preflight.ok) return failureResult("jev-failure", [jevFailureIssue(preflight.failure)])
-    if (!preflight.decision.viable) return failureResult("intake-rejected", [jevIntakeRejectedIssue()])
+    if (!preflight.decision.viable) return failureResult("intake-rejected", [jevIntakeRejectedIssue(preflight.decision)])
     presetMismatch = preflight.decision.presetMismatch
   }
 
@@ -366,10 +382,10 @@ async function compileProviderText(
       : undefined
     return failureResult("blueprint-validation-failed", parsed.failure.issues, failure)
   }
-  const intakeIssues = [...auditSemanticIntake(parsed.blueprint), ...auditIdeaCoverage(parsed.blueprint, input.idea)]
+  let blueprint = settleBlueprint(parsed.blueprint, input.presetId)
+  const intakeIssues = [...auditSemanticIntake(blueprint), ...auditIdeaCoverage(blueprint, input.idea)]
   if (intakeIssues.length) return failureResult("blueprint-validation-failed", intakeIssues)
 
-  let blueprint = parsed.blueprint
   let jevReport: JevReport | undefined
   let atomicAudits: JevAtomicAuditDecision | undefined
   if (jevProvider) {

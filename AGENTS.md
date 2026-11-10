@@ -26,7 +26,13 @@ There is no native macOS preset. Do not add one back without an explicit product
 - `filesystem` is never a provider platform need; file access comes from `userFileAccess` and
   document data objects.
 - Reject duplicate names, unused platform needs, unsupported capabilities, and unrequested features.
-  Never silently drop or dedupe provider content.
+  Never silently drop or dedupe provider content. The only exceptions are the two cases `settleBlueprint`
+  (`src/compiler.ts`) settles before the checks run, because the compiler can decide them without reading
+  prose: identical Waybar label or threshold copies stay on the one feature that shows the reading, and a
+  `scheduledNotification` with no schedule is cleared when no feature uses notifications. Copies that
+  differ are still rejected.
+- Bar-only feature keys (`systemSource`, `thresholds`, `labelTemplate`, `unit`, `valueDecimals`) are offered
+  to the provider only for the Waybar preset (`providerSchemaFor` in `src/schema.ts`).
 - One DeepSeek request plus at most one repair for provider-content failures. A blueprint the selected preset cannot express (capability audit after the provider answered) counts as a
   provider-content failure. Never repair transport, cancellation, input (including a capability problem in the user's own idea), Jev service, compiler, or export failures.
 - Keys are memory-only. Never log, persist, export, or print them.

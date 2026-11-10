@@ -28,7 +28,9 @@ export async function deepseekProvider(request: ProviderRequest): Promise<string
     }),
   })
   if (!response.ok) {
-    throw { kind: "http", classification: "http-error", httpStatus: response.status }
+    // Only error.code leaves the body, and normalizeProviderFailure drops it unless it is on the allowlist.
+    const body = await response.json().catch(() => undefined) as { error?: { code?: unknown } } | undefined
+    throw { kind: "http", classification: "http-error", httpStatus: response.status, providerCode: body?.error?.code }
   }
   const wrapper = await response.json() as {
     status?: string

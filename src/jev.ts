@@ -17,7 +17,8 @@ import type { PlatformNeed, SemanticBlueprint, SemanticIssue } from "./schema"
  * Jev can only produce booleans, probabilities, one closed-set preset choice, and (through
  * add-only healing of platformNeeds) appended platform needs. It never produces IDs, files,
  * Markdown, prose, commands, or architecture, and every diagnostic it can surface is a
- * fixed local string that never echoes the idea, provider content, or keys.
+ * fixed local string, with at most Jev's own scores and a preset id from the closed list,
+ * that never echoes the idea, provider content, or keys.
  */
 
 export const JEV_VIABILITY_THRESHOLD = 0.65
@@ -192,11 +193,15 @@ export function jevFailureIssue(failure: JevFailure): SemanticIssue {
   return { path: "$jev", rule: `jev.${failure.kind}`, message: jevFailureMessages[failure.kind] }
 }
 
-export function jevIntakeRejectedIssue(): SemanticIssue {
+// Jev answers with numbers and one preset from the closed list, never with prose, so the score is the whole reason.
+export function jevIntakeRejectedIssue(decision: JevPreflightDecision): SemanticIssue {
+  const preset = decision.presetMismatch
+    ? ` Jev would pick the preset ${decision.presetMismatch.inferredPresetId} for it (confidence ${decision.presetMismatch.confidence.toFixed(2)}).`
+    : ""
   return {
     path: "$jev",
     rule: "jev.intake-rejected",
-    message: "Jev did not confirm this idea as viable, so no provider request was made.",
+    message: `Jev did not confirm this idea as viable, so no provider request was made. Viability score ${decision.viabilityScore.toFixed(2)}; it needs ${JEV_VIABILITY_THRESHOLD}.${preset}`,
   }
 }
 
@@ -225,6 +230,7 @@ export interface JevPresetMismatch {
 
 export interface JevPreflightDecision {
   readonly viable: boolean
+  readonly viabilityScore: number
   readonly presetMismatch?: JevPresetMismatch
 }
 
@@ -519,7 +525,8 @@ function choiceOf(outcomes: readonly JevOutcome[], id: string): JevChoiceOutcome
 }
 
 export function evaluateJevPreflight(outcomes: readonly JevOutcome[], selectedPresetId: PresetId): JevPreflightDecision {
-  const viable = probabilityOf(outcomes, JEV_VIABILITY_NOUL_ID) >= JEV_VIABILITY_THRESHOLD
+  const viabilityScore = probabilityOf(outcomes, JEV_VIABILITY_NOUL_ID)
+  const viable = viabilityScore >= JEV_VIABILITY_THRESHOLD
   const selection = choiceOf(outcomes, JEV_PRESET_SELECTION_NOUL_ID)
   const presetMismatch = selection !== undefined
     && isPresetId(selection.choice)
@@ -527,7 +534,7 @@ export function evaluateJevPreflight(outcomes: readonly JevOutcome[], selectedPr
     && selection.confidence >= JEV_PRESET_MISMATCH_CONFIDENCE
       ? { inferredPresetId: selection.choice, confidence: selection.confidence }
       : undefined
-  return { viable, ...(presetMismatch ? { presetMismatch } : {}) }
+  return { viable, viabilityScore, ...(presetMismatch ? { presetMismatch } : {}) }
 }
 
 /**

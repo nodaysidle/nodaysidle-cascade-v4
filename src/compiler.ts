@@ -9,7 +9,7 @@ import { renderPacket } from "./renderers"
 import { appSetInitial, clockInitial, featureDataUses, fieldChoiceList, offeredOnCreate, featureReferenceIssues, nameKey, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { gtkDocumentInterface, gtkSavedDocument, gtkStoreInterface, refineGtkContracts, refineGtkPhases } from "./gtkContracts"
 import { kitProjectPaths, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarRoles, waybarTaskNotes } from "./kits"
-import { waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarResponseDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarKeptExtremeRule, waybarSourceDetail } from "./waybarContracts"
+import { settleWaybarLabel, waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarResponseDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarKeptExtremeRule, waybarSourceDetail } from "./waybarContracts"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 import type { JevAtomicAuditDecision } from "./jev"
 import { TAURI_WIRE_FORMAT, isCountdown, tauriAddHasForm, tauriDocumentInterface, tauriFeatureOps, tauriMainSlotsSentence, tauriStoreInterface, tauriTaskPrompt, type TauriData, type TauriFeatureUse } from "./tauriContracts"
@@ -559,6 +559,16 @@ function astroStaticContentSource(source: SemanticBlueprint): SemanticBlueprint 
   const hasCollections = dataObjects.some(item => item.storage === "records" && isContent(item))
   if (source.externalServices.length || opensFiles || !hasCollections) return { ...source, dataObjects }
   return { ...source, dataObjects, platformNeeds: [], features: source.features.map(feature => ({ ...feature, usesPlatformNeeds: [] })) }
+}
+
+// Runs on the parsed provider answer before any check. It settles only what the compiler can decide without guessing
+// from prose, so the one repair request is kept for real content problems. Everything else is still rejected.
+export function settleBlueprint(input: SemanticBlueprint, presetId: PresetId): SemanticBlueprint {
+  const blueprint = presetId === "linux-hyprland-waybar-module" ? settleWaybarLabel(input) : input
+  // A notification text with no schedule, in a product where no feature uses notifications, describes nothing.
+  if (blueprint.features.some(feature => feature.usesPlatformNeeds.includes("notifications"))) return blueprint
+  if (!blueprint.features.some(feature => feature.scheduledNotification && feature.runsDailyAt === null && feature.runsEverySeconds === null)) return blueprint
+  return { ...blueprint, features: blueprint.features.map(feature => feature.scheduledNotification && feature.runsDailyAt === null && feature.runsEverySeconds === null ? { ...feature, scheduledNotification: null } : feature) }
 }
 
 export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId, atomicAudits?: JevAtomicAuditDecision): NormalizedBlueprint {

@@ -232,6 +232,21 @@ export const providerJsonSchema = (() => {
   return schema
 })()
 
+// Feature keys only a bar module uses. Strict JSON mode makes the provider fill every key it is offered, so on any
+// other preset they are not offered at all; parsing then applies their empty defaults.
+const BAR_ONLY_FEATURE_KEYS = ["systemSource", "thresholds", "labelTemplate", "unit", "valueDecimals"] as const
+const providerJsonSchemaWithoutBar = (() => {
+  const schema = structuredClone(providerJsonSchema) as unknown as { properties: { features: { items: { properties: Record<string, unknown>; required: string[] } } } }
+  const feature = schema.properties.features.items
+  for (const key of BAR_ONLY_FEATURE_KEYS) delete feature.properties[key]
+  feature.required = Object.keys(feature.properties)
+  return schema as unknown as typeof providerJsonSchema
+})()
+
+export function providerSchemaFor(presetId: string): typeof providerJsonSchema {
+  return presetId === "linux-hyprland-waybar-module" ? providerJsonSchema : providerJsonSchemaWithoutBar
+}
+
 export interface SemanticIssue {
   readonly path: string
   readonly rule: string

@@ -126,7 +126,6 @@ export function waybarCapabilityIssues(blueprint: SemanticBlueprint): SemanticIs
     })
   }
   // Only the feature that measures, fetches, or writes data runs by itself; the feature that shows the result does not repeat the schedule.
-  const works = (feature: SemanticBlueprint["features"][number]) => feature.usesServices.length > 0 || feature.systemSource !== "none" || feature.dataOperations.some(entry => entry.operations.some(operation => operation === "create" || operation === "update"))
   const scheduled = blueprint.features.map((feature, index) => ({ feature, index })).filter(item => item.feature.runsEverySeconds !== null || item.feature.runsDailyAt !== null)
   if (scheduled.some(item => works(item.feature))) {
     for (const { feature, index } of scheduled) {
@@ -146,6 +145,47 @@ export function waybarCapabilityIssues(blueprint: SemanticBlueprint): SemanticIs
   })
   issues.push(...waybarValueIssues(blueprint))
   return issues
+}
+
+type ProviderFeature = SemanticBlueprint["features"][number]
+// A feature that measures, fetches, or writes data; any other feature only shows what is stored.
+const works = (feature: ProviderFeature) => feature.usesServices.length > 0 || feature.systemSource !== "none" || feature.dataOperations.some(entry => entry.operations.some(operation => operation === "create" || operation === "update"))
+
+// One module has one label and one severity. A provider that repeats the same labelTemplate, unit, valueDecimals, or
+// thresholds on several features has stated one fact several times, and one repair rarely removes the copies. Keep the
+// fact on the feature that shows the reading and clear the other copies. Copies that differ contradict each other:
+// nothing changes and the capability checks reject them.
+// shortcut: with several show-only features the first declared one owns the label; no declared field tells a label
+// feature from a tooltip feature. Add one (and a check) if an audit finds the label contract on the wrong task.
+export function settleWaybarLabel(blueprint: SemanticBlueprint): SemanticBlueprint {
+  const label = (feature: ProviderFeature) => (feature.labelTemplate ?? "").trim()
+  const limits = (feature: ProviderFeature) => (feature.thresholds ?? []).map(item => `${item.state}/${item.comparison}/${item.value}`).sort().join(" ")
+  const owner = (holders: readonly ProviderFeature[]) => {
+    const shown = holders.filter(feature => feature.invokedBy !== "click")
+    return shown.find(feature => !works(feature)) ?? shown.find(feature => feature.runsEverySeconds !== null)
+  }
+  const stated = <T>(values: readonly T[], empty: T) => [...new Set(values.filter(value => value !== empty))]
+
+  const labelled = blueprint.features.filter(feature => label(feature) !== "")
+  const units = stated(blueprint.features.map(feature => (feature.unit ?? "").trim()), "")
+  const decimals = stated(blueprint.features.map(feature => feature.valueDecimals ?? null), null)
+  const labelOwner = labelled.length > 1 && stated(labelled.map(label), "").length === 1 && units.length <= 1 && decimals.length <= 1 ? owner(labelled) : undefined
+
+  const limited = blueprint.features.filter(feature => (feature.thresholds ?? []).length > 0)
+  const keeper = labelOwner ?? (labelled.length === 1 ? labelled[0] : undefined)
+  const limitOwner = limited.length > 1 && new Set(limited.map(limits)).size === 1
+    ? (keeper && limited.includes(keeper) ? keeper : owner(limited))
+    : undefined
+  if (!labelOwner && !limitOwner) return blueprint
+
+  return {
+    ...blueprint,
+    features: blueprint.features.map(feature => ({
+      ...feature,
+      ...(labelOwner ? (feature === labelOwner ? { unit: units[0] ?? "", valueDecimals: decimals[0] ?? null } : { labelTemplate: "", unit: "", valueDecimals: null }) : {}),
+      ...(limitOwner && feature !== limitOwner ? { thresholds: [] } : {}),
+    })),
+  }
 }
 
 const RESPONSE_PATH = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/
