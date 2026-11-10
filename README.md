@@ -56,7 +56,7 @@ You write one plain-text software idea and pick one locked technology preset. Ca
 2. **A real, buildable starter `kit/`** tailored to the declared data objects, routes, system sources, permissions, and schedules of your idea.
 3. **`blueprint.json`** containing the semantic blueprint, preset options, capabilities, SHA-256 hashes of every document and kit file, the validation ledger, and the deterministic repair record so any exported packet can be re-verified and rebuilt byte-for-byte offline.
 
-Open your coding agent (Claude Code, Codex, Cursor) in the exported folder, hand it `PROMPT.md`, and it executes `TASKS.md` phase by phase without guessing stack choices, file paths, or screen layouts.
+Open your coding agent (Claude Code, Codex, Cursor) in the exported folder, hand it [`docs/PROMPT.md`](docs/PROMPT.md), and it executes `TASKS.md` phase by phase without guessing stack choices, file paths, or screen layouts.
 
 ---
 
@@ -263,7 +263,7 @@ npm run cascade -- verify --packet /tmp/packets/<project-slug>
 
 ### Building the App with Claude Code
 
-Open Claude Code inside any exported packet folder and paste [`PROMPT.md`](PROMPT.md). It instructs the agent to read `AGENTS.md`, follow `TASKS.md` in phase order, copy `kit/` files as specified in the Working Rules, run every focused test and validation gate, and report completion honestly.
+Open Claude Code inside any exported packet folder and paste [`docs/PROMPT.md`](docs/PROMPT.md). It instructs the agent to read `AGENTS.md`, follow `TASKS.md` in phase order, copy `kit/` files as specified in the Working Rules, run every focused test and validation gate, and report completion honestly.
 
 ---
 
