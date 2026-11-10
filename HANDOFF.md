@@ -275,6 +275,10 @@ no verdict yet.
 | Waybar Net Rate | 6, five causes | not agent-ready (and its kit fails `cargo test`) |
 | Waybar Load Meter | 2 | not agent-ready |
 | Astro Field Notes | 3, two causes | not agent-ready |
+| GTK Plant Care | 2 | not agent-ready |
+| Waybar Weather Bar | 1 | not agent-ready |
+| Android Shopping List | 2, one cause | not agent-ready |
+| Tauri Link Shelf | 2 | not agent-ready |
 
 - **Battery Watch.** `runsEverySeconds` 1800 for "every 30 seconds": TRD schedule line, the acceptance
   criterion, kit `config.rs` default and kit `contract_tests.rs` all enforce 1800 while PRD goals say 30.
@@ -325,6 +329,25 @@ no verdict yet.
   and post page must link "to that author's page": no such route or href exists. (2) The seeded post says
   `author: sample-reference` while the seeded author's id is `01-sample-entry`, nothing says what a reference
   stores, and the contract requires the build to fail on an unknown author, so the untouched seed fails it.
+
+- **Plant Care.** (1) "Watered today" is an `update` that stamps a date; TASK-07 is told to build "the mark
+  control (a GtkCheckButton or GtkToggleButton) ... it changes the stored flag", and Plants has no flag.
+  (2) The add form's `validate_plants(name, room, watering_interval_days, last_watered)` takes a typed
+  last-watered day, while the PRD says a new plant has none. No declared field says which fields a feature
+  writes, or that a field is stamped by an action instead of typed.
+- **Weather Bar.** The provider's text documents `--set Latitude=VALUE` (PRD 39, ARD 30 and 45, TRD 115); the
+  kit's `SETTING_KEYS` are `latitude`, `longitude`, matched exactly, so the documented command exits 2. No
+  acceptance criterion runs `--set`. Polish: the kit's `format_in_unit` rejects a unit such as degrees
+  Celsius and the Label line names no function for it; "HTTPS only" against a plain 127.0.0.1 test listener.
+- **Shopping List.** "Clear checked" (one button, delete by rule) got the per-row delete template: its slot is
+  "the per-row action area" and its contract reads "the row's Delete control carries testTag delete- plus the
+  record id". The first main task exposes no list-level action slot. Polish: clearing N items is N single
+  deletes with no transaction.
+- **Link Shelf.** (1) "Open bookmark" (read-only, `narrowsListBy` none) was classified as a **summary** by
+  last session's `isTauriSummary` and sent to "the summary host", which TASK-04 does not expose; the PRD wants
+  an Open button in every row. (2) Nothing can open a web address: no opener plugin in the kit's Cargo.toml,
+  package.json or capabilities, no command, no platform need declared, and TRD 218 says no permission is
+  required.
 
 Kit builds, final: **20 of 21 pass every command** (GTK 5, Waybar 3 of 4, Tauri 5, Astro 4, Android 3). Only
 Net Rate fails.
