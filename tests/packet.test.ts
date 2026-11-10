@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 import { DOCUMENT_NAMES, compilePacket, packetForExport } from "../src/compiler"
-import { kitFiles, sha256, verifyPacketFolder, writePacketAtomic, type PacketManifest } from "../src/packet"
+import { kitFiles, sha256, verifyPacketFolder, writePacketAtomic, writeProviderAnswers, type PacketManifest } from "../src/packet"
 import { fixtureCases } from "./fixtures/blueprints"
 
 const roots: string[] = []
@@ -79,6 +79,13 @@ describe("packet determinism and verify", () => {
     target.sha256 = sha256(edited)
     writeFileSync(manifestPath, JSON.stringify(manifest))
     expect(verifyPacketFolder(folder, packet, manifest as unknown as PacketManifest)).toBe(`Kit file differs from the compiler output: ${target.path}`)
+  })
+
+  it("keeps the provider's answers in order with anything that looks like a credential removed", () => {
+    const folder = join(tempRoot(), "answers")
+    writeProviderAnswers(folder, ['{"productName":"A"}', "token Bearer abcdefghijklmnop1234"])
+    expect(readFileSync(join(folder, "answer-1.json"), "utf8")).toBe('{"productName":"A"}')
+    expect(readFileSync(join(folder, "answer-2.json"), "utf8")).toBe("token [removed secret]")
   })
 
   it("cascade verify fails clearly on a malformed manifest", () => {

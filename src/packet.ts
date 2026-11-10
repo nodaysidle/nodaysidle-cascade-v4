@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { join, resolve } from "node:path"
 import { DOCUMENT_NAMES, buildPacketManifest, packetForExport, type CompiledPacket, type PacketManifest } from "./compiler"
 import type { PresetId, PresetOptionValue } from "./presets"
-import type { SemanticBlueprint } from "./schema"
+import { redactSecretMaterial, type SemanticBlueprint } from "./schema"
 
 export { buildPacketManifest, type PacketManifest } from "./compiler"
 
@@ -17,6 +17,12 @@ export function kitFiles(root: string): string[] {
     const path = join(root, entry)
     return statSync(path).isDirectory() ? kitFiles(path) : [path]
   })
+}
+
+// What the provider answered (first answer, then the repair), kept so a failed run can become a test fixture.
+export function writeProviderAnswers(folder: string, answers: readonly string[]): void {
+  mkdirSync(folder, { recursive: true })
+  answers.forEach((text, index) => writeFileSync(join(folder, `answer-${index + 1}.json`), redactSecretMaterial(text)))
 }
 
 export function writePacketAtomic(packet: CompiledPacket, blueprint: SemanticBlueprint, presetId: PresetId, options: Readonly<Record<string, PresetOptionValue>>, outDir: string): string {

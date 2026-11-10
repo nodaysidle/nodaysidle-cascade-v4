@@ -6,7 +6,7 @@ import { nodeJevProvider } from "./jev-wire"
 import { generatePacket, DEFAULT_API_URL, type BlueprintProvider } from "./pipeline"
 import { deepseekProvider } from "./provider"
 import { PRESETS, PRESET_IDS, isPresetId, resolvePresetOptions, type PresetId, type PresetOptionValue } from "./presets"
-import { verifyPacketFolder, writePacketAtomic, type PacketManifest } from "./packet"
+import { verifyPacketFolder, writePacketAtomic, writeProviderAnswers, type PacketManifest } from "./packet"
 import { auditSemanticIntake, SemanticBlueprintSchema, type SemanticBlueprint } from "./schema"
 import { auditCapabilities } from "./capabilities"
 
@@ -51,6 +51,12 @@ async function generate(options: Record<string, string>, optionValues: readonly 
   if (!apiKey) fail("DEEPSEEK_API_KEY is not set")
   if (options.model && options.model !== "deepseek-flash" && options.model !== "deepseek-v4-pro") fail(`Unknown model: ${options.model}`)
   const jevKey = process.env.TYPESAFE_API_KEY
+  const answers: string[] = []
+  const provider: BlueprintProvider = async request => {
+    const text = await (deepseekProvider as BlueprintProvider)(request)
+    answers.push(text)
+    return text
+  }
   const result = await generatePacket({
     requestId: `v4-${crypto.randomUUID()}`,
     idea,
@@ -61,13 +67,15 @@ async function generate(options: Record<string, string>, optionValues: readonly 
     jevApiKey: jevKey,
     atomicAuditor: Boolean(jevKey),
     presetOptions: resolved.values,
-  }, deepseekProvider as BlueprintProvider, undefined, jevKey ? nodeJevProvider : undefined)
+  }, provider, undefined, jevKey ? nodeJevProvider : undefined)
+  if (options.keepAnswers) writeProviderAnswers(options.keepAnswers, answers)
   if (result.status !== "gate-clean" || !result.packet || !result.blueprint) {
     console.error(JSON.stringify({ status: result.status, failure: result.failure, issues: result.issues, repairedIssues: result.repairedIssues }, null, 2))
     process.exit(1)
   }
   const destination = await writePacket(result.packet, result.blueprint, id, resolved.values, options.out ?? ".")
   console.log(`Gate Clean: ${destination}`)
+  if (result.repairedIssues?.length) console.log(`Repaired once: ${[...new Set(result.repairedIssues.map(issue => issue.rule))].join(", ")}`)
 }
 
 async function compile(options: Record<string, string>, optionValues: readonly string[]): Promise<void> {
@@ -129,6 +137,7 @@ async function main(): Promise<void> {
       "idea-file": { type: "string" },
       model: { type: "string" },
       out: { type: "string" },
+      "keep-answers": { type: "string" },
       option: { type: "string", multiple: true },
     },
     allowPositionals: false,
@@ -141,7 +150,7 @@ async function main(): Promise<void> {
     ...(values["idea-file"] ? { ideaFile: values["idea-file"] } : {}),
     ...(values.model ? { model: values.model } : {}),
     ...(values.out ? { out: values.out } : {}),
-
+    ...(values["keep-answers"] ? { keepAnswers: values["keep-answers"] } : {}),
   }
   if (command === "generate") return generate(options, values.option ?? [])
   if (command === "compile") return compile(options, values.option ?? [])

@@ -9,9 +9,16 @@ if test (count $argv) -ne 1; or not string match -qr '^/tmp/[^/]+' -- $argv[1]; 
 end
 set out $argv[1]
 rm -rf -- $out
+mkdir -p $out/_logs
+# Each run keeps its full output in _logs/<nn>-<preset>.log and the provider's answers in _answers/<nn>-<preset>/
+# (a failed run writes no packet, so the answers are the only source for a test fixture).
+set n 0
 function g
-  echo "=== $argv[1]"
-  npm run -s cascade -- generate --preset $argv[1] --idea $argv[2] --out $out/$argv[1] 2>&1 | grep -vE 'DEP0205|trace-dep' | cut -c1-300 | head -14
+  set -g n (math $n + 1)
+  set tag (printf '%02d' $n)-$argv[1]
+  echo "=== $tag"
+  npm run -s cascade -- generate --preset $argv[1] --idea $argv[2] --out $out/$argv[1] --keep-answers $out/_answers/$tag 2>&1 | grep -vE 'DEP0205|trace-dep' > $out/_logs/$tag.log
+  cut -c1-300 $out/_logs/$tag.log | head -14
 end
 # Round 12 (2026-11-10): five new ideas per preset, each a different screen or data shape (see HANDOFF round 12 table).
 # GTK: app-stamped date + derived due list, edit + streak, import from a chosen file, countdown + notification, settings only.

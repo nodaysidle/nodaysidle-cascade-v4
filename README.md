@@ -99,6 +99,8 @@ npm run cascade -- compile --preset linux-wayland-gtk4-desktop \
 # Live generation (reads DEEPSEEK_API_KEY and TYPESAFE_API_KEY from the environment)
 npm run cascade -- generate --preset linux-wayland-gtk4-desktop \
   --idea-file idea.md --out /tmp/packets
+# Add --keep-answers <folder> to keep what the provider answered (answer-1.json, and answer-2.json after a
+# repair), with or without a packet. A successful run prints "Repaired once: <rules>" when it needed the repair.
 
 # Re-render a packet and compare every hash
 npm run cascade -- verify --packet /tmp/packets/<project-slug>
