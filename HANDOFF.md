@@ -71,25 +71,70 @@ all five presets.** Done means all of these hold:
 
 ## 4. State of the repo
 
-### Progress, session 2 (2026-11-09) — read this first
+### RESUME HERE — live round 10 in progress (updated 2026-11-10)
+
+**Where we stopped:** Alan is running round 10 live *from the installed app*, one prompt per preset,
+and pastes each export folder path. The agent audits each one. 1 of 5 is done.
+
+| # | Preset | Idea | Export path | Status |
+|---|--------|------|-------------|--------|
+| 1 | linux-wayland-gtk4-desktop | Recipe Box | `/home/arch/dev/nodaysidle/recipe-box` | **done: clean** (verify ok, kit fmt/clippy/test ok, audit 0 blocking / 10 polish) |
+| 2 | linux-hyprland-waybar-module | Memory Watch | (Alan will paste) | pending |
+| 3 | tauri2-rust-typescript-desktop | Contact Book | (Alan will paste) | pending |
+| 4 | astro-web | Trail Guide (one page per trail) | (Alan will paste) | pending |
+| 5 | android-kotlin-compose | Water Log | (Alan will paste) | pending |
+
+The five prompts (exact text) are the first idea per preset in `scripts/agent-ready/run-round.fish`
+(Recipe Box, Memory Watch, Contact Book, Trail Guide, Water Log).
+
+**Per packet, do exactly this** (never edit the exported folder; work on a copy):
+1. `npm run -s cascade -- verify --packet <path>` → expect `Verified`.
+2. `cp -r <path> /tmp/v4-round10/<preset-id>/` then `bash scripts/agent-ready/build-round-kits.sh /tmp/v4-round10`
+   (prints `-> 0` per command; anything else is a failure).
+3. One fresh read-only audit agent per packet (general-purpose, background) with the brief in
+   `scripts/agent-ready/audit-brief.md` (fill preset, slug, the idea text verbatim). JSON answer:
+   `{slug, blocking[], polish[], verdict}`.
+4. Tell Alan plainly: agent-ready or not, blocking items, top polish.
+
+**Watch in this round (provider-side fixes never tested live yet):** Android acceptance must not say
+"Save is disabled" (prompt note aeb985f); Waybar Memory Watch must use the `memory` system source
+(sources fixed in 546ea57).
+
+**After all 5:** group findings by class across packets. Fix each systematic class once in the compiler
+(test that fails without the fix, typecheck, `npm test`, `npm run kit:check` if a kit changed, commit),
+rebuild the app (`scripts/install-linux-app.sh`), then a round 11 with new ideas. Stop rule: two
+consecutive rounds with no systematic compiler class and every kit building.
+
+**Polish classes already seen 3+ times (GTK, fix in a batch after round 10):**
+- `show_toast` called "display-free" (it needs GTK); kit `AppState` derives serde/Eq so it can't hold
+  the overlay — name a separate non-serde view-state struct.
+- f64 parsing sentence emitted for whole-number (i64) fields.
+- filter prompt says "its text" instead of the narrowing field name.
+- Time rule / Clock boilerplate in tasks that stamp no date-time (e.g. edit).
+- CON-PLATFORM-FILES "paths outside the boundary are rejected" when no feature takes a user path.
+- New (recipe-box): kit `PKGBUILD` builds in `$startdir`, so `makepkg -c/-C` would clean `src/` (the
+  Rust source) — fix in the compiler. Kit `Clock` trait lacks `Send + Sync`.
+- Other presets: boilerplate for operations a packet lacks (edit/delete/Worker clauses on Android,
+  cancellation tokens on Tauri), Astro Design System tokens vs kit `global.css`.
+
+### Done in session 2 (2026-11-09/10)
 
 - **Section 5 is done**: F8, F1, F2, F3, F6, F4, F7, F11, F15, F5, F10 (+ SQL table names), F9, F12,
-  F13, F16, F14 are committed on `main` (19f11cf … 0727dcb), not pushed. After them: typecheck green,
-  `npm test` 408 passed / 19 skipped, `npm run check` green (Rust 9 tests).
-- Not verified: the F2 scripts were only checked by hand; the app.ts stale-intake fix has no test (no DOM
-  harness); the CI desktop job has never run on GitHub; `render.deterministic` has no firing test.
-- `scripts/agent-ready/snapshot-fixtures.ts` hashes every fixture × preset output, which proves a
-  refactor changed no bytes.
-- **Round 9 = regression of round 8**: the round-8 idea texts were not kept, so the round-8 blueprints
-  were recompiled for free (`cascade compile`) into `/tmp/v4-round9`. 9/10 compile Gate Clean and
-  verify; Wind Check is now rejected by `capability.waybar-response-path` (a live run would repair it).
-  Read-only audit agents ran on the 9 packets; results go into section 6 history.
-- 2026-11-10: app rebuilt and installed at 71534c2 (`scripts/install-linux-app.sh`), opens from the
-  Omarchy menu Apps entry `apps.cascade-v4` (screenshot checked). Alan runs one live prompt per preset
-  in the app (Recipe Box, Memory Watch, Contact Book, Trail Guide, Water Log) and sends the export
-  paths; then audit them like section 6 steps 3-6.
-- Next: group the round-9 findings by class → fix agents per preset → round 10 with 10 NEW ideas (live,
-  paid: **tell Alan before the first paid generation**) → section 7.
+  F13, F16, F14 committed on `main` (19f11cf … 0727dcb).
+- After section 5: e4b98a5 (kit/ stays in the project root → Astro/Tauri `npm test` exclude `kit/**`,
+  Astro tsconfig excludes kit; kit-build test mirrors the packet layout, proven failing without the
+  fix), 71534c2 (Tauri desktop Categories=Utility).
+- State at 461a362: typecheck green, `npm test` 408 passed / 19 skipped, `npm run check` green,
+  `npm run kit:check` 18/18. **Nothing pushed.**
+- Round 9 (free regression: round-8 blueprints recompiled into `/tmp/v4-round9`, 9 packets): 6 blocking
+  in 3 classes, all kits built. Details in section 6 history.
+- App rebuilt and installed at 71534c2; opens from Omarchy menu → Apps → Cascade V4
+  (`apps.cascade-v4` in `~/.config/omarchy/extensions/omarchy-menu.jsonc`); screenshot checked.
+- Not verified: F2 scripts (manual check only); app.ts stale-intake fix (no DOM test); CI desktop job
+  never ran on GitHub; `render.deterministic` has no firing test; generate→export inside the new app
+  build is only proven by Alan's live exports.
+- `scripts/agent-ready/snapshot-fixtures.ts` hashes every fixture × preset output (proves a refactor
+  changed no bytes).
 
 - Branch `main`, head `b55d01f` when this was written, many commits ahead of `origin/main`
   (**not pushed**). Remote `https://github.com/nodaysidle/nodaysidle-cascade-v4` (private). The
