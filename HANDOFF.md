@@ -104,7 +104,13 @@ changed, commit, `scripts/install-linux-app.sh`, then round 12):
 6. Status-only change vs full edit (Reading List), then the polish batch (/teas/ route, boilerplate for
    WorkManager/denied/cancelled/launch-check cleanup on create-only records, CSV line endings, "12.0 stays 12.0").
 
-**In flight (2026-11-10, Alan asked to speed up with subagents):** four background agents, each in its own git
+**Status (2026-11-10):** all four fix branches merged into main (dc3d950 B, b7bc019 D, a0ff347 C, a44975d A;
+436 tests pass; worktrees and branches removed). `npm run check` + `npm run kit:check` running. The five round-11
+blueprints were recompiled into the session scratchpad `r11b/` (Temp Watch needed the provider repair that the new
+capability.waybar-process-memory check asks for; applied by hand as the repair would) and five parallel audits are
+running. Next: verify blocking claims, fix, re-audit; then rebuild the app and run round 12 live.
+
+**Earlier plan (done):** four background agents, each in its own git
 worktree branch, fixing classes in parallel: A = no list on screen + main-screen setting (Android, fixture
 android-step-goal.json), B = initial value vs choice vs app-set + status-only change (fixtures tauri-reading-list.json,
 gtk-book-shelf.json), C = GTK document export + numeric choice picker, D = Waybar peak/reset/rounding (fixture
