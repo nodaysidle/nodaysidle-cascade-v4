@@ -84,6 +84,10 @@ all five presets.** Done means all of these hold:
   were recompiled for free (`cascade compile`) into `/tmp/v4-round9`. 9/10 compile Gate Clean and
   verify; Wind Check is now rejected by `capability.waybar-response-path` (a live run would repair it).
   Read-only audit agents ran on the 9 packets; results go into section 6 history.
+- 2026-11-10: app rebuilt and installed at 71534c2 (`scripts/install-linux-app.sh`), opens from the
+  Omarchy menu Apps entry `apps.cascade-v4` (screenshot checked). Alan runs one live prompt per preset
+  in the app (Recipe Box, Memory Watch, Contact Book, Trail Guide, Water Log) and sends the export
+  paths; then audit them like section 6 steps 3-6.
 - Next: group the round-9 findings by class → fix agents per preset → round 10 with 10 NEW ideas (live,
   paid: **tell Alan before the first paid generation**) → section 7.
 
