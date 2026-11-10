@@ -260,6 +260,48 @@ So 4 of the 5 live Waybar packets carry a wrong or lost number that the provider
   repair request could not list (changes the "one request plus at most one repair" rule), or keep one repair
   and report every local stage at once.
 
+### 5.6 Audit ledger of the round (each blocking claim checked by the lead against the packet files)
+
+The limit cleared and the audits were resumed. Entries are added as audits return; a packet not listed has
+no verdict yet.
+
+| Packet | Blocking (confirmed) | Verdict |
+|---|---|---|
+| Waybar Battery Watch | 1 | not agent-ready |
+| GTK Focus Timer | 3 | not agent-ready |
+| GTK Quiet Hours | 4, one cause | not agent-ready |
+| GTK Habit Streak | 4, two causes | not agent-ready |
+
+- **Battery Watch.** `runsEverySeconds` 1800 for "every 30 seconds": TRD schedule line, the acceptance
+  criterion, kit `config.rs` default and kit `contract_tests.rs` all enforce 1800 while PRD goals say 30.
+  No check compares the declared interval with the idea. Polish: the stored record struct and the kit's
+  reader struct are both named `BatteryReading`; a failure sentence ending in "the label is --" loses its
+  "--" in three places (PRD 73, TRD 134, 268); CON-PLATFORM-FILES rejects paths outside XDG while the battery
+  is read from /sys.
+- **Focus Timer** (records whose only field is stamped by the app, so no add form exists).
+  (1) TASK-05 is told to build an Add button, an empty dialog shell "that the add task fills" and an
+  empty-list sentence naming the Add button; there is no add task. (2) TASK-06 (today's count) must mount
+  into "the filter area or the list region", slots TASK-05 does not expose ("exactly these named slots, no
+  others: a status area; an add-entry control"). (3) No document says whether "the current calendar day" is
+  the local or the UTC day; nothing in PRD, TRD or TASKS names a time zone.
+- **Quiet Hours** (one settings object, `singleRecord`, operations read and update, no initial values).
+  Rendered through the record-list path: TRD 114 gives it a SQLite table, a migration and a
+  list/get/update trait whose update returns NotFound, while ARD 42 says "the app creates no database",
+  TRD 166 says atomic JSON, and the kit ships no SQLite. Nothing creates the first record, so every save
+  fails. TASK-04 is told to build list rows, "the mark control (a GtkCheckButton or GtkToggleButton) in the
+  per-row action area" and an empty-list message in a "status area", the name the PRD uses for the
+  Inside/Outside label.
+- **Habit Streak.** (1) TASK-05: "the dialog's Save slot button is labelled \"Read 10 pages\"": the
+  compiler took the first quoted string of the acceptance criterion (the sample habit name) as the button
+  label; the criterion says "the button labeled Add". (2) "Mark habit done for today" is create + delete on a
+  child record (reference + date, no initial): it got the add-form template (a typed habit and date,
+  `validate_habit_completions`), the slot "the add-entry control" instead of the per-row action area, and a
+  removal confirmation dialog, while the PRD says pressing again removes it at once.
+
+Class forming across presets: **the main-screen task prompt assumes "a list with an add form"** whatever the
+declared shape is. Seen for no data (Android Tip Split, fixed last session), app-stamped records (Focus
+Timer), a single settings record (Quiet Hours), and a row toggle stored as child records (Habit Streak).
+
 ## 6. What must be done to make the four stacks agent-ready
 
 "Agent-ready" was shown for one idea per stack. The work left is to prove it on more idea shapes and
