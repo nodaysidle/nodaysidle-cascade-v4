@@ -96,6 +96,23 @@ The five prompts (exact text) are the first idea per preset in `scripts/agent-re
    `{slug, blocking[], polish[], verdict}`.
 4. Tell Alan plainly: agent-ready or not, blocking items, top polish.
 
+**Round 10 fixes DONE (2026-11-10, all local, nothing pushed; app rebuilt and installed after e406560):**
+a5a9c53 actions area + settings are not list rows (Contact Book export, Water Log goal; also Idea Box / Focus Ledger
+exports) · d965a5a fixed value sets via a choice list named like the field (Astro z.enum + quoted seed, TRD "one of")
+· d3049e2 Tauri SubmitResult: submit returns the validation message the shell shows · db803e1 Astro Design System
+= kit global.css (test checks every named token) · a2879c5 ada@example.com kept (compiler + content.identity gate)
+· 5be0c05 + e406560 repair-message audit: Waybar provider notes never contain cache.json/1024/KiB (test), unit-base
+path for qualityRequirements, platform-need/tray/surface/coverage/request-value messages say the exact change,
+waybar time-of-day path is responseFields. Tests 421 passed; check green; kit:check 18/18 (after d3049e2).
+Fixtures added: tests/fixtures/{android-water-log,tauri-contact-book-csv,astro-trail-guide}.json.
+**Still open:** (1) Astro light palette: the Color bullet says light-first but kit global.css is always dark.
+(2) Android Water Log: the first task still talks about "the main list" (status area, list-row notes) though the
+screen shows only a count; directAdd + actions fix the blockers, the list wording is polish. (3) Repair audit
+leftovers: Jev-added platform needs the provider never wrote (repair cannot remove them); low-likelihood schema
+messages that only state the problem (choice-initial, buildsOn cycle, two-schedules, missing-non-goal, unknown
+data reference without the declared names). (4) Polish classes from round 10 and the GTK list below.
+**Next:** round 11 with new ideas (one per preset) from the rebuilt app; stop rule unchanged.
+
 **Round 10 result (all 5 audited): 1 agent-ready (Memory Watch) + Recipe Box clean; 3 not ready.** Systematic classes to fix
 once in the compiler, in this order:
 1. **Main-screen slot set is fixed to list CRUD** (Tauri Contact Book export button has no host; Android Water Log goal
