@@ -3,6 +3,10 @@ import type { ProjectIdentity } from "./presets"
 import type { DataValueType } from "./schema"
 import { ASTRO_BUDGET_TEXT, ASTRO_PERFORMANCE_BUDGET, astroCollections, astroDateNotes, fieldKey, astroNavLinks, placeAstroFeatures, seedFileNames, type AstroCollection } from "./astroWeb"
 
+// Tests read frontmatter by splitting at the first colon, so a plain-word option is written bare; anything YAML would read
+// as another type (true, null, 3) or that holds punctuation stays quoted (round 11 re-audit, Board Game Club).
+const yamlChoice = (value: string): string => /^[A-Za-z][A-Za-z ]*$/.test(value) && !/^(?:true|false|yes|no|on|off|null)$/i.test(value) ? value : JSON.stringify(value)
+
 export interface AstroKitFile {
   readonly path: string
   readonly content: string
@@ -260,7 +264,7 @@ export function astroKit(identity: ProjectIdentity, blueprint: NormalizedBluepri
       // A counted collection numbers its samples so every entry differs; a lone sample keeps the plain placeholder values.
       const mark = item.entryCount ? ` ${index + 1}` : ""
       return file(`src/content/${item.name}/${name}`, `---
-${item.fields.map(field => `${fieldKey(field.name)}: ${item.choices?.has(field.name) ? JSON.stringify(item.choices.get(field.name)!.initial) : field.valueType === "text" || field.valueType === "long-text" ? SEED_FOR[field.valueType] + mark : (field.valueType === "number" || field.valueType === "whole-number") && (field.min != null || field.max != null) ? String(field.min ?? field.max) : SEED_FOR[field.valueType]}`).join("\n")}
+${item.fields.map(field => `${fieldKey(field.name)}: ${item.choices?.has(field.name) ? yamlChoice(item.choices.get(field.name)!.initial) : field.valueType === "text" || field.valueType === "long-text" ? SEED_FOR[field.valueType] + mark : (field.valueType === "number" || field.valueType === "whole-number") && (field.min != null || field.max != null) ? String(field.min ?? field.max) : SEED_FOR[field.valueType]}`).join("\n")}
 ---
 
 Sample content${mark}. Keep it when the idea supplies no entries; the site owner replaces it with real entries after delivery.

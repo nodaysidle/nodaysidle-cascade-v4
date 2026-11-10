@@ -517,6 +517,13 @@ function choiceListIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
         issues.push({ path, rule: "semantic.choice-list-mismatch", message: `Choice list '${list.name}' has different options in '${earlier.feature}' and '${feature.name}'.` })
       }
       if (!earlier) byName.set(referenceKey(list.name), { feature: feature.name, options: signature })
+      // Round 11 (Reading List): a create feature that offers a field's choice list, while its own prose says the field is not entered.
+      const name = list.name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      const notEntered = new RegExp(`\\b${name}\\b[^.]*\\b(?:is|are)\\s+not\\s+(?:entered|chosen|picked|selected|typed)\\b|\\b(?:app|application)\\s+sets\\s+(?:the\\s+)?${name}\\b`, "i")
+      const creates = feature.dataOperations.some(entry => entry.operations.includes("create") && blueprint.dataObjects.some(item => referenceKey(item.name) === referenceKey(entry.data) && item.fields.some(field => referenceKey(field.name) === referenceKey(list.name))))
+      if (creates && [feature.behavior, feature.userOutcome, ...feature.acceptanceSignals].some(text => notEntered.test(text))) {
+        issues.push({ path, rule: "semantic.choice-not-entered", message: `'${feature.name}' offers the choice list '${list.name}' on its add form, but its own text says ${list.name} is not entered. Pick one: either the user picks ${list.name} (rewrite that sentence as "The ${list.name} is chosen from ${list.options.join(", ")}, initially ${list.initial}."), or the app sets it (remove the choice list '${list.name}' from this feature and keep initial on the field).` })
+      }
     })
   })
   return issues

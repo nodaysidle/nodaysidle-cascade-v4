@@ -21,7 +21,7 @@ describe("a stored field limited to a fixed set of values (round 10)", () => {
     expect(config).toContain('difficulty: z.enum(["easy", "moderate", "hard"])')
     const seed = packet.kit.find(file => file.name.startsWith("kit/src/content/trails/"))!.content
     // Quoted, so a YAML-special option (yes, no, on) stays a string.
-    expect(seed).toContain('difficulty: "easy"')
+    expect(seed).toContain("difficulty: easy\n")
     expect(packet.documents["TRD.md"]).toContain("difficulty (one of easy, moderate, hard)")
   })
 

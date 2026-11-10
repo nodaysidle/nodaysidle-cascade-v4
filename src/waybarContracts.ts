@@ -84,6 +84,9 @@ const FAILED_REFRESH_PLAIN = WAYBAR_FAILED_REFRESH_CACHE.replace(/ \([^)]*cache\
 const BINARY_UNITS = /\b1,?024\b|\b[kmgt]ib\b|\b(?:kibi|mebi|gibi|tebi)bytes?\b/i
 // A value kept in a running process never reaches a click, which is a separate process.
 const PROCESS_MEMORY = /\b(?:process|service(?:'s)?|loop(?:'s)?) memory\b/i
+// A peak that "resets when the process starts" needs a start hook no task may add; the kept-extreme rule restarts it after a gap instead.
+const RESET_AT_START = /\bresets?\b[^.]*\b(?:process|service|loop|module)\b[^.]*\b(?:starts?|restarts?|launch(?:es)?)\b/i
+const RESET_AT_START_FIX = "says a maximum or minimum resets when a process starts, but no task may hook the start of the --service loop. Write instead: the peak starts again at the new reading on the first successful refresh after the module was stopped for more than twice the refresh interval."
 const PROCESS_MEMORY_FIX = "keeps a value in the memory of a running process. A module run, a click, and --action refresh are separate processes, so a click reads only what is stored: a maximum or minimum since the module started is a field of the records dataObject the refreshing feature writes, and that feature lists read and create on it. Write that each refresh reads the stored record and stores the larger of the stored peak and the new reading, and that the click reads the peak from the stored record."
 
 function featureTexts(feature: SemanticBlueprint["features"][number]): string[] {
@@ -106,12 +109,19 @@ export function waybarCapabilityIssues(blueprint: SemanticBlueprint): SemanticIs
   blueprint.features.forEach((feature, index) => {
     if (featureTexts(feature).some(text => PROCESS_MEMORY.test(text))) issues.push({ path: `features[${index}]`, rule: "capability.waybar-process-memory", message: `Feature '${feature.name}' ${PROCESS_MEMORY_FIX}` })
   })
+  blueprint.features.forEach((feature, index) => {
+    if (featureTexts(feature).some(text => RESET_AT_START.test(text))) issues.push({ path: `features[${index}]`, rule: "capability.waybar-reset-at-start", message: `Feature '${feature.name}' ${RESET_AT_START_FIX}` })
+  })
+  blueprint.dataObjects.forEach((item, index) => {
+    if (RESET_AT_START.test(`${item.purpose} ${item.retentionIntent}`)) issues.push({ path: `dataObjects[${index}]`, rule: "capability.waybar-reset-at-start", message: `Data object '${item.name}' ${RESET_AT_START_FIX}` })
+  })
   blueprint.dataObjects.forEach((item, index) => {
     if (PROCESS_MEMORY.test(`${item.purpose} ${item.retentionIntent}`)) issues.push({ path: `dataObjects[${index}]`, rule: "capability.waybar-process-memory", message: `Data object '${item.name}' ${PROCESS_MEMORY_FIX}` })
   })
   for (const key of ["productConstraints", "qualityRequirements"] as const) {
     blueprint[key].forEach((text, index) => {
       if (PROCESS_MEMORY.test(text)) issues.push({ path: `${key}[${index}]`, rule: "capability.waybar-process-memory", message: `This entry ${PROCESS_MEMORY_FIX}` })
+      if (RESET_AT_START.test(text)) issues.push({ path: `${key}[${index}]`, rule: "capability.waybar-reset-at-start", message: `This entry ${RESET_AT_START_FIX}` })
       if (BINARY_UNITS.test(text)) issues.push({ path: `${key}[${index}]`, rule: "capability.waybar-unit-base", message: "This entry names a binary unit or the digits 1024. Remove every mention of 1024 (also inside a larger number), KiB, MiB, and GiB from it, not even to forbid them; this preset uses decimal SI (powers of 1000) only." })
     })
   }

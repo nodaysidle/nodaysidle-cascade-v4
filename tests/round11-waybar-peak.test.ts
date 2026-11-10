@@ -17,6 +17,8 @@ function repaired(): SemanticBlueprint {
   refresh.behavior = refresh.behavior.replace(/The refresh pass also tracks[^.]*\./, "Each refresh reads the stored record and stores the larger of the stored peak and the new reading.")
   refresh.dataOperations = [{ data: "Temperature reading", operations: ["read", "create"] }]
   blueprint.productConstraints = blueprint.productConstraints.map(text => text.startsWith("The peak") ? "The peak is a field of the stored Temperature reading record; the click reads it from the stored record." : text)
+  // Round 11 re-audit: the retention line said the peak resets when the process starts, which contradicted the reset rule.
+  blueprint.dataObjects[0]!.retentionIntent = "Keeps only the latest reading and the peak; the peak starts again at the new reading on the first successful refresh after the module was stopped for more than twice the refresh interval."
   return blueprint
 }
 

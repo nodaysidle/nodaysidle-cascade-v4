@@ -1153,7 +1153,13 @@ pub fn refresh_with(
     stored: impl FnOnce(&Settings, u64) -> Option<ModuleOutput>,
 ) -> Result<(), String> {
     match fetch(settings, now) {
-        Ok(output) => write_cache(cache_path, &output, now),
+        Ok(mut output) => {
+            // The cache holds the severity class too, so the label task never sets it (round 11, Temp Watch).
+            if output.class != CLASS_EMPTY {
+                output.class = String::from(severity_class(output.value));
+            }
+            write_cache(cache_path, &output, now)
+        }
         Err(error) => {
             if let Some(mut cache) = read_cache(cache_path) {
                 cache.output.class = String::from(CLASS_STALE);
