@@ -90,3 +90,33 @@ describe("Tauri: a read-only feature that derives values is a summary, not a fil
     expect(tasks).not.toContain('"summary" host')
   })
 })
+
+// Budget Book: the provider wrote "Selecting a row shows that expense read-only with a Delete button", but with no
+// edit feature the Tauri screen builds no detail view and Delete sits in the row. Alan's decision: send the wording back.
+describe("Tauri: a read-only view of a selected record needs an edit feature (round 12)", () => {
+  const TAURI = "tauri2-rust-typescript-desktop" as const
+  const issues = (blueprint: SemanticBlueprint) => auditCapabilities(blueprint, PRESETS[TAURI])
+
+  it("sends the wording back for repair on every feature that uses it", () => {
+    const found = issues(load("tauri-budget-book.json"))
+    expect(found.map(issue => `${issue.path} ${issue.rule}`)).toEqual(["features[1] capability.tauri-no-detail-view", "features[2] capability.tauri-no-detail-view"])
+    expect(found[0]!.message).toContain("list row")
+  })
+
+  it("accepts the repair, and tells the provider up front", () => {
+    const blueprint = load("tauri-budget-book.json")
+    const [, list, remove] = blueprint.features
+    list!.behavior = list!.behavior.replace("Selecting a row shows that expense read-only with a Delete button.", "Each row has a Delete button.")
+    list!.acceptanceSignals = list!.acceptanceSignals.map(signal => signal.replace("Selecting a row shows that expense read-only with a Delete button.", "Each row has a Delete button."))
+    remove!.trigger = "The user chooses Delete in the row of an expense."
+    remove!.failureOutcome = "If the expense cannot be removed, the row stays in the list and shows that the expense was not deleted."
+    expect(issues(blueprint)).toEqual([])
+    expect((PRESETS[TAURI].providerNotes ?? []).join(" ")).toContain("When no feature edits a record there is no read-only view")
+  })
+
+  it("leaves a product with an edit feature alone", () => {
+    const blueprint = load("tauri-contact-book.json")
+    blueprint.features[0]!.behavior += " Selecting a row shows that contact in the detail view."
+    expect(issues(blueprint)).toEqual([])
+  })
+})

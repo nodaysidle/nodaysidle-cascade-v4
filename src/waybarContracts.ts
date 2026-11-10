@@ -89,7 +89,7 @@ const RESET_AT_START = /\bresets?\b[^.]*\b(?:process|service|loop|module)\b[^.]*
 const RESET_AT_START_FIX = "says a maximum or minimum resets when a process starts, but no task may hook the start of the --service loop. Write instead: the peak starts again at the new reading on the first successful refresh after the module was stopped for more than twice the refresh interval."
 const PROCESS_MEMORY_FIX = "keeps a value in the memory of a running process. A module run, a click, and --action refresh are separate processes, so a click reads only what is stored: a maximum or minimum since the module started is a field of the records dataObject the refreshing feature writes, and that feature lists read and create on it. Write that each refresh reads the stored record and stores the larger of the stored peak and the new reading, and that the click reads the peak from the stored record."
 
-function featureTexts(feature: SemanticBlueprint["features"][number]): string[] {
+export function featureTexts(feature: SemanticBlueprint["features"][number]): string[] {
   return [feature.userOutcome, feature.trigger, feature.behavior, feature.failureOutcome, ...feature.acceptanceSignals]
 }
 
