@@ -635,12 +635,12 @@ function serviceRequestIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
       issues.push({ path: `${path}.requestValueFrom`, rule: "semantic.request-value-source", message: `Service '${item.name}' uses {value} (or named placeholders) in its endpoint or web page; requestValueFrom must name the saved-setting field (for {value}) or the settings object (for {field} placeholders) that supplies it.` })
     }
     if (source !== "" && !templated) {
-      issues.push({ path: `${path}.requestValueFrom`, rule: "semantic.request-value-unused", message: `Service '${item.name}' names requestValueFrom '${source}' but neither its endpoint nor its web page contains a placeholder.` })
+      issues.push({ path: `${path}.requestValueFrom`, rule: "semantic.request-value-unused", message: `Service '${item.name}' names requestValueFrom '${source}' but neither its endpoint nor its web page contains a placeholder. Set requestValueFrom to "" or put {value} (or the {field} names) in the endpoint where the saved value goes.` })
     }
     if (source === "") return
     const object = requestSettingsObject(blueprint.dataObjects, source)
     if (object === undefined && !settingFields.has(referenceKey(source))) {
-      issues.push({ path: `${path}.requestValueFrom`, rule: "semantic.request-value-unknown", message: `Service '${item.name}' takes its request values from '${source}', which is neither a field nor the name of a settings dataObject.` })
+      issues.push({ path: `${path}.requestValueFrom`, rule: "semantic.request-value-unknown", message: `Service '${item.name}' takes its request values from '${source}', which is neither a field of a settings dataObject nor the name of one (a records field does not count); declare a settings dataObject with a field named '${source}', or set requestValueFrom to the name of an existing settings dataObject.` })
       return
     }
     // The stored reading must carry every saved value it was fetched for.
@@ -820,7 +820,7 @@ export function auditIdeaCoverage(blueprint: SemanticBlueprint, idea: string): S
       else issues.push({ path: `${path}.features[${featureIndex}]`, rule: "semantic.coverage-unknown-feature", message: `Idea sentence ${entry.sentence} names '${name}', which is not a declared feature.` })
     })
     if (!entry.features.length && entry.outsideFeatures === "none") {
-      issues.push({ path, rule: "semantic.coverage-no-feature", message: `Idea sentence ${entry.sentence} ("${sentences[entry.sentence - 1]}") is covered by no feature.` })
+      issues.push({ path, rule: "semantic.coverage-no-feature", message: `Idea sentence ${entry.sentence} ("${sentences[entry.sentence - 1]}") is covered by no feature. List the feature that implements it, or set outsideFeatures to product (it only names the product), non-goal (and add it to nonGoals), or constraint (and add it to productConstraints or qualityRequirements).` })
     }
     if (entry.outsideFeatures === "non-goal" && !blueprint.nonGoals.length) {
       issues.push({ path, rule: "semantic.coverage-missing-non-goal", message: `Idea sentence ${entry.sentence} is marked non-goal but nonGoals is empty.` })

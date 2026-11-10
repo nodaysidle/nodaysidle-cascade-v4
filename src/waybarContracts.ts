@@ -173,13 +173,13 @@ function waybarValueIssues(blueprint: SemanticBlueprint): SemanticIssue[] {
     }
   }
   const fieldsOf = [
-    ...blueprint.dataObjects.map((item, index) => ({ path: `dataObjects[${index}]`, fields: item.fields, stored: item.storage === "records" })),
-    ...blueprint.externalServices.map((item, index) => ({ path: `externalServices[${index}]`, fields: item.responseFields, stored: false })),
+    ...blueprint.dataObjects.map((item, index) => ({ path: `dataObjects[${index}].fields`, fields: item.fields, stored: item.storage === "records" })),
+    ...blueprint.externalServices.map((item, index) => ({ path: `externalServices[${index}].responseFields`, fields: item.responseFields, stored: false })),
   ]
   for (const { path, fields, stored } of fieldsOf) {
     fields.forEach((field, fieldIndex) => {
-      if (field.valueType === "time") issues.push({ path: `${path}.fields[${fieldIndex}]`, rule: "capability.waybar-time-of-day", message: `Field '${field.name}' is a time of day, which has lost its date. Declare it as date-time: the full instant is stored as a UTC epoch and shown in the local time zone when rendered.` })
-      if (stored && /\bstale\b/i.test(field.name)) issues.push({ path: `${path}.fields[${fieldIndex}]`, rule: "capability.waybar-stale-field", message: `Field '${field.name}' stores staleness. Stale is derived when the module renders from the last failed refresh and the reading's age; remove the field and describe the stale state only as what the bar shows.` })
+      if (field.valueType === "time") issues.push({ path: `${path}[${fieldIndex}]`, rule: "capability.waybar-time-of-day", message: `Field '${field.name}' is a time of day, which has lost its date. Declare it as date-time: the full instant is stored as a UTC epoch and shown in the local time zone when rendered.` })
+      if (stored && /\bstale\b/i.test(field.name)) issues.push({ path: `${path}[${fieldIndex}]`, rule: "capability.waybar-stale-field", message: `Field '${field.name}' stores staleness. Stale is derived when the module renders from the last failed refresh and the reading's age; remove the field and describe the stale state only as what the bar shows.` })
     })
   }
   const settingFields = blueprint.dataObjects.filter(item => item.storage === "settings").flatMap(item => item.fields)

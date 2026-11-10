@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { compilePacket } from "../src/compiler"
 import { auditCapabilities } from "../src/capabilities"
-import { auditSemanticIntake } from "../src/schema"
+import { auditIdeaCoverage, auditSemanticIntake } from "../src/schema"
 import { PRESETS } from "../src/presets"
 import { bareWaybarBlueprint, tideTickBlueprint } from "./fixtures/blueprints"
 import { airQualityBlueprint, allSourcesBlueprint, freeSpaceBlueprint, netSpeedBlueprint, sunTimesBlueprint } from "./fixtures/waybarSources"
@@ -332,5 +332,33 @@ describe("Waybar system sources, units, and one failure rule", () => {
       timeOfDay.externalServices[0]!.responseFields[0]!.valueType = "time"
       expect(rules(timeOfDay)).toContain("capability.waybar-time-of-day")
     })
+  })
+})
+
+// Round 10 repair-message audit: each message names the field change that makes its own check pass.
+describe("capability messages state the change that passes the check", () => {
+  it("platform needs, tray, and surface say what to set; a service time field points at responseFields", () => {
+    const gtk = structuredClone(freeSpaceBlueprint)
+    gtk.features[0]!.usesPlatformNeeds = ["background-execution"]
+    gtk.features[0]!.usesTray = true
+    gtk.features[0]!.surface = "item-page"
+    const issues = auditCapabilities(gtk, PRESETS["linux-wayland-gtk4-desktop"])
+    const message = (rule: string) => issues.find(issue => issue.rule === rule)?.message ?? ""
+    expect(message("capability.background")).toContain("Remove 'background-execution' from this feature's usesPlatformNeeds, and from platformNeeds")
+    expect(message("capability.tray")).toContain("Set usesTray to false")
+    const sunTime = structuredClone(sunTimesBlueprint)
+    sunTime.externalServices[0]!.responseFields[0]!.valueType = "time"
+    const timeIssue = auditCapabilities(sunTime, PRESETS[ID]).find(issue => issue.rule === "capability.waybar-time-of-day")!
+    expect(timeIssue.path).toBe("externalServices[0].responseFields[0]")
+  })
+})
+
+describe("an idea sentence with no feature says how to cover it (round 10 audit)", () => {
+  it("names the outsideFeatures values and the lists they need", () => {
+    const uncovered = structuredClone(freeSpaceBlueprint)
+    uncovered.ideaCoverage[0] = { ...uncovered.ideaCoverage[0]!, features: [], outsideFeatures: "none" }
+    const issue = auditIdeaCoverage(uncovered, "Free Space shows the free disk space.").find(item => item.rule === "semantic.coverage-no-feature")!
+    expect(issue.message).toContain("set outsideFeatures to product")
+    expect(issue.message).toContain("add it to nonGoals")
   })
 })
