@@ -317,10 +317,15 @@ describe("GTK round-5 compiler-owned facts", () => {
     expect(task(noText.documents["TASKS.md"], "TASK-04-CHORE-LIST")).not.toContain("row_preview")
   })
 
-  it("labels the Save button with the label an acceptance signal quotes", async () => {
+  it("labels the Save button with the label an acceptance signal quotes, not an earlier quoted field value", async () => {
     const blueprint = structuredClone(choreChartBlueprint)
     blueprint.features[1]!.acceptanceSignals = ['With the name field empty, the "Add errand" button is disabled.']
     const { documents } = await compilePacket(blueprint, PRESET)
     expect(task(documents["TASKS.md"], "TASK-05-ADD-CHORE")).toContain('Save slot button is labelled "Add errand"')
+
+    const quotedValue = structuredClone(choreChartBlueprint)
+    quotedValue.features[1]!.acceptanceSignals = ['With the name "Read 10 pages", pressing the button labeled Add creates a chore.']
+    const { documents: docs2 } = await compilePacket(quotedValue, PRESET)
+    expect(task(docs2["TASKS.md"], "TASK-05-ADD-CHORE")).toContain('Save slot button is labelled "Add"')
   })
 })

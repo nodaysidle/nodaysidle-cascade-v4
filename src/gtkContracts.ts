@@ -319,7 +319,10 @@ export function refineGtkPhases(phases: readonly GraphPhase[], blueprint: Normal
     const choices = creators.some(feature => (feature.choiceLists ?? []).length > 0)
     const toggle = shape?.inputs.some(field => field.valueType === "flag") ?? false
     const reset = `Reset rule, one per input kind: a text or number input resets to empty${dateInput ? "; a date input resets to empty, except one that an acceptance criterion says opens prefilled with today, which resets to today_string(clock)" : ""}${choices ? "; a choice input resets to its initial option" : ""}${toggle ? "; a toggle resets to its starting state" : ""}; this happens after a successful save and every time the add dialog opens, so a dialog reopened after a Cancel starts from the same values${shape?.edited ? ". The edit dialog is not reset: it opens prefilled from the record being edited" : ""}.`
-    const label = creators.flatMap(feature => feature.acceptanceOutcomes).filter(signal => /\bbutton\b/i.test(signal)).map(signal => /["“]([^"”]{1,40})["”]/.exec(signal)?.[1]).find(Boolean) ?? "Add"
+    const label = creators.flatMap(feature => feature.acceptanceOutcomes).map(signal => {
+      const m = /\bbutton\s+(?:label(?:led|ed)\s+)?["“]([^"”]{1,40})["”]|["“]([^"”]{1,40})["”]\s+button\b/i.exec(signal)
+      return m?.[1] ?? m?.[2]
+    }).find(Boolean) ?? "Add"
     return [`Form facts: the dialog's Save slot button is labelled "${label}" (the Add button in the header bar is not that button and is always enabled). The Save button's enabled state is the display-free function form_state(values) -> {save_enabled, errors}, where values holds the typed text${shape?.pickers.length ? " (or, for a picker, the selected option's text)" : ""} of each input${toggle ? " (a toggle's active state)" : ""} in validate's argument order, save_enabled is true exactly when validate returns Ok, and errors lists the rejected rules; your tests assert it for an empty, a valid and an invalid input. ${reset}`]
   }
   const LOAD_ERROR = "Load error: the store's list returns a Result and you own what an Err renders; no later task re-claims it. Show the exact load-error text when an acceptance criterion of yours gives one; otherwise render an empty list with the empty-state text and no error message, and the status area then shows no separate error."
