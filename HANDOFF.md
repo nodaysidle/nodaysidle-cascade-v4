@@ -71,7 +71,59 @@ all five presets.** Done means all of these hold:
 
 ## 4. State of the repo
 
-### RESUME HERE — round 12 (25 ideas, 5 per preset)
+### RESUME HERE — round 12 live run failed at the intake stage (2026-11-10)
+
+**Read this block first.** The next session's job is to make the *intake stage* (Jev check, AI provider call, blueprint
+checks + the one repair) stop failing on ordinary ideas. The *document stage* is in good shape: round 11 ended 5/5
+agent-ready (see the next block). Repo state: `main` at the commit after 7c8b06e, clean, 441 tests pass, `npm run check`
+green, kit:check 18/18, app installed from 7134db7 (`scripts/install-linux-app.sh`). Nothing pushed.
+
+Alan pasted the ideas from `scripts/agent-ready/run-round.fish` (round 12) into the installed app. Results he reported:
+
+| Preset | Idea | Where it stopped | What the UI showed |
+|---|---|---|---|
+| Waybar | Disk Free (2nd Waybar idea) | step 05 (Jev integrity), blueprint checks after the one repair | First response failed capability.waybar-build-order, waybar-label-template, waybar-label-unit, waybar-thresholds-owner. After the repair still: "Exactly one feature sets labelTemplate … 5 do" (path `features`) and "One module has one severity: declare thresholds on the single feature that shows the reading, not on several" (`features[2].thresholds`). |
+| Android | Tip Split (5th Android idea, a calculator with no storage) | step 05, after the one repair | First response failed semantic.initial-value-type and semantic.notification-schedule (the AI invented a scheduled notification for a calculator). After the repair: capability.waybar-label on `features[4].valueDecimals` ("sets bar-module label fields … set valueDecimals to null"): the AI used valueDecimals for "two decimals". |
+| Tauri | not stated (ask Alan) | step 02 | `$provider` provider.http-error: "The provider rejected the request with a safe HTTP failure classification." The HTTP status is recorded (`ProviderFailure.http_status`, src-tauri/src/provider.rs:252 `classify_http_failure`) but the UI does not show it. |
+| Astro | not stated (ask Alan) | Jev step | `$jev` jev.intake-rejected: "Jev did not confirm this idea as viable, so no provider request was made." Threshold `JEV_VIABILITY_THRESHOLD = 0.65` (src/jev.ts:23); the UI shows no reason or score. |
+
+Diagnosis (lead's view, verify before acting):
+1. **The checks reject what the compiler could fix itself.** Label/threshold ownership on Waybar and bar-only fields
+   (labelTemplate, unit, valueDecimals, thresholds) on non-Waybar presets are deterministic: the compiler knows which
+   feature shows the reading (systemSource ≠ none / the bar surface) and that non-Waybar presets ignore bar fields. The
+   AI gets ONE repair, and it keeps copying these fields. Prefer normalizing in `src/compiler.ts` normalization (drop bar
+   fields on non-Waybar presets; keep labelTemplate/unit/valueDecimals/thresholds only on the one reading feature on
+   Waybar when the copies are identical) over rejecting. Keep a rejection only when the copies disagree.
+   Rules: src/capabilities.ts:41-49 (capability.waybar-label), src/waybarContracts.ts:160-185 (label-template,
+   thresholds-owner) and the provider note at src/waybarContracts.ts:261. The schema comments for these fields
+   (src/schema.ts:86-95) say "Only a bar-module preset uses it", but check whether the provider prompt for a non-Waybar
+   preset even mentions them; if not, either omit those keys from the non-Waybar response schema or tell the AI to leave them empty.
+2. **A scheduledNotification with no schedule** (semantic.notification-schedule, src/schema.ts:766) on an idea that never
+   asks for notifications: normalize it to null when no feature uses the notifications platform need, instead of rejecting.
+3. **provider.http-error**: first surface the HTTP status (and the provider's safe error code, never the key or the
+   request body) in the UI issue message, then reproduce. Candidates: rate limit (429), auth (401/403), request too
+   large (400/413) since the instructions grew this session, or a timeout. Do not guess-fix before you see the status.
+4. **jev.intake-rejected**: surface Jev's score and reason in the UI issue; then decide with Alan whether the idea text,
+   the threshold, or the Jev prompt is wrong. Do not lower the threshold without his yes.
+5. Did today's changes cause any of this? The rules that fired all predate today. Today changed provider instructions
+   in src/schema.ts (initial value vs choice, choice list placement) and src/waybarContracts.ts (peak/reset notes and two
+   new checks: capability.waybar-process-memory, capability.waybar-reset-at-start; semantic.choice-not-entered in
+   schema.ts). None of those fired. `git diff 889bf7a..HEAD -- src/schema.ts src/waybarContracts.ts` shows them.
+
+How to work (proven this session): one failing test first per class, using a fixture shaped like the failing AI
+response (tests/fixtures/*.json is the inner `blueprint` object; tests/round11-*.test.ts show the pattern), fix the
+shared code, `npm run typecheck`, `npx vitest run`, `npm run check`, `npm run kit:check` only if a kit changed (keep
+>= 2 GB free in /tmp), commit locally, rebuild the app, then re-run the failing ideas. Independent classes can go to
+parallel worktree subagents (one class each, scoped files), merged one at a time by the lead.
+The CLI path that matches the app: `npm run -s cascade -- generate --preset <id> --idea "<text>" --out /tmp/<dir>` (needs
+DEEPSEEK_API_KEY and TYPESAFE_API_KEY in the fish environment; costs API calls; ask Alan before running the 25-idea
+script; never print the keys).
+
+Done criteria for this block: each of the 25 round-12 ideas either reaches a gate-clean packet or stops with a clear,
+deliberate capability rejection (an idea the preset truly cannot do, e.g. clipboard watch where unsupported). Then audit
+the packets in parallel (scripts/agent-ready/audit-brief.md) as in round 11.
+
+### Round 12 plan (25 ideas, 5 per preset)
 
 **Round 11 closed (2026-11-10): all 5 packets agent-ready after the class fixes.** Four parallel worktree agents fixed
 the classes (merged dc3d950, b7bc019, a0ff347, a44975d); re-audits found 5 more blocking defects, all fixed (f241482,
