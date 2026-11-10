@@ -1917,7 +1917,7 @@ function buildPhases(
     `The locked identity is ${identity.bundleId}${preset.id === "astro-web" ? ', recorded as the "identity" field of package.json' : ""}.`,
     preset.id === "android-kotlin-compose"
       ? `ContractTest reads build.gradle.kts relative to the test working directory (Gradle runs unit tests with the app/ module directory as the working directory, so the file is app/build.gradle.kts from the project root) and asserts that it declares ${identity.bundleId} as the namespace and applicationId, and reads src/main/java/${identity.packagePath}/App.kt the same way and asserts that it declares the App composable.`
-      : `The implementation marker is ${preset.implementationMarker}${preset.id === "linux-hyprland-waybar-module" ? ` (the Waybar module key prefix; resources/waybar/config.jsonc declares the key "custom/${identity.slug}")` : preset.id === "linux-wayland-gtk4-desktop" ? ` (adw::Application::builder() with application_id ${identity.bundleId} in src/main.rs)` : ""}.`,
+      : `The implementation marker is ${preset.implementationMarker}${preset.id === "linux-hyprland-waybar-module" ? " (the Waybar module key prefix)" : preset.id === "linux-wayland-gtk4-desktop" ? ` (adw::Application::builder() with application_id ${identity.bundleId} in src/main.rs)` : ""}.`,
     ...(preset.id === "astro-web" ? ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS.map(script => `package.json defines npm run ${script}.`) : []),
   ]
   const foundationTask: GraphTask = {

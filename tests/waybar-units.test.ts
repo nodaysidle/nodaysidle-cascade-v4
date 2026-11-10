@@ -85,4 +85,13 @@ describe("Waybar declared response paths, label units, and rate sources", () => 
     expect(configRs).toContain("refresh_seconds must be at least 1")
     expect(contractTests).toContain('assert!(settings.set("refresh_seconds", "0").is_err())')
   })
+
+  it("does not reference packaging-owned resources/waybar/config.jsonc in TASK-01-FOUNDATION", async () => {
+    const packet = await compilePacket(diskRead(), ID)
+    const task01 = packet.graph.phases[0]!.tasks[0]!
+    expect(task01.id).toBe("TASK-01-FOUNDATION")
+    expect(task01.acceptanceCriteria.join("\n")).not.toContain("resources/waybar/config.jsonc")
+    expect(task01.acceptanceCriteria.join("\n")).toContain("The implementation marker is custom/")
+    expect(packet.documents["TRD.md"]).toContain('resources/waybar/config.jsonc declares the key "custom/disk-io"')
+  })
 })

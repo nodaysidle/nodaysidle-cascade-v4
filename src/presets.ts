@@ -668,7 +668,7 @@ const linuxWaybar: PresetContract = {
     "Kit helpers that no contract names are optional; do not call a credential or HTTP helper only to satisfy the wiring gate. Every owner named in TRD.md must be reachable from the production entry point.",
     ...WAYBAR_WIRING_RULES,
   ],
-  installationDecision: identity => `For local proof, run scripts/package.sh --install: build into dist/${identity.slug}, install the binary under ~/.local/bin, copy resources/waybar/config.jsonc to ~/.config/waybar/${identity.slug}.jsonc and resources/waybar/style.css to ~/.config/waybar/${identity.slug}.css, install the systemd unit, run systemctl --user daemon-reload, and enable and start the unit with systemctl --user enable --now. For distribution, run makepkg -si.`,
+  installationDecision: identity => `For local proof, run scripts/package.sh --install: build into dist/${identity.slug}, install the binary under ~/.local/bin, copy resources/waybar/config.jsonc (where resources/waybar/config.jsonc declares the key "custom/${identity.slug}") to ~/.config/waybar/${identity.slug}.jsonc and resources/waybar/style.css to ~/.config/waybar/${identity.slug}.css, install the systemd unit, run systemctl --user daemon-reload, and enable and start the unit with systemctl --user enable --now. For distribution, run makepkg -si.`,
   signingDecision: () => "Local proof is unsigned. Distribution signing is a separate release decision using the packager's GPG key; the local packet does not require a signature.",
   outputArtifact: "Waybar module binary, fragments, systemd unit, and Arch package",
   artifactPath: identity => `dist/${identity.slug}`,
