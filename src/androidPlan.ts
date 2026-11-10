@@ -106,6 +106,10 @@ export function androidTaskExtras(input: {
   readonly notifications: boolean
   readonly focusedTestFile: string
   readonly firstMain?: boolean
+  // No feature lists the stored records: the main screen has one section per feature instead of a list.
+  readonly noList?: boolean
+  // Some feature of the packet runs on a schedule (a Worker exists).
+  readonly anySchedule?: boolean
   readonly detailView?: boolean
   // Scheduled features whose notification lists values this owner's feature already selects.
   readonly selectionFor?: readonly { readonly name: string; readonly pascal: string }[]
@@ -154,7 +158,9 @@ export function androidTaskExtras(input: {
     notes.push("A test that closes and reopens the store uses a file-backed Room database (Room.databaseBuilder on a file in a temporary directory under Robolectric), because the in-memory database of the test hook cannot be reopened.")
     notes.push("Room writes the schema JSON app/schemas/(the AppDatabase class name)/1.json when the project builds (the kit sets room.schemaLocation); that file is generated build output, committed with this task, and is not part of the create-only list.")
   }
-  if (input.firstMain) {
+  if (input.firstMain && input.noList) {
+    notes.push(`With no list, your focused test drives your own acceptance criteria through the real screen (your control in its slot, the value it shows, and that value after the store is reopened) and asserts that every other slot exists; an acceptance criterion that needs a control a later task builds is verified by that task. Every stored date or time the screen shows is formatted as ${ANDROID_DISPLAY_FORMATS}. State that a later task owns (its typed field values) lives in that task's own feature file, never in the shared view state, because later tasks modify only the registration files.`)
+  } else if (input.firstMain) {
     notes.push(`Every list row${input.detailView ? " and detail view" : ""} shows every stored field the PRD says that list${input.detailView ? " or view" : ""} shows, in the form the stored value has (for a date, the formatted date: ${ANDROID_DISPLAY_FORMATS}); a value an acceptance outcome asserts on screen is shown there too. An acceptance criterion of yours that names a control a later task builds (its form, its row button) is verified by that task; your focused test seeds records through the repository and asserts only the list, its empty state, and the empty host areas. State that a later task owns (an open form, a pending delete, a mark) lives in that task's own feature file, never in the shared view state, because later tasks modify only the registration files.`)
   }
   if (input.kind === "permission" && input.notifications) {
@@ -162,7 +168,9 @@ export function androidTaskExtras(input: {
     notes.push("Notification flow: put the one first-launch request flow in PermissionCoordinator.kt and call it from MainActivity.onCreate as CON-PERMISSION-NOTIFICATIONS says; the recorded state lives in SettingsRepository.notificationPermissionState, which the kit already provides.")
   }
   if (input.kind === "lifecycle") {
-    notes.push("LifecycleCoordinator API: `fun start(container: AppContainer)` and `fun stop()`. Both have empty bodies unless a contract names a coroutine the coordinator must own, and then they start and cancel only that coroutine; neither ever enqueues WorkManager work, because each schedule contract names the Application as its one starter. When no contract names a coroutine, its focused test only asserts that start and stop are callable no-ops that enqueue nothing.")
+    notes.push(input.anySchedule === false
+      ? "LifecycleCoordinator API: `fun start(container: AppContainer)` and `fun stop()`. Both have empty bodies unless a contract names a coroutine the coordinator must own, and then they start and cancel only that coroutine. When no contract names a coroutine, its focused test only asserts that start and stop are callable no-ops."
+      : "LifecycleCoordinator API: `fun start(container: AppContainer)` and `fun stop()`. Both have empty bodies unless a contract names a coroutine the coordinator must own, and then they start and cancel only that coroutine; neither ever enqueues WorkManager work, because each schedule contract names the Application as its one starter. When no contract names a coroutine, its focused test only asserts that start and stop are callable no-ops that enqueue nothing.")
   }
   if (input.kind === "packaging") {
     notes.push(`Packaging API: Packaging.kt defines \`fun assertProductionWiring(container: AppContainer)\`, which throws IllegalStateException naming the first container dependency that is not its concrete production type; the packaging focused test is its only caller: production code never calls it, and it is not wired into Application.onCreate; this test-only owner and a LifecycleCoordinator.stop() with no caller are exempt from the rule that a platform owner the running app never calls blocks completion.${input.containerTypes?.length ? ` Expected concrete type of each container property: ${input.containerTypes.join("; ")}; a test Application (when the kit has one) may build the container with a fixed Clock, and the check then accepts the Clock type.` : ""}`)
