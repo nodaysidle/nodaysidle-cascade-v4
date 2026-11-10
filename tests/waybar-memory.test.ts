@@ -73,3 +73,24 @@ describe("memory source wiring, one failure wording, and no inherited boilerplat
     expect(rules(named)).not.toContain("capability.waybar-cache-file")
   })
 })
+
+// Round 10 audit: a provider note that contains a word a check rejects gets copied into the blueprint, and the repair cannot remove it.
+const memory = (() => { const blueprint = structuredClone(freeSpaceBlueprint); blueprint.features[0]!.systemSource = "memory"; return blueprint })()
+
+describe("Waybar provider notes contain nothing the Waybar checks reject", () => {
+  it("never names cache.json or a binary unit", async () => {
+    const { WAYBAR_PROVIDER_NOTES } = await import("../src/waybarContracts")
+    for (const note of WAYBAR_PROVIDER_NOTES) {
+      expect(note).not.toMatch(/cache\.json/i)
+      expect(note).not.toMatch(/\b1,?024\b|\b[kmgt]ib\b|\b(?:kibi|mebi|gibi|tebi)bytes?\b/i)
+    }
+  })
+
+  it("points a binary unit in a quality requirement at that quality requirement", () => {
+    const binary = structuredClone(memory)
+    binary.qualityRequirements = [...binary.qualityRequirements, "Sizes never use KiB."]
+    const issue = auditCapabilities(binary, PRESETS[ID]).find(item => item.rule === "capability.waybar-unit-base")!
+    expect(issue.path).toBe(`qualityRequirements[${binary.qualityRequirements.length - 1}]`)
+    expect(issue.message).toContain("not even to forbid them")
+  })
+})
