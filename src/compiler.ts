@@ -1287,8 +1287,9 @@ function ownsItsControls(feature: GraphFeature): boolean {
   return Object.values(feature.operationsByData).some(operations => operations.includes("create") && operations.includes("update"))
 }
 function sharedScreenView(features: readonly GraphFeature[], presetId: PresetId, settingsKeys: ReadonlySet<string> = new Set()): readonly GraphFeature[] {
-  const view = presetId === "tauri2-rust-typescript-desktop" ? tauriScreenView(features) : features
-  // A stored setting is one value on the main screen, not a list row: its operations size no row, form, or filter slot.
+  // A feature that saves a user file is one command over all records on every preset (Tauri also empties shortcut and schedule features).
+  const view = presetId === "tauri2-rust-typescript-desktop" ? tauriScreenView(features) : features.map(feature => feature.userFileAccess === "saves" || feature.userFileAccess === "opens-and-saves" ? { ...feature, dataOperations: [], operationsByData: {} } : feature)
+  // A stored setting is one value on the main screen and an exported document is a file, not a list row: their operations size no row, form, or filter slot.
   return view.map(feature => {
     if (!Object.keys(feature.operationsByData).some(key => settingsKeys.has(key))) return feature
     const operationsByData = Object.fromEntries(Object.entries(feature.operationsByData).filter(([key]) => !settingsKeys.has(key)))
@@ -1301,7 +1302,7 @@ function tauriScreenView(features: readonly GraphFeature[]): readonly GraphFeatu
 }
 
 const settingsKeysOf = (blueprint: Pick<NormalizedBlueprint, "domainData"> | undefined): ReadonlySet<string> =>
-  new Set((blueprint?.domainData ?? []).filter(item => item.storage === "settings").map(item => referenceKey(item.name)))
+  new Set((blueprint?.domainData ?? []).filter(item => item.storage === "settings" || item.storage === "document").map(item => referenceKey(item.name)))
 
 // Android: a record whose every field the app sets (a tap log stamped "now") is created by a button, with no entry form.
 function createsWithoutInput(features: readonly GraphFeature[], domainData: NormalizedBlueprint["domainData"]): boolean {

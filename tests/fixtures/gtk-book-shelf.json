@@ -1,0 +1,397 @@
+{
+ "productName": "Book Shelf",
+ "summary": "Book Shelf keeps a personal record of books the user has read, with title, author, a 1-to-5 rating, and a favorite mark. Books are stored on the device and restored after restart, and the full collection can be saved to a CSV file the user chooses.",
+ "targetUsers": [
+  "Readers who want a simple personal log of the books they have finished",
+  "People who like to rate and flag favorite books for later reference"
+ ],
+ "goals": [
+  "Record each read book with title, author, rating, and favorite status",
+  "Keep the book list on the device and restore it after restart",
+  "Save the whole collection to a CSV file at a location the user chooses"
+ ],
+ "nonGoals": [
+  "Tracking books the user has not yet read",
+  "Syncing the collection across devices or accounts"
+ ],
+ "features": [
+  {
+   "name": "Book list",
+   "userOutcome": "The user sees every book they have recorded, newest first, with title, author, rating, and favorite mark.",
+   "trigger": "The app opens or the user returns to the main screen",
+   "behavior": "Shows all stored books ordered newest created first. Each row shows the title, the author, the rating from 1 to 5, and whether the book is a favorite. The list is restored from on-device storage when the app starts. When no books exist, the list shows the text 'No books yet. Add your first book.'",
+   "failureOutcome": "If stored books cannot be loaded, the list stays empty and the app continues running.",
+   "failureRecovery": "fallback",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With no stored books, the list shows the text 'No books yet. Add your first book.'",
+    "After a book is added, its title, author, rating, and favorite mark appear in the list.",
+    "Books are ordered newest created first.",
+    "After the app is restarted, previously added books are shown again in the list."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Books"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Books",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "launch",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Add book",
+   "userOutcome": "The user records a book they have read with its title, author, rating, and favorite status.",
+   "trigger": "The user activates the Add button in the window header bar",
+   "behavior": "Opens a dialog with inputs for title, author, rating from 1 to 5, and a favorite toggle. Title and author are required and must be non-empty after trimming; rating must be a whole number from 1 to 5. The favorite toggle starts off. The Save button is disabled while title or author is empty or the rating is outside 1 to 5. Saving creates a book record with the entered values and the current moment as its added time, and the new book appears at the top of the list.",
+   "failureOutcome": "If the book cannot be stored, the dialog stays open with the entered values so the user can try again.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "The Save button is disabled when the title or author is empty after trimming or the rating is outside 1 to 5.",
+    "The display-free validate function returns an error for an empty title without calling the store.",
+    "Saving a book with title 'Dune', author 'Frank Herbert', rating 5, and favorite on adds a row with those values at the top of the list.",
+    "A newly added book has its added time set to the moment of saving."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Books"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [
+    {
+     "name": "Rating",
+     "options": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+     ],
+     "initial": "3"
+    }
+   ],
+   "buildsOn": [
+    "Book list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Books",
+     "operations": [
+      "create"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Mark favorite",
+   "userOutcome": "The user flags or unflags a book as a favorite.",
+   "trigger": "The user toggles the favorite control on a book row",
+   "behavior": "Toggles the favorite flag of the selected book between on and off and stores the new value immediately. The row's favorite mark updates to match the stored value.",
+   "failureOutcome": "If the change cannot be stored, the favorite mark stays as it was before the toggle.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Toggling the favorite control on a book with favorite off stores favorite on and the row shows the favorite mark.",
+    "Toggling the favorite control again stores favorite off and the row no longer shows the favorite mark.",
+    "After a restart, the stored favorite value of each book is shown in the list."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Books"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Book list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Books",
+     "operations": [
+      "update"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Save books to CSV",
+   "userOutcome": "The user saves the whole book collection to a CSV file at a location they choose.",
+   "trigger": "The user activates the Save to CSV control",
+   "behavior": "Opens a Save panel so the user chooses the destination file. Writes one header row with the columns title, author, rating, favorite, and added, followed by one row per book in the same newest-first order as the list. The favorite column holds true or false. The file is written whole so a failed write leaves any existing file at that location unchanged.",
+   "failureOutcome": "If the file cannot be written, the existing file at the chosen location stays unchanged and the app continues running.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Choosing a destination in the Save panel writes a CSV file whose first row is 'title,author,rating,favorite,added'.",
+    "The CSV file contains one data row per book in the list, in the same newest-first order.",
+    "Each data row holds the book's title, author, rating, favorite as true or false, and added time.",
+    "When the write fails, the file previously at the chosen location is unchanged."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Books",
+    "Books CSV export"
+   ],
+   "usesServices": [],
+   "userFileAccess": "saves",
+   "choiceLists": [],
+   "buildsOn": [
+    "Book list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Books",
+     "operations": [
+      "read"
+     ]
+    },
+    {
+     "data": "Books CSV export",
+     "operations": [
+      "create"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Books",
+   "purpose": "The books the user has read, with title, author, rating, favorite status, and when each was added.",
+   "sensitivity": "personal",
+   "retentionIntent": "Kept on the device so the collection is restored after restart.",
+   "storage": "records",
+   "writeMode": "direct",
+   "fields": [
+    {
+     "name": "title",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "author",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "rating",
+     "valueType": "whole-number",
+     "optional": false,
+     "min": 1,
+     "max": 5,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "favorite",
+     "valueType": "flag",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": "false",
+     "appStamped": null
+    },
+    {
+     "name": "added",
+     "valueType": "date-time",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": "now",
+     "appStamped": null
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  },
+  {
+   "name": "Books CSV export",
+   "purpose": "The CSV file the user chooses to save the whole book collection to.",
+   "sensitivity": "personal",
+   "retentionIntent": "Written to the location the user chooses and kept there until the user changes or removes it.",
+   "storage": "document",
+   "writeMode": "atomic-replace",
+   "fields": [
+    {
+     "name": "title",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "author",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "rating",
+     "valueType": "whole-number",
+     "optional": false,
+     "min": 1,
+     "max": 5,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "favorite",
+     "valueType": "flag",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "added",
+     "valueType": "date-time",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    }
+   ],
+   "singleRecord": true,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [
+  "local-storage"
+ ],
+ "qualityRequirements": [
+  "The CSV export contains exactly one header row and one row per stored book.",
+  "The favorite column of the CSV holds only true or false."
+ ],
+ "productConstraints": [
+  "Ratings are whole numbers from 1 to 5.",
+  "Title and author are required and must be non-empty after trimming.",
+  "The CSV export is written whole so a failed write leaves any existing file unchanged."
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Book list"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Add book",
+    "Mark favorite",
+    "Save books to CSV"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 3,
+   "features": [
+    "Book list"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

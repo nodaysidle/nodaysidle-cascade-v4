@@ -39,3 +39,21 @@ describe("main-screen slots fit commands and settings, not only list rows (round
     expect(goal).not.toContain("reuse the form fields and validation that the add task exports")
   })
 })
+
+// Round 11 (Book Shelf): on GTK the CSV export's create on the export document counted as adding a record, so the
+// export task mounted into the add-entry control and received the add dialog's form facts.
+describe("GTK: an export is a whole-list command, not an add form (round 11)", () => {
+  it("mounts Save to CSV into the actions area and gives it no entry form", async () => {
+    const packet = await compilePacket(load("gtk-book-shelf.json"), "linux-wayland-gtk4-desktop")
+    expect(packet.failures).toEqual([])
+    const tasks = packet.documents["TASKS.md"]
+    const list = task(tasks, "TASK-04-BOOK-LIST")
+    const csv = task(tasks, "TASK-08-SAVE-BOOKS-TO-CSV")
+    expect(list).toContain("an actions area above the list")
+    expect(list).toContain("the actions area is a GtkBox packed at the end of the AdwHeaderBar")
+    expect(csv).toContain("(the actions area)")
+    expect(csv).not.toContain("Form facts")
+    expect(csv).not.toContain("Build the entry form")
+    expect(task(tasks, "TASK-05-ADD-BOOK")).toContain("Form facts")
+  })
+})

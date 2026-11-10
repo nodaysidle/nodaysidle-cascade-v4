@@ -157,14 +157,18 @@ export function refineGtkPhases(phases: readonly GraphPhase[], blueprint: Normal
       ...(operations.has("create") ? ["the add-entry control is an Add button in the AdwHeaderBar that opens an empty AdwDialog shell (title, Cancel, a content area and a Save slot) that the add task fills with its form and closes on a successful save"] : []),
       `the status area is one label or AdwStatusPage${filter ? " under the filter area" : " above the list"} that shows the ${filter && noMatch ? "empty-state and no-match messages, one at a time" : "empty-state message"}`,
       "each list row is an AdwActionRow whose suffix box is the per-row action area",
+      ...(prompt.includes("an actions area above the list") ? ["the actions area is a GtkBox packed at the end of the AdwHeaderBar, beside the Add button, holding one button per whole-list command or setting, each mounted by its own feature's task"] : []),
       ...(filter ? [`the filter area above the list holds ${narrowKinds.map(kind => FILTER_WIDGET[kind as keyof typeof FILTER_WIDGET]).join(" and ") || "one control"}, one per narrowing feature, mounted by that feature's task`] : []),
       ...(detail ? ["activating a row pushes the detail page, an AdwNavigationPage on an AdwNavigationView that sits inside the ToastOverlay, so Back returns to the list; the feature tasks connect the buttons on it"] : []),
       ...(!detail && (operations.has("update") || operations.has("delete")) ? ["there is no detail page and no AdwNavigationView: every row control lives in the per-row action area"] : []),
     ].join("; ")
   }
   // A text or number the user types is the &str of one GtkEntry (never a GtkSpinButton, which clamps out-of-range input before validate sees it).
+  // Only a create on stored records opens the entry form; an export creates a document file, not a record (round 11, Book Shelf).
+  const createsRecord = (feature: NormalizedBlueprint["features"][number]): boolean =>
+    blueprint.domainData.some(item => item.storage === "records" && (feature.operationsByData[referenceKey(item.name)] ?? []).includes("create"))
   const formShape = (owned: readonly NormalizedBlueprint["features"][number][]) => {
-    const item = blueprint.domainData.find(entry => owned.some(feature => (feature.operationsByData[referenceKey(entry.name)] ?? []).includes("create")))
+    const item = blueprint.domainData.find(entry => entry.storage === "records" && owned.some(feature => (feature.operationsByData[referenceKey(entry.name)] ?? []).includes("create")))
     if (!item) return undefined
     const flags = item.fields.filter(field => field.valueType === "flag")
     const itemKey = referenceKey(item.name)
@@ -249,7 +253,7 @@ export function refineGtkPhases(phases: readonly GraphPhase[], blueprint: Normal
         ...(firstMain ? [SHARED_HELPERS] : []),
         ...(firstMain && longText ? [PREVIEW] : []),
         ...(firstMain ? [`GTK shape of the slots: ${slotNote(task.prompt)}.`, `Empty state: you own the empty-list message of the main screen. Show it in the status area whenever the loaded list has no records, chosen by a display-free function that your tests assert on. Its text is the exact empty-list text that an acceptance criterion gives; when none does, it is one sentence that ${operations.has("create") ? "names the Add button and never says where it sits" : "says how the list gets its records"}.${narrowKinds.length ? " The function reads the unfiltered loaded list, never the filtered rows, so a search or filter with no match shows the no-match message and not this text." : ""}`] : []),
-        ...(!firstMain && owned.some(feature => feature.dataOperations.includes("create")) ? ["Build the entry form (one input per field the user supplies; a field the app sets itself, such as a flag with a fixed starting value, is not an input) and its display-free validate function in your own file and export both; the dialog shell from the first main-surface task only hosts the form" + (blueprint.features.some(feature => feature.editsRecords) ? ", and an edit task reuses them" : "") + ".", ...formFacts(owned.filter(feature => feature.dataOperations.includes("create"))), ...validateNote(owned.filter(feature => feature.dataOperations.includes("create")))] : []),
+        ...(!firstMain && owned.some(createsRecord) ? ["Build the entry form (one input per field the user supplies; a field the app sets itself, such as a flag with a fixed starting value, is not an input) and its display-free validate function in your own file and export both; the dialog shell from the first main-surface task only hosts the form" + (blueprint.features.some(feature => feature.editsRecords) ? ", and an edit task reuses them" : "") + ".", ...formFacts(owned.filter(createsRecord)), ...validateNote(owned.filter(feature => feature.dataOperations.includes("create")))] : []),
         ...(owned.some(writesNumeric) ? [`Only when an acceptance criterion states a bound that depends on today's date or year, that bound is a parameter of the validate function (for example current_year: i32), never read inside it; a fixed range written as literals stays a constant in validate and adds no parameter; src/app.rs supplies it from ${clock ? "the Clock trait" : "glib::DateTime::now_local()"} and tests pass fixed values at and beyond the bound.`] : []),
         ...(!firstMain ? owned.filter(feature => feature.narrowsListBy !== "none" && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read")).slice(0, 1).map(feature => NARROW[feature.narrowsListBy as "text" | "flag" | "sort"]) : []),
         ...(!firstMain && owned.some(feature => feature.editsRecords) ? [EDIT_CONTROL] : []),
