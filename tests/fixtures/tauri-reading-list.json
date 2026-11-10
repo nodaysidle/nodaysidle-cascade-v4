@@ -1,0 +1,455 @@
+{
+  "productName": "Reading List",
+  "summary": "Reading List keeps articles to read later, each with a title, a link, and a status of unread, reading, or done. The user adds articles, changes their status, filters the list by status, and saves all articles to a CSV file the user chooses. Articles are stored on the device and restored after restart.",
+  "targetUsers": [
+    "People who save articles to read later and want a simple on-device list",
+    "Readers who track which saved articles they are reading and which they have finished"
+  ],
+  "goals": [
+    "Keep a list of articles with title, link, and status",
+    "Let the user add articles and change their status",
+    "Let the user filter the list by status",
+    "Let the user save all articles to a CSV file they choose",
+    "Persist articles on the device and restore them after restart"
+  ],
+  "nonGoals": [
+    "Fetching or displaying article content from the link",
+    "Syncing articles across devices or accounts"
+  ],
+  "features": [
+    {
+      "name": "Article list",
+      "userOutcome": "The user sees all saved articles with their title, link, and status, and the list is restored after restart.",
+      "trigger": "The app opens",
+      "behavior": "Shows every saved article as a row with its title, its link, and its status written as Unread, Reading, or Done. Rows are ordered newest first by creation time. When no articles exist the list shows the text No articles yet. When loading the saved articles at startup fails, the list shows the single message Could not load your articles and shows no rows. Selecting a row shows that article read-only with an Edit button; Edit opens the edit form.",
+      "failureOutcome": "The saved articles cannot be read at startup; the list shows Could not load your articles and no rows.",
+      "failureRecovery": "retry",
+      "surface": "main",
+      "acceptanceSignals": [
+        "With two saved articles, the list shows both rows ordered newest first by creation time.",
+        "With no saved articles, the list shows No articles yet.",
+        "A record read back from the store shows its saved title, link, and status values.",
+        "When the store read fails, the list shows Could not load your articles and no rows."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Articles"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [
+        {
+          "name": "status",
+          "options": [
+            "unread",
+            "reading",
+            "done"
+          ],
+          "initial": "unread"
+        }
+      ],
+      "buildsOn": [],
+      "dataOperations": [
+        {
+          "data": "Articles",
+          "operations": [
+            "read"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "launch",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "thresholds": [],
+      "labelTemplate": "",
+      "unit": "",
+      "valueDecimals": null,
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Add article",
+      "userOutcome": "The user adds a new article with a title and a link, and it appears in the list as unread.",
+      "trigger": "The user chooses Add article",
+      "behavior": "Opens a form with a required title field and a required link field. The status is not entered; a new article starts as unread. The form checks that title and link are not empty and that the link begins with http:// or https://; otherwise it does not save and shows the message Enter a title and a link starting with http:// or https://. On save the article is stored with its creation time and the form closes.",
+      "failureOutcome": "The article cannot be written to the store; the form stays open with the entered values and shows Could not save the article.",
+      "failureRecovery": "retry",
+      "surface": "main",
+      "acceptanceSignals": [
+        "Saving a title and an https link creates a record whose status reads back as unread.",
+        "Submitting an empty title leaves the form open and creates no record.",
+        "Submitting a link that does not begin with http:// or https:// leaves the form open and creates no record.",
+        "When the store write fails, the form stays open with the entered values and shows Could not save the article."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Articles"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [
+        {
+          "name": "status",
+          "options": [
+            "unread",
+            "reading",
+            "done"
+          ],
+          "initial": "unread"
+        }
+      ],
+      "buildsOn": [
+        "Article list"
+      ],
+      "dataOperations": [
+        {
+          "data": "Articles",
+          "operations": [
+            "create"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "thresholds": [],
+      "labelTemplate": "",
+      "unit": "",
+      "valueDecimals": null,
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Change article status",
+      "userOutcome": "The user changes an article's status among unread, reading, and done.",
+      "trigger": "The user chooses Edit on an article's read-only view",
+      "behavior": "Opens the edit form with the article's title, link, and status. The status is chosen from unread, reading, and done, initially the article's current status. The form checks that title and link are not empty and that the link begins with http:// or https://; otherwise it does not save and shows the message Enter a title and a link starting with http:// or https://. On save the changed values are stored and the form closes.",
+      "failureOutcome": "The changes cannot be written to the store; the form stays open with the entered values and shows Could not save the changes.",
+      "failureRecovery": "retry",
+      "surface": "main",
+      "acceptanceSignals": [
+        "Changing an article's status from unread to done and saving makes the record read back with status done.",
+        "The edit form opens with the article's current status selected.",
+        "When the store write fails, the record keeps its previous status and the form shows Could not save the changes."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Articles"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [
+        {
+          "name": "status",
+          "options": [
+            "unread",
+            "reading",
+            "done"
+          ],
+          "initial": "unread"
+        }
+      ],
+      "buildsOn": [
+        "Article list"
+      ],
+      "dataOperations": [
+        {
+          "data": "Articles",
+          "operations": [
+            "read",
+            "edit"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "thresholds": [],
+      "labelTemplate": "",
+      "unit": "",
+      "valueDecimals": null,
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Filter by status",
+      "userOutcome": "The user narrows the list to articles with one status or sees all articles again.",
+      "trigger": "The user picks a status filter",
+      "behavior": "Offers the filter options All, Unread, Reading, and Done, initially All. Choosing a status shows only articles with that status, ordered newest first by creation time. Choosing All shows every article again. When the filter matches no articles the list shows No articles with this status.",
+      "failureOutcome": "The filter cannot be applied; the list keeps its previous filter and rows.",
+      "failureRecovery": "fallback",
+      "surface": "main",
+      "acceptanceSignals": [
+        "With one unread and one done article, choosing Done shows only the done article.",
+        "Choosing All after a status filter shows every article again.",
+        "When no article matches the chosen status, the list shows No articles with this status."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Articles"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [
+        {
+          "name": "status filter",
+          "options": [
+            "All",
+            "Unread",
+            "Reading",
+            "Done"
+          ],
+          "initial": "All"
+        }
+      ],
+      "buildsOn": [
+        "Article list"
+      ],
+      "dataOperations": [
+        {
+          "data": "Articles",
+          "operations": [
+            "read"
+          ]
+        }
+      ],
+      "narrowsListBy": "flag",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "thresholds": [],
+      "labelTemplate": "",
+      "unit": "",
+      "valueDecimals": null,
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Save articles to CSV",
+      "userOutcome": "The user saves all articles to a CSV file at a location they choose.",
+      "trigger": "The user chooses Save to CSV",
+      "behavior": "Asks the user to choose where to save a CSV file. The file has the heading row Title,Link,Status followed by one row per article, newest first by creation time, with the title, the link, and the status written as unread, reading, or done. Values containing a comma, a double quote, or a line break are enclosed in double quotes with inner double quotes doubled. When there are no articles the file contains only the heading row. A failed write leaves any existing file at that location unchanged.",
+      "failureOutcome": "The chosen file cannot be written; the app shows Could not save the CSV file and leaves any existing file unchanged.",
+      "failureRecovery": "retry",
+      "surface": "main",
+      "acceptanceSignals": [
+        "Saving two articles writes a file whose first line is Title,Link,Status and whose next lines hold the two articles newest first.",
+        "A title containing a comma is written enclosed in double quotes.",
+        "With no articles, the saved file contains only the heading row.",
+        "When the write fails, an existing file at the chosen location keeps its previous contents."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Articles",
+        "Articles CSV export"
+      ],
+      "usesServices": [],
+      "userFileAccess": "saves",
+      "choiceLists": [],
+      "buildsOn": [
+        "Article list"
+      ],
+      "dataOperations": [
+        {
+          "data": "Articles",
+          "operations": [
+            "read"
+          ]
+        },
+        {
+          "data": "Articles CSV export",
+          "operations": [
+            "create"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "thresholds": [],
+      "labelTemplate": "",
+      "unit": "",
+      "valueDecimals": null,
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    }
+  ],
+  "dataObjects": [
+    {
+      "name": "Articles",
+      "purpose": "The articles the user saved to read later, each with a title, a link, and a status.",
+      "sensitivity": "personal",
+      "retentionIntent": "Kept on the device until the user removes the app's data.",
+      "storage": "records",
+      "writeMode": "direct",
+      "fields": [
+        {
+          "name": "title",
+          "valueType": "text",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "link",
+          "valueType": "text",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "status",
+          "valueType": "text",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": "unread",
+          "appStamped": null
+        },
+        {
+          "name": "created at",
+          "valueType": "date-time",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": "now",
+          "appStamped": null
+        }
+      ],
+      "singleRecord": false,
+      "entryCount": null
+    },
+    {
+      "name": "Articles CSV export",
+      "purpose": "The CSV file the user chooses to save all articles to.",
+      "sensitivity": "personal",
+      "retentionIntent": "Written to the location the user chooses and kept there until the user removes it.",
+      "storage": "document",
+      "writeMode": "atomic-replace",
+      "fields": [
+        {
+          "name": "title",
+          "valueType": "text",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "link",
+          "valueType": "text",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "status",
+          "valueType": "text",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        }
+      ],
+      "singleRecord": true,
+      "entryCount": null
+    }
+  ],
+  "externalServices": [],
+  "platformNeeds": [
+    "local-storage"
+  ],
+  "qualityRequirements": [
+    "The list, forms, and filter respond to user actions without a noticeable delay for lists of up to a few hundred articles.",
+    "The CSV export writes the whole file or leaves an existing file unchanged."
+  ],
+  "productConstraints": [
+    "Articles are stored only on the device; no account or network connection is required.",
+    "A link must begin with http:// or https://."
+  ],
+  "ideaCoverage": [
+    {
+      "sentence": 1,
+      "features": [
+        "Article list",
+        "Add article",
+        "Change article status"
+      ],
+      "outsideFeatures": "none"
+    },
+    {
+      "sentence": 2,
+      "features": [
+        "Add article",
+        "Change article status",
+        "Filter by status",
+        "Save articles to CSV"
+      ],
+      "outsideFeatures": "none"
+    },
+    {
+      "sentence": 3,
+      "features": [
+        "Article list"
+      ],
+      "outsideFeatures": "none"
+    }
+  ]
+}

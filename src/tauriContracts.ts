@@ -1,6 +1,6 @@
 import type { DataField, DataOperation, NormalizedBlueprint } from "./compiler"
 import type { OwnerKind, PresetContract, PresetOptionValue } from "./presets"
-import { clockInitial, type DataValueType, type FeatureRecovery } from "./schema"
+import { appSetInitial, clockInitial, type DataValueType, type FeatureRecovery } from "./schema"
 import { fieldIdentifier } from "./kitText"
 
 // Tauri-only contract text: the Rust/TypeScript wire format, the store and document command
@@ -102,7 +102,7 @@ export function tauriStoreInterface(data: TauriData, operations: readonly DataOp
     [`delete_${base}`]: `delete_${base}(id: i64) returns nothing`,
   }
   const optional = data.fields.filter(field => field.optional)
-  const appSet = data.fields.filter(appSets)
+  const appSet = data.fields.filter(appSetInitial)
   const clocked = data.fields.filter(clockSet)
   return [
     `Interface: OWN-DATA-STORE owns every Tauri command for ${data.name}, registers them in src-tauri/src/lib.rs, and appends one migration that creates the table to database::MIGRATIONS in src-tauri/src/database.rs${data.fields.some(field => field.valueType === "text-list") ? " (a text-list column holds a JSON array)" : ""}; it never hard-codes the schema version.`,
@@ -169,12 +169,11 @@ export function tauriDayRule(feature: TauriFeatureUse, data: readonly TauriData[
   return `Calendar-day field${days.length === 1 ? "" : "s"} (${days.map(({ item, field }) => `${item.name}.${snake(field.name)}`).join(", ")}) ${days.length === 1 ? "holds" : "hold"} the user's local YYYY-MM-DD day as a string: derive today from the injected clock's local year, month, and day (never from toISOString() or any UTC value), and decide equality and ordering only by comparing those strings, and do any day arithmetic (the previous or next day, the days between) on calendar dates, not by subtracting 24 hours. Its tests fix the clock and cover a day boundary near local midnight.`
 }
 
-// A date-time field is stamped from the clock and a flag is set by the feature's own behavior, so neither is a form input unless a declared choice list names the flag.
+// A date-time field is stamped from the clock and a flag is set by the feature's own behavior, so neither is a form input unless a declared choice list names the flag or the create feature offers it (field.offered).
 // A stored field name whose wire key is spelled differently from its name beyond the first letter's case (phoneNumber is phonenumber).
 const keyDiffers = (field: DataField): boolean => field.name !== snake(field.name) && field.name.charAt(0).toLowerCase() + field.name.slice(1) !== snake(field.name)
-const appSets = (field: DataField): boolean => field.initial != null && field.initial !== "" && !clockInitial(field)
 const clockSet = (field: DataField): boolean => clockInitial(field) !== null
-const formFieldsOf = (item: TauriData, choiceNames: ReadonlySet<string>) => item.fields.filter(field => field.valueType !== "date-time" && !appSets(field) && !clockSet(field) && (field.valueType !== "flag" || choiceNames.has(snake(field.name))))
+const formFieldsOf = (item: TauriData, choiceNames: ReadonlySet<string>) => item.fields.filter(field => field.valueType !== "date-time" && !appSetInitial(field) && !clockSet(field) && (field.valueType !== "flag" || field.offered === true || choiceNames.has(snake(field.name))))
 const choiceNamesOf = (features: readonly TauriFeatureUse[]) => new Set(features.flatMap(feature => feature.choices.map(choice => snake(choice.split(":")[0]!))))
 // Features that create a record without also updating it (a start and stop timer drives its own controls).
 const recordWriters = (features: readonly TauriFeatureUse[], data: readonly TauriData[]) => {
@@ -279,7 +278,7 @@ export function tauriTaskPrompt(input: TauriTaskInput): string {
     }
     const writers = recordWriters(input.features, input.data)
     const formFields = formFieldsOf
-    const noInput = (items: readonly TauriData[], choiceNames: ReadonlySet<string>) => items.flatMap(item => item.fields.filter(field => field.valueType === "flag" && !choiceNames.has(snake(field.name))).map(field => snake(field.name)))
+    const noInput = (items: readonly TauriData[], choiceNames: ReadonlySet<string>) => items.flatMap(item => item.fields.filter(field => field.valueType === "flag" && field.offered !== true && !choiceNames.has(snake(field.name))).map(field => snake(field.name)))
     const flagRule = (flags: readonly string[], verb: string) => flags.length ? ` ${flags.join(", ")} (flag) ${flags.length === 1 ? "is" : "are"} no input: ${verb}` : ""
     if (writers.length) {
       const created = input.data.filter(item => item.storage === "records" && writers.some(feature => (feature.operationsByData[item.key] ?? []).includes("create")))
@@ -289,7 +288,7 @@ export function tauriTaskPrompt(input: TauriTaskInput): string {
       const stamps = created.flatMap(item => item.fields.filter(field => field.valueType === "date-time").map(field => snake(field.name)))
       const stampedDays = created.flatMap(item => item.fields.filter(field => field.valueType === "date" && clockSet(field)).map(field => snake(field.name)))
       const dayRule = stampedDays.length ? ` ${stampedDays.join(", ")} (date, declared initial today) is no input: create stamps today's local day from the injected now, and an edit sends the stored value unchanged.` : ""
-      const preset = created.flatMap(item => item.fields.filter(appSets).map(field => `${snake(field.name)} = "${field.initial}"`))
+      const preset = created.flatMap(item => item.fields.filter(appSetInitial).map(field => `${snake(field.name)} = "${field.initial}"`))
       const presetRule = (preset.length ? ` The app sets ${preset.join(", ")} itself on create (no input; the value is a constant of your file) and never lets the user type it.` : "") + dayRule
       if (!fields.length) {
         lines.push(`No stored field takes user input, so this feature has no entry form: build no form, no form shell, and no input. Its add-entry control is a button that calls the create command directly with the values your behavior states${stamps.length ? ` (${stamps.join(", ")} stamped from the injected clock at that moment)` : ""}, and a failed create shows the PRD's message with a retry that presses it again.${presetRule}${flagRule(noInput(created, choiceNames), "create sends the initial value your behavior states (false when it states none).")}`)
@@ -311,7 +310,9 @@ export function tauriTaskPrompt(input: TauriTaskInput): string {
     }
     const updaters = input.data.filter(item => item.storage === "records" && item.fields.length && input.features.some(feature => (feature.operationsByData[item.key] ?? []).includes("update")))
     if (updaters.length) {
-      lines.push(`update_${updaters.map(item => item.base).join("/update_")} replaces every field, so every update you send carries the full stored record (every field of the shared view state's record) with only the field your behavior changes replaced.`)
+      // An edit form changes every field it shows, so "only the field your behavior changes" would contradict its save (round 11).
+      const changed = editors.length ? "every field the edit form shows replaced by its value" : "only the field your behavior changes replaced"
+      lines.push(`update_${updaters.map(item => item.base).join("/update_")} replaces every field, so every update you send carries the full stored record (every field of the shared view state's record) with ${changed}.`)
     }
     const failures = new Map<FeatureRecovery, string[]>()
     for (const feature of input.features) failures.set(feature.failureRecovery, [...(failures.get(feature.failureRecovery) ?? []), feature.id])
