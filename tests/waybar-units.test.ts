@@ -71,4 +71,18 @@ describe("Waybar declared response paths, label units, and rate sources", () => 
     const packet = await compilePacket(windLabel(), ID)
     expect(packet.documents["TRD.md"]).toContain("STALE_SUFFIX is appended when the module renders and is never written into cache.json")
   })
+
+  it("allows a declared refresh interval below 5 seconds in the Waybar kit", async () => {
+    const blueprint = diskRead()
+    blueprint.features[0]!.runsEverySeconds = 2
+    const packet = await compilePacket(blueprint, ID)
+    expect(packet.failures).toEqual([])
+    const moduleRs = packet.kit.find(file => file.name === "kit/src/module.rs")!.content
+    const configRs = packet.kit.find(file => file.name === "kit/src/config.rs")!.content
+    const contractTests = packet.kit.find(file => file.name === "kit/tests/contract_tests.rs")!.content
+    expect(moduleRs).toContain("u64::from(settings.refresh_seconds.max(1))")
+    expect(configRs).toContain("if seconds < 1")
+    expect(configRs).toContain("refresh_seconds must be at least 1")
+    expect(contractTests).toContain('assert!(settings.set("refresh_seconds", "0").is_err())')
+  })
 })

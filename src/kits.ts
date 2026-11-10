@@ -1037,9 +1037,9 @@ pub fn now_unix() -> u64 {
         .as_secs()
 }
 
-/// Service refresh interval in seconds, never below 5.
+/// Service refresh interval in seconds, never below 1.
 pub fn interval_seconds(settings: &Settings) -> u64 {
-    u64::from(settings.refresh_seconds.max(5))
+    u64::from(settings.refresh_seconds.max(1))
 }
 
 pub fn empty_state(settings: &Settings) -> ModuleOutput {
@@ -1276,8 +1276,8 @@ impl Settings {
             let seconds: u32 = value
                 .parse()
                 .map_err(|_| format!("refresh_seconds must be whole seconds, got {value}"))?;
-            if seconds < 5 {
-                return Err(String::from("refresh_seconds must be at least 5"));
+            if seconds < 1 {
+                return Err(String::from("refresh_seconds must be at least 1"));
             }
             self.refresh_seconds = seconds;
         } else if SETTING_KEYS.contains(&key) {
@@ -1803,7 +1803,7 @@ fn set_accepts_declared_keys_only() {
         assert_eq!(settings.get(key), Some("saved"));
     }
     assert!(settings.set("not_a_declared_key", "x").is_err());
-    assert!(settings.set("refresh_seconds", "4").is_err());
+    assert!(settings.set("refresh_seconds", "0").is_err());
     settings
         .set("refresh_seconds", "30")
         .expect("refresh seconds");
