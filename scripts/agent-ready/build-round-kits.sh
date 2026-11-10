@@ -4,7 +4,7 @@ export CARGO_TARGET_DIR="$HOME/.cache/cascade-v4/target" TMPDIR="$HOME/.cache/ca
 mkdir -p "$CARGO_TARGET_DIR" "$TMPDIR" || exit 1
 R="${1:?usage: build-round-kits.sh /tmp/v4-roundN}"
 [ -d "$R" ] || { echo "not a folder: $R" >&2; exit 1; }
-log="$TMPDIR/cascade-step.log"
+log="$TMPDIR/cascade-step.$$.log"   # one log per run, so several runs can build at once
 step(){ "$@" >"$log" 2>&1; c=$?; echo "  $* -> $c"; [ $c -ne 0 ] && tail -12 "$log" | cut -c1-200; }
 # Every build runs in a fresh temp copy; stop the whole script rather than build anywhere else.
 mk(){ w=$(mktemp -d) && [ -d "$w" ] || { echo "mktemp failed" >&2; exit 1; }; cp -r "$1/kit/." "$w/" || exit 1; chmod +x "$w"/scripts/*.sh 2>/dev/null; cd "$w" || exit 1; }

@@ -199,6 +199,67 @@ Confirmed against a real packet (Tip Split), not fixed yet: the Android storage 
 packet (6.3, first Must), and the build-tools version: the docs say 37.0.0, the kit sets no
 `buildToolsVersion`, and this machine builds the kit with only build-tools 36.0.0 installed.
 
+### 5.5 The round-12 live round (22 ideas, `/tmp/v4-round12f`, a RAM disk)
+
+Alan chose "Run 22": the 21 ideas not yet run plus Budget Book; Disk Free, Tip Split and Green Kitchen count
+from 5.4 (same compiler). Full logs are in `/tmp/v4-round12f/_logs/`, the provider answers in `_answers/`.
+
+**Generation: 21 of 22 Gate Clean, all 21 verify.** Repairs used (the new `Repaired once` line):
+Word Bank (missing-data-fields, feature-not-requested), Quiet Hours (initial-value-type), Net Rate
+(waybar-build-order), Load Meter (waybar-label-unit), Meeting Clock (notification-schedule), Day Journal
+(missing-data-fields), Clip Keeper (capability.clipboard-watch), Studio Folio (narrow-not-read-only).
+Budget Book passed this time with no repair: the provider is not repeatable at temperature 0.
+
+**Failed: Drink Reminder (Android), `capability-rejected` after its repair.** Answers kept in
+`_answers/21-android-kotlin-compose/`. First answer: a settings object with `reminder time` (time, initial
+"09:00"), `reminder on`, `last sent day`; the feature had `scheduledNotification` and no schedule. The repair
+(`semantic.initial-value-type`, `semantic.notification-schedule`) set `runsDailyAt` to a fixed "09:00", and
+then `capability.android-run-state` rejected `last sent day`. Two findings:
+1. **Repair cascade, second time today, second preset** (Budget Book in 5.4): the repair fixes what it was
+   told, the repaired answer fails a check of a later stage, and no repair is left.
+2. **The schema cannot say "daily at a time the user chooses, kept in settings".** `runsDailyAt` is a fixed
+   time and `runsAtField` needs a records object with a title field. The provider turned the user's time into
+   a fixed 09:00. Had it also dropped `last sent day`, the packet would have been Gate Clean and wrong.
+   Needs real support or a clear rejection.
+
+**Kit builds** (`build-round-kits.sh`, every command of every kit): GTK 5 of 5 pass. Astro 4 of 4 pass.
+Waybar 3 of 4 pass; **Net Rate fails `cargo test`**: `tests/module_output_tests`, tests
+`fresh_cache_is_shown_and_old_cache_is_marked_stale` and
+`severity_comes_from_declared_thresholds_in_both_directions_and_stale_wins` (left "normal", right "stale").
+Net Rate refreshes every 2 seconds; cause not read yet (suspect: the kit test's fixed ages against a short
+interval). Tauri 5 and Android 3 were still building when this was written.
+
+**Audits.** One agent per packet, prompts made by `scripts/agent-ready/make-audit-prompts.py` (new). 20 were
+started; the account hit its 5-hour usage limit (resets 19:40 Europe/Ljubljana) and they stopped before
+reporting. Days Until was never started (20-agent limit). **No packet of this round has an audit verdict
+yet.** A fresh session cannot resume those agents: regenerate the prompts and start one agent per file.
+
+**Confirmed by the lead from the kept answers and packets (no audit needed to see them):**
+- Net Rate: acceptance "a counter change of 6,250,000 bytes over 5 seconds writes the label '10.0 kB/s'".
+  That is 1250.0 kB/s. The provider copied our note's example "6,250,000 bytes in 5 seconds is 10.0 Mb/s".
+- Battery Watch: the idea says every 30 seconds; the provider declared `runsEverySeconds` 1800 (our note says
+  "30 minutes is 1800"). PRD.md says both "every 30 seconds" (line 23) and "The refresh interval is 1800
+  seconds" (line 99).
+- Load Meter: the idea asks for two decimals. `capability.waybar-label-unit` rejects `valueDecimals` without a
+  unit, so the repair set it to null. The TRD decision says "exactly two decimals", the Label line says "any
+  other number as stored". A unitless number with fixed decimals must be allowed.
+- Disk Free (5.4): wrong class in an example.
+So 4 of the 5 live Waybar packets carry a wrong or lost number that the provider computed or copied.
+
+**Alan's decisions this session:**
+- Waybar label and class examples are **written by the compiler** from the declared threshold, unit and
+  decimals; a provider sentence that states a class or a label value for a reading goes back for repair. This
+  replaces `waybar-label-decimals` and `waybar-class-example`. Not built yet. Plan: append the lines in
+  `normalizeBlueprint` (src/compiler.ts, `acceptanceOutcomes`), compute with the kit's rounding (half away
+  from zero; pick readings that are exact in binary), and add a kit test with the same numbers so
+  `cargo test` proves them. Also reword the provider-note examples that get copied.
+- Alan's own five-idea check comes **after** the fixes are in the installed app (6.1 item 5).
+- Open, not decided: reuse a saved blueprint in the app so the same idea gives the same packet ("generate
+  fresh" asks the provider again). Recommended for after the stacks are agent-ready.
+- Open, to ask with this evidence: allow a second repair when the repaired answer fails only checks the first
+  repair request could not list (changes the "one request plus at most one repair" rule), or keep one repair
+  and report every local stage at once.
+
 ## 6. What must be done to make the four stacks agent-ready
 
 "Agent-ready" was shown for one idea per stack. The work left is to prove it on more idea shapes and
