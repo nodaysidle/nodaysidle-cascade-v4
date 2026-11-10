@@ -101,6 +101,20 @@ describe("Tauri: a read-only feature that derives values is a summary, not a fil
     expect(tasks).toContain("a filter area above the list")
     expect(tasks).not.toContain('"summary" host')
   })
+
+  it("does not treat a per-row read-only action as a summary, and mounts it in the per-row action area", async () => {
+    const packet = await compilePacket(load("round12-blueprints/tauri2-rust-typescript-desktop--link-shelf.json"), "tauri2-rust-typescript-desktop")
+    expect(packet.failures).toEqual([])
+    const tasks = packet.documents["TASKS.md"]
+    const list = section(tasks, "### TASK-04-BOOKMARK-LIST")
+    const open = section(tasks, "### TASK-06-OPEN-BOOKMARK")
+    expect(list).toContain('a per-row action area on every list row, built with slots.row("row-actions", record)')
+    expect(list).not.toContain('"summary" host')
+    expect(open).toContain("(the per-row action area)")
+    expect(open).toContain('slots.mountRow("row-actions", render)')
+    expect(open).not.toContain('"summary" host')
+    expect(open).not.toContain("Mount your control with slots.mount from src/main.ts")
+  })
 })
 
 // Budget Book: the provider wrote "Selecting a row shows that expense read-only with a Delete button", but with no

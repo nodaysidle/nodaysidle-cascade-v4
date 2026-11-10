@@ -1370,9 +1370,15 @@ function hasFilterFeature(features: readonly GraphFeature[], firstMainOwnerId: s
   return sharedScreenView(features, presetId, settingsKeys).some(feature => feature.ownerId !== firstMainOwnerId && feature.surface === "main" && feature.invokedBy === "user-control" && !(presetId === "tauri2-rust-typescript-desktop" && isCountdown(feature)) && feature.dataOperations.length > 0 && (feature.dataOperations.every(operation => operation === "read") || (presetId === "android-kotlin-compose" && feature.dataOperations.includes("read") && !feature.dataOperations.includes("create") && !feature.dataOperations.includes("delete"))) && ((presetId !== "linux-wayland-gtk4-desktop" && presetId !== "tauri2-rust-typescript-desktop") || feature.narrowsListBy !== "none"))
 }
 
+// Tauri: a per-row read-only action (invokedBy click, or whose behavior/trigger places its control on a row) mounts into the per-row action area, not the summary host.
+const isTauriRowAction = (feature: GraphFeature, firstMainOwnerId: string | undefined): boolean =>
+  feature.ownerId !== firstMainOwnerId && feature.surface === "main" && feature.invokedBy !== "launch" && !isCountdown(feature) && feature.narrowsListBy === "none"
+  && feature.userFileAccess === "none" && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read")
+  && (feature.invokedBy === "click" || /\b(each|every|[a-z]+)\s+row\b|\bon\s+a\s+[a-z-]*\s*row\b/i.test(`${feature.inputs} ${feature.behavior}`))
+
 // Tauri: a later main-surface feature that only reads and narrows nothing shows values derived from the list (totals, a count).
 const isTauriSummary = (feature: GraphFeature, firstMainOwnerId: string | undefined): boolean =>
-  feature.ownerId !== firstMainOwnerId && feature.surface === "main" && feature.invokedBy === "user-control" && !isCountdown(feature) && feature.narrowsListBy === "none"
+  feature.ownerId !== firstMainOwnerId && feature.surface === "main" && feature.invokedBy === "user-control" && !isCountdown(feature) && !isTauriRowAction(feature, firstMainOwnerId) && feature.narrowsListBy === "none"
   && feature.userFileAccess === "none" && feature.dataOperations.length > 0 && feature.dataOperations.every(operation => operation === "read")
 
 // A later user-started main feature that touches no list record on the shared screen (a command over all records such as
@@ -1385,11 +1391,11 @@ function hasActionsArea(view: readonly GraphFeature[], firstMainOwnerId: string 
 }
 const ACTIONS_PURPOSE = "for the one control of a later feature that works on the whole screen rather than one row: a command over all records (a Save to file button) or the control of one stored setting (a goal field)"
 
-// Tauri: the per-row action area exists only for a feature that acts on a row without the detail view's Edit button (a mark or toggle, a delete).
+// Tauri: the per-row action area exists only for a feature that acts on a row without the detail view's Edit button (a mark or toggle, a delete, a per-row read action).
 // Delete lives in the detail view when the packet has one (an edit feature builds it), else in the row area.
 // A countdown (a read-only feature with a tick) keeps its Start control and display in the row too.
-const needsRowArea = (features: readonly GraphFeature[]): boolean =>
-  features.some(feature => (feature.dataOperations.includes("delete") && !features.some(other => other.editsRecords)) || (feature.dataOperations.includes("update") && !feature.editsRecords) || isCountdown(feature))
+const needsRowArea = (features: readonly GraphFeature[], firstMainOwnerId?: string): boolean =>
+  features.some(feature => (feature.dataOperations.includes("delete") && !features.some(other => other.editsRecords)) || (feature.dataOperations.includes("update") && !feature.editsRecords) || isCountdown(feature) || isTauriRowAction(feature, firstMainOwnerId))
 
 // The slots the first main-surface task exposes are the ones the declared operations of the other features need.
 // rowOpensEditor (Tauri): a packet with an edit feature always builds the detail view and opens it from the row.
@@ -1425,6 +1431,7 @@ function slotFor(owned: readonly GraphFeature[], presetId: PresetId, detailView 
   if (!ops.size && presetId === "tauri2-rust-typescript-desktop") return "no named slot: your own controls, if any (start and stop), sit in the main content area"
   if (ops.has("create")) return "the add-entry control"
   if (presetId === "tauri2-rust-typescript-desktop" && owned.length > 0 && owned.every(isCountdown)) return "the per-row action area (its Start control and the row's countdown display)"
+  if (presetId === "tauri2-rust-typescript-desktop" && owned.length > 0 && owned.every(feature => isTauriRowAction(feature, undefined))) return "the per-row action area"
   if (owned.some(feature => feature.editsRecords)) return detailView ? (presetId === "tauri2-rust-typescript-desktop" ? 'the detail view\'s "detail-actions" slot (its Edit control)' : "the detail view (its Edit control)") : "the per-row action area"
   if (presetId === "tauri2-rust-typescript-desktop" && ops.has("delete") && !ops.has("update")) return detailView ? 'the detail view\'s "detail-actions" slot (the list rows have no delete control)' : "the per-row action area"
   if (ops.has("update") || ops.has("delete")) return detailView && ops.has("delete") ? "the per-row action area or the detail view, whichever your acceptance criteria describe" : "the per-row action area"
