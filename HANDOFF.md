@@ -82,7 +82,7 @@ and pastes each export folder path. The agent audits each one. 1 of 5 is done.
 | 2 | linux-hyprland-waybar-module | Memory Watch | `/home/arch/dev/nodaysidle/memory-watch` | **done: agent-ready** (2nd try after c1737ef; verify ok, kit fmt/clippy/test ok, memory source, audit 0 blocking / 9 polish: 0-decimal label example "12.0 stays 12.0", % unit vs format_in_unit, GB fixed unit missing on notification contract, "(bytes for a size)" boilerplate, tooltip rule in wrong task, TASK-06 return shape, kit refresh test hits real XDG data dir, ARD "reset behavior" + CON-RUNTIME-WIRING HTTP boilerplate) |
 | 3 | tauri2-rust-typescript-desktop | Contact Book | `/home/arch/dev/nodaysidle/contact-book` | **done: NOT agent-ready** (verify ok, kit 7/7 ok; audit 2 blocking, both confirmed by lead: (a) export button has no host: TASK-04 "Expose exactly these named slots ... no others" has no actions host, TASK-08 says "no named slot ... sit in the main content area" + slots.mount, and kit `host(name)` silently makes a detached div; (b) slots.run returns `unknown`, so the add/edit validation message has no stated path to TASK-04's form message slot. Confirmed compiler bug (polish): `cleanMeaning` genericIdentity (src/compiler.ts:381/399) rewrites fixture `ada@example.com` to "ada@the application identity". 8 more polish: tie-break asc vs desc id, search rule only under TASK-09, CSV line ending, time/TZ + cancellation/start-stop/delete boilerplate, get_contacts/existing_file unused, ACC-INTEGRATION-01 owned by packaging, contract_tests.rs content) |
 | 4 | astro-web | Trail Guide (one page per trail) | `/home/arch/dev/nodaysidle/trail-guide` | **done: NOT agent-ready** (verify ok, kit 6/6 ok; audit 2 blocking, both confirmed by lead: (a) closed value set has no field type: blueprint field `difficulty` is `valueType: text`, so kit content.config.ts emits `z.string()` and the frozen seed says `difficulty: Sample text`, while PRD says "limited to easy, moderate, and hard" and ACC-TRAIL-DETAIL-PAGE-02 needs one of them; schema gap, likely all presets; (b) Design System drift (known class): PRD/TRD "1.5 line-height", "--space-1 through --space-8", display face vs kit global.css `16px/1.65`, no spacing tokens, and TASK-01 freezes global.css. 6 polish: km decimals unstated, name sort comparator, sitemap needs SITE_URL never given, Application ID boilerplate on a static site, Signing vs Installation deploy contradiction, `/teas/` example route from another product + cancellation/credential boilerplate) |
-| 5 | android-kotlin-compose | Water Log | (Alan will paste) | 1st try failed at generate (capability.waybar-label: message only named thresholds/labelTemplate, likely `unit: glasses` survived the repair); fixed in the commit after 101993c, app reinstalled; retry |
+| 5 | android-kotlin-compose | Water Log | `/home/arch/dev/nodaysidle/water-log` | **done: NOT agent-ready** (2nd try after cf7c2aa; verify ok, gradle assembleDebug+testDebugUnitTest ok; no "Save is disabled" (aeb985f confirmed live); audit 2 blocking, both confirmed by lead: TASK-04 is given the list/add-entry/per-row/filter slot set for a count+setting screen with no list, and TASK-05 (daily goal) mounts into "the per-row action area" while PRD puts it "next to the today count". 7 polish: Worker/WorkManager boilerplate, goal key type/default only in PRD prose, "today" zone for the count comparison implicit, write-failure text unquoted, Save control unnamed, launch-check list/cleanup clauses for create-only records) |
 
 The five prompts (exact text) are the first idea per preset in `scripts/agent-ready/run-round.fish`
 (Recipe Box, Memory Watch, Contact Book, Trail Guide, Water Log).
@@ -95,6 +95,20 @@ The five prompts (exact text) are the first idea per preset in `scripts/agent-re
    `scripts/agent-ready/audit-brief.md` (fill preset, slug, the idea text verbatim). JSON answer:
    `{slug, blocking[], polish[], verdict}`.
 4. Tell Alan plainly: agent-ready or not, blocking items, top polish.
+
+**Round 10 result (all 5 audited): 1 agent-ready (Memory Watch) + Recipe Box clean; 3 not ready.** Systematic classes to fix
+once in the compiler, in this order:
+1. **Main-screen slot set is fixed to list CRUD** (Tauri Contact Book export button has no host; Android Water Log goal
+   setting has no host and the list/form slots are invented for a no-list screen). Give the screen-owner task a host for
+   list-wide actions / single-value settings, and drop list/form/row slots no feature uses. Check GTK too.
+2. **Closed value sets have no field type** (Astro difficulty easy|moderate|hard is `text` -> `z.string()`, seed
+   "Sample text"). Needs an enum valueType (schema + every kit/contract renderer), or at least seed/schema from it.
+3. **Validation message has no path from handler to the form shell** (Tauri `slots.run` returns unknown).
+4. **Design System tokens vs kit global.css** (Astro, known class): render the bullets from the emitted CSS.
+5. **Repair messages must name exactly what to change** (2 of 5 generations stopped: c1737ef, cf7c2aa). Audit the
+   other capability/semantic messages for the same mistake.
+6. `cleanMeaning` genericIdentity rewrites `ada@example.com` (src/compiler.ts:381).
+Polish to batch: Worker/cancellation/delete/time-zone boilerplate where unused (Tauri, Android, Astro), plus the GTK list below.
 
 **Watch in this round (provider-side fixes never tested live yet):** Android acceptance must not say
 "Save is disabled" (prompt note aeb985f); Waybar Memory Watch must use the `memory` system source
