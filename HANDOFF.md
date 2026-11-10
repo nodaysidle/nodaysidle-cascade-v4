@@ -152,10 +152,31 @@ Start state was green (`npm run check`, 467 tests). Alan said yes to the four li
 
 | Idea | Live result | Verify | Kit build | Audit |
 |---|---|---|---|---|
-| Disk Free (Waybar) | Gate Clean | pass | all commands 0 | see below |
-| Green Kitchen (Astro) | Gate Clean | pass | all commands 0 | see below |
-| Tip Split (Android) | Gate Clean | pass | all commands 0 | see below |
-| Budget Book (Tauri) | **`capability-rejected`, no packet** | - | - | - |
+| Disk Free (Waybar) | Gate Clean | pass | all commands 0 | **1 blocking**, 10 polish: not agent-ready |
+| Green Kitchen (Astro) | Gate Clean | pass | all commands 0 | 0 blocking, 5 polish: agent-ready |
+| Tip Split (Android) | Gate Clean | pass | all commands 0 | 0 blocking, 10 polish: agent-ready |
+| Budget Book (Tauri) | **`capability-rejected`, no packet** | - | - | not agent-ready |
+
+**Disk Free blocking defect (confirmed by the lead in PRD.md 53, 59, 88 and TASKS.md 98).** "With 3,670,016,000
+bytes free the label text is 3.7 GB and the class is normal", while the declared threshold is critical below
+10,000,000,000 and the kit applies it. `capability.waybar-class-example` did not fire: its pattern is
+`class (normal|warning|critical)` and the answer says "the class **is** normal" (src/waybarContracts.ts, the
+`stated` set in `waybarValueIssues`). The decimals held (3.7 GB). One of the three pattern checks therefore
+failed on its first live run because of one word: evidence for the prose-check decision (6.1).
+
+Polish worth fixing, by stack (all match section 6 unless marked new):
+- Android: storage text with no data object (SavedStateHandle, Room, OWN-DATA-STORE, relaunch check, "loaded
+  records", six recovery states); no field rules for entered values; build-tools 37.0.0; **new:** the no-data
+  task prompt says "press the buttons ... assert the field messages" when the product has neither; **new:** the
+  provider copied our note's "(for example 84.50 means 2)" into the behavior, so the note's example must read
+  as a shown value; **new:** no test asserts that nothing is written (CON-PERSISTENCE-DISABLED has no test owner).
+- Astro: **new:** the tag-page kit shell lists entries unsorted while the acceptance says alphabetical by name,
+  and with one seed entry no test can tell; final validation runs `npm test` before `npm run build`; both seed
+  lists hold the same items; a list item cannot contain a comma; the `/teas/` example route.
+- Waybar: no tooltip text or rule for total = 0; `{app-id}` unrendered; nothing says what
+  `lifecyclecoordinator.rs` holds; "two hooks" (three); click clauses with no click feature; the TASK-01 marker
+  reads a TASK-05 file; the launch check never imports the CSS; **new:** the launch check asks to trigger a
+  failure that a system source cannot produce; the feature function signature; kit `units.rs` comment.
 
 **Budget Book live failure (a repair cascade).** The first answer invented an "Edit expense" feature. The one
 repair (`semantic.feature-not-requested`) removed it. The repaired answer then failed
