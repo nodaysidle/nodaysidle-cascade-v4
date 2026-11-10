@@ -651,10 +651,13 @@ export const createStore = <S extends object>(initial: S) => {
  * Named mount points of the main screen. The task that builds the screen places each host with host(name);
  * a later task adds its control with mount(name, element) from main.ts and never edits the screen's file.
  */
+/** What a form submit handler returns: the validation message for the form's message slot, or null when nothing is shown there. */
+export type SubmitResult = string | null
+
 export const createSlots = () => {
   const hosts = new Map<string, HTMLElement>()
   const rowRenders = new Map<string, Array<(record: never) => HTMLElement>>()
-  const handlers = new Map<string, () => unknown>()
+  const handlers = new Map<string, () => SubmitResult | Promise<SubmitResult>>()
   const host = (name: string): HTMLElement => {
     let element = hosts.get(name)
     if (!element) {
@@ -678,8 +681,9 @@ export const createSlots = () => {
       return element
     },
     /** A later task registers the action a shared control runs (the form's confirm runs "add" or "edit"); run(name) calls it. */
-    handle: (name: string, action: () => unknown): void => { handlers.set(name, action) },
-    run: (name: string): unknown => handlers.get(name)?.(),
+    handle: (name: string, action: () => SubmitResult | Promise<SubmitResult>): void => { handlers.set(name, action) },
+    /** The handler's validation message for the form's message slot, or null (saved, or failed into the errors banner, or no handler). */
+    run: async (name: string): Promise<SubmitResult> => (await handlers.get(name)?.()) ?? null,
   }
 }
 `
@@ -709,7 +713,7 @@ describe("shared view state and slots", () => {
     expect(slots.host("filter")).toBe(slots.host("filter"))
   })
 
-  it("renders a registered row control once per row with that row's record, and runs a registered handler", () => {
+  it("renders a registered row control once per row with that row's record, and runs a registered handler", async () => {
     const slots = createSlots()
     slots.mountRow("row-actions", (record: { id: number }) => {
       const button = document.createElement("button")
@@ -719,10 +723,10 @@ describe("shared view state and slots", () => {
     expect(slots.row("row-actions", { id: 1 }).textContent).toBe("Row 1")
     expect(slots.row("row-actions", { id: 2 }).textContent).toBe("Row 2")
     expect(slots.row("row-actions", { id: 2 })).not.toBe(slots.row("row-actions", { id: 2 }))
-    const submit = vi.fn()
+    const submit = vi.fn(() => "Enter a name.")
     slots.handle("add", submit)
-    slots.run("add")
-    slots.run("edit")
+    await expect(slots.run("add")).resolves.toBe("Enter a name.")
+    await expect(slots.run("edit")).resolves.toBeNull()
     expect(submit).toHaveBeenCalledTimes(1)
   })
 })

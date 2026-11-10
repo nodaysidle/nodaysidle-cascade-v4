@@ -21,7 +21,7 @@ describe("Tauri round 7: stamped dates and boilerplate", () => {
     const edit = task(documents["TASKS.md"], "TASK-06-EDIT-EXPENSE")
     expect(edit).toContain("spent_on (stamped by the app at creation) read-only")
     expect(edit).toContain('absent while form is "add"')
-    expect(edit).toContain('the handler sets form to "closed"')
+    expect(edit).toContain('sets form to "closed" after a successful save, and returns null')
     expect(task(documents["TASKS.md"], "TASK-04-EXPENSE-LIST")).toContain("Complete the required fields.")
   })
 
