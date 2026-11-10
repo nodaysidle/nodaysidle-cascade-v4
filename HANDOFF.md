@@ -79,7 +79,7 @@ and pastes each export folder path. The agent audits each one. 1 of 5 is done.
 | # | Preset | Idea | Export path | Status |
 |---|--------|------|-------------|--------|
 | 1 | linux-wayland-gtk4-desktop | Recipe Box | `/home/arch/dev/nodaysidle/recipe-box` | **done: clean** (verify ok, kit fmt/clippy/test ok, audit 0 blocking / 10 polish) |
-| 2 | linux-hyprland-waybar-module | Memory Watch | (Alan will paste) | pending |
+| 2 | linux-hyprland-waybar-module | Memory Watch | (Alan will paste) | 1st try failed at generate: repair asked for cache.json wording that its own check rejects; fixed c1737ef, app reinstalled; retry with interval 5 |
 | 3 | tauri2-rust-typescript-desktop | Contact Book | (Alan will paste) | pending |
 | 4 | astro-web | Trail Guide (one page per trail) | (Alan will paste) | pending |
 | 5 | android-kotlin-compose | Water Log | (Alan will paste) | pending |
