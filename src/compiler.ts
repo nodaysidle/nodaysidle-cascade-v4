@@ -1285,16 +1285,43 @@ const opsOnAny = (feature: GraphFeature): readonly DataOperation[] => feature.da
 function ownsItsControls(feature: GraphFeature): boolean {
   return Object.values(feature.operationsByData).some(operations => operations.includes("create") && operations.includes("update"))
 }
-function sharedScreenView(features: readonly GraphFeature[], presetId: PresetId): readonly GraphFeature[] {
-  if (presetId !== "tauri2-rust-typescript-desktop") return features
+function sharedScreenView(features: readonly GraphFeature[], presetId: PresetId, settingsKeys: ReadonlySet<string> = new Set()): readonly GraphFeature[] {
+  const view = presetId === "tauri2-rust-typescript-desktop" ? tauriScreenView(features) : features
+  // A stored setting is one value on the main screen, not a list row: its operations size no row, form, or filter slot.
+  return view.map(feature => {
+    if (!Object.keys(feature.operationsByData).some(key => settingsKeys.has(key))) return feature
+    const operationsByData = Object.fromEntries(Object.entries(feature.operationsByData).filter(([key]) => !settingsKeys.has(key)))
+    return { ...feature, operationsByData, dataOperations: [...new Set(Object.values(operationsByData).flat())] }
+  })
+}
+function tauriScreenView(features: readonly GraphFeature[]): readonly GraphFeature[] {
   // A feature that saves a file, or is started by a shortcut or schedule, has no row, form, or filter control of the shared screen either.
   return features.map(feature => feature.userFileAccess === "saves" || feature.userFileAccess === "opens-and-saves" || feature.invokedBy === "shortcut" || feature.invokedBy === "schedule" || feature.resourceIds.includes("permission:global-input") ? { ...feature, dataOperations: [], operationsByData: {} } : ownsItsControls(feature) ? { ...feature, dataOperations: feature.dataOperations.filter(operation => operation === "read" || operation === "delete"), operationsByData: Object.fromEntries(Object.entries(feature.operationsByData).map(([key, operations]) => [key, operations.filter(operation => operation === "read" || operation === "delete")])) } : feature)
 }
 
-// Some later main-surface feature only reads: it narrows, sorts, or summarises the list from the area above it.
-function hasFilterFeature(features: readonly GraphFeature[], firstMainOwnerId: string | undefined, presetId: PresetId): boolean {
-  return sharedScreenView(features, presetId).some(feature => feature.ownerId !== firstMainOwnerId && feature.surface === "main" && feature.invokedBy === "user-control" && !(presetId === "tauri2-rust-typescript-desktop" && isCountdown(feature)) && feature.dataOperations.length > 0 && (feature.dataOperations.every(operation => operation === "read") || (presetId === "android-kotlin-compose" && feature.dataOperations.includes("read") && !feature.dataOperations.includes("create") && !feature.dataOperations.includes("delete"))) && (presetId !== "linux-wayland-gtk4-desktop" || feature.narrowsListBy !== "none"))
+const settingsKeysOf = (blueprint: Pick<NormalizedBlueprint, "domainData"> | undefined): ReadonlySet<string> =>
+  new Set((blueprint?.domainData ?? []).filter(item => item.storage === "settings").map(item => referenceKey(item.name)))
+
+// Android: a record whose every field the app sets (a tap log stamped "now") is created by a button, with no entry form.
+function createsWithoutInput(features: readonly GraphFeature[], domainData: NormalizedBlueprint["domainData"]): boolean {
+  const created = domainData.filter(item => item.storage === "records" && features.some(feature => opsOn(feature, item.name).includes("create")))
+  return created.length > 0 && created.every(item => item.fields.every(field => field.appStamped === true || clockInitial(field)))
 }
+
+// Some later main-surface feature only reads: it narrows, sorts, or summarises the list from the area above it.
+function hasFilterFeature(features: readonly GraphFeature[], firstMainOwnerId: string | undefined, presetId: PresetId, settingsKeys: ReadonlySet<string> = new Set()): boolean {
+  return sharedScreenView(features, presetId, settingsKeys).some(feature => feature.ownerId !== firstMainOwnerId && feature.surface === "main" && feature.invokedBy === "user-control" && !(presetId === "tauri2-rust-typescript-desktop" && isCountdown(feature)) && feature.dataOperations.length > 0 && (feature.dataOperations.every(operation => operation === "read") || (presetId === "android-kotlin-compose" && feature.dataOperations.includes("read") && !feature.dataOperations.includes("create") && !feature.dataOperations.includes("delete"))) && (presetId !== "linux-wayland-gtk4-desktop" || feature.narrowsListBy !== "none"))
+}
+
+// A later user-started main feature that touches no list record on the shared screen (a command over all records such as
+// a save to file, or the control of one stored setting) mounts its one control into the actions area. One predicate sizes
+// both the first task's slot list and the later task's mount target, so the two never disagree.
+// A global shortcut has no on-screen control, so it never takes this area.
+const usesActionsArea = (feature: GraphFeature): boolean => feature.surface === "main" && feature.invokedBy === "user-control" && feature.dataOperations.length === 0 && !feature.resourceIds.includes("permission:global-input")
+function hasActionsArea(view: readonly GraphFeature[], firstMainOwnerId: string | undefined): boolean {
+  return view.some(feature => feature.ownerId !== firstMainOwnerId && usesActionsArea(feature))
+}
+const ACTIONS_PURPOSE = "for the one control of a later feature that works on the whole screen rather than one row: a command over all records (a Save to file button) or the control of one stored setting (a goal field)"
 
 // Tauri: the per-row action area exists only for a feature that acts on a row without the detail view's Edit button (a mark or toggle, a delete).
 // Delete lives in the detail view when the packet has one (an edit feature builds it), else in the row area.
@@ -1304,33 +1331,35 @@ const needsRowArea = (features: readonly GraphFeature[]): boolean =>
 
 // The slots the first main-surface task exposes are the ones the declared operations of the other features need.
 // rowOpensEditor (Tauri): a packet with an edit feature always builds the detail view and opens it from the row.
-function mainSlotsSentence(features: readonly GraphFeature[], detailView = true, filterSlot = true, rowOpensEditor = false, android = false, directAdd = false): string {
+function mainSlotsSentence(features: readonly GraphFeature[], detailView = true, filterSlot = true, rowOpensEditor = false, android = false, directAdd = false, actions = false): string {
   const ops = new Set(features.flatMap(feature => feature.dataOperations))
   const changes = ops.has("update") || ops.has("delete")
-  if (rowOpensEditor) return tauriMainSlotsSentence({ create: ops.has("create"), directAdd, entryForm: !directAdd && ops.has("create") && features.some(feature => feature.editsRecords && feature.dataOperations.includes("update")), rowArea: needsRowArea(features), detail: changes && features.some(feature => feature.editsRecords), filter: filterSlot, countdown: features.some(isCountdown), delete: ops.has("delete") })
+  if (rowOpensEditor) return tauriMainSlotsSentence({ create: ops.has("create"), directAdd, entryForm: !directAdd && ops.has("create") && features.some(feature => feature.editsRecords && feature.dataOperations.includes("update")), rowArea: needsRowArea(features), detail: changes && features.some(feature => feature.editsRecords), filter: filterSlot, countdown: features.some(isCountdown), delete: ops.has("delete"), actions })
   const slots = [
     android ? "a status area (testTag \"status\") that carries only the main list's empty message (the exact text an acceptance signal quotes, else a short plain sentence; tag \"empty-state\"), the one quoted form-error text when the PRD or an acceptance signal quotes it (else each field shows its own supporting text and none goes here), and the write-failure message of a later task's " + [ops.has("create") || ops.has("update") ? "save" : "", ops.has("delete") ? "delete" : "", ops.has("update") ? "mark, or toggle" : ""].filter(Boolean).join(", ") + " (the text its acceptance quotes, else \"Could not save changes\" or \"Could not delete\"; tag \"write-error\"; the row stays as it was)" + (filterSlot ? "; a section a later feature mounts above the list renders its own empty text inside itself, never in this area, and its rows are compact name-only rows tagged \"summary-row-\" plus the record id, so no \"row-\" tag or message appears twice" : "") : "a status area shared by every message the main screen shows (empty state, no match, errors)",
     ...(ops.has("create") ? [directAdd ? "an add-entry control: a button that the add task connects to the create command (no stored field takes user input, so build no entry form shell)" : android && !detailView ? "the add-entry area on the main screen above the list: the Add button (testTag \"add-entry\") plus the inline form shell, which hosts whichever form (add or edit) is open, one at a time, so opening one closes the other (the add task builds the form fields, validation, and the open or closed state in its own file" + (features.some(feature => feature.editsRecords) ? "; an edit task reuses them)" : ")") : "an add-entry control that opens the entry form shell (the add task builds the form fields and validation; an edit task reuses them)"] : []),
     ...(ops.has("update") || ops.has("delete") ? [...(rowOpensEditor && !needsRowArea(features) ? [] : [android ? "a per-row action area on every row of the main list (rows a later feature shows in the area above the list get none)" : "a per-row action area on every list row"]), ...(detailView ? [`a detail view for the selected record that shows every stored field
 ${mainDetailControls(features)}, ${rowOpensEditor && features.some(feature => feature.editsRecords) ? "it is always built because the packet has an edit feature: every list row is selectable (activating the row selects the record, marks it aria-selected, and shows this detail view), which is how the user reaches the editor; a single mark or toggle action belongs in the per-row action area and never uses the Edit button" : "built only if an acceptance criterion of a later task opens a record to edit or delete it"}`] : [])] : []),
+    ...(actions ? [android ? `an actions area above the list (testTag "actions") ${ACTIONS_PURPOSE}` : `an actions area above the list ${ACTIONS_PURPOSE}`] : []),
     ...(filterSlot ? [android ? "one area above the list for the features that filter, sort, total, or summarise it, including a feature that also marks rows (each mounts its one control or section there; the shared view state holds the selected filter and the list applies it, and a total or summary is built from a display-free function its owner exports)" : "a filter area above the list for read-only features that narrow or reorder it"] : []),
   ]
   return `Expose exactly these named slots in the shared files, no others: ${slots.join("; ")}. Later feature tasks build their controls in their own files and mount them into these slots, editing only the shared registration files; build no control that no later task names.`
 }
 
 // Tauri: the names the first main task gives its slot hosts, in the order of mainSlotsSentence.
-function tauriSlotHosts(features: readonly GraphFeature[], detailView: boolean, filterSlot: boolean, entryForm = false): string[] {
+function tauriSlotHosts(features: readonly GraphFeature[], detailView: boolean, filterSlot: boolean, entryForm = false, actions = false): string[] {
   const ops = new Set(features.flatMap(feature => feature.dataOperations))
   const changes = ops.has("update") || ops.has("delete")
   // With an entry form shell the first task builds the Add button itself, so there is no "add" host for a later task.
-  return ["status", ...(ops.has("create") && !entryForm ? ["add"] : []), ...(entryForm ? ["form"] : []), ...(needsRowArea(features) ? ["row-actions"] : []), ...(changes && detailView ? ["detail", "detail-actions"] : []), ...(filterSlot ? ["filter"] : [])]
+  return ["status", ...(ops.has("create") && !entryForm ? ["add"] : []), ...(entryForm ? ["form"] : []), ...(needsRowArea(features) ? ["row-actions"] : []), ...(changes && detailView ? ["detail", "detail-actions"] : []), ...(actions ? ["actions"] : []), ...(filterSlot ? ["filter"] : [])]
 }
 
 // The slot a later feature task mounts into, from its declared operations.
 function slotFor(owned: readonly GraphFeature[], presetId: PresetId, detailView = true): string {
   const android = presetId === "android-kotlin-compose"
   const ops = new Set(owned.flatMap(feature => feature.dataOperations))
-  if (!ops.size && presetId === "tauri2-rust-typescript-desktop") return "no named slot: your own controls, if any (start and stop, an export button), sit in the main content area"
+  if (!ops.size && owned.some(usesActionsArea)) return android ? 'the actions area, testTag "actions"' : presetId === "tauri2-rust-typescript-desktop" ? 'the "actions" host' : "the actions area"
+  if (!ops.size && presetId === "tauri2-rust-typescript-desktop") return "no named slot: your own controls, if any (start and stop), sit in the main content area"
   if (ops.has("create")) return "the add-entry control"
   if (presetId === "tauri2-rust-typescript-desktop" && owned.length > 0 && owned.every(isCountdown)) return "the per-row action area (its Start control and the row's countdown display)"
   if (owned.some(feature => feature.editsRecords)) return detailView ? (presetId === "tauri2-rust-typescript-desktop" ? 'the detail view\'s "detail-actions" slot (its Edit control)' : "the detail view (its Edit control)") : "the per-row action area"
@@ -1853,6 +1882,9 @@ function buildPhases(
   const firstMainOwnerId = preset.capabilities.windows
     ? orderedDrafts.find(draft => draft.kind === "feature" && features.some(feature => feature.ownerId === draft.id && feature.surface === "main"))?.id
     : undefined
+  const settingsKeys = settingsKeysOf(blueprint)
+  const screenView = sharedScreenView(features, preset.id, settingsKeys)
+  const actionsArea = hasActionsArea(screenView, firstMainOwnerId)
   const coordinates = new Map(orderedDrafts.map((draft, index) => {
     const sequence = index + 2
     const suffix = draft.id.replace(/^OWN-/, "")
@@ -1888,7 +1920,7 @@ function buildPhases(
     const routeExtras = placement?.kind === "page" && placement.pageFile !== files.implementationFile ? [placement.pageFile] : []
     // Android exposes a detail view (and an edit that reuses the add form) only when a feature declares the item-page surface.
     // A filter slot is exposed only when a feature other than the first main-surface one narrows or reorders the list (reads only, user-started).
-    const filterSlot = hasFilterFeature(features, firstMainOwnerId, preset.id)
+    const filterSlot = hasFilterFeature(features, firstMainOwnerId, preset.id, settingsKeys)
     const detailView = preset.id === "android-kotlin-compose" || preset.id === "linux-wayland-gtk4-desktop" ? features.some(feature => feature.surface === "item-page") : preset.id === "tauri2-rust-typescript-desktop" ? features.some(feature => feature.editsRecords) : features.some(feature => feature.editsRecords || feature.dataOperations.includes("delete"))
     const androidExtras = preset.id === "android-kotlin-compose" && blueprint
       ? androidTaskExtras({
@@ -1953,9 +1985,9 @@ function buildPhases(
         `Implement owner ${draft.id} (${draft.name}) in ${files.implementationFile} and its real focused checks in ${files.focusedTestFile}. Cover direct features ${ownedFeatureIds.join(", ") || "none"} and owned contracts ${contractIds.join(", ")}. Depend only on ${draft.dependencyIds.join(", ") || "the locked foundation"}; implement every documented decision, failure, cancellation, cleanup, and recovery branch. Create only these files: ${filesToCreate.join(", ")}` +
         `. ${filesToModify.length ? `Modify only these files, which earlier tasks created: ${filesToModify.join(", ")}.` : "Modify no existing file."}` +
         `${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}` +
-        `${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(sharedScreenView(features, preset.id), detailView, filterSlot, preset.id === "tauri2-rust-typescript-desktop", preset.id === "android-kotlin-compose", preset.id === "tauri2-rust-typescript-desktop" && blueprint !== undefined && !tauriAddHasForm(features, blueprint.domainData.map(tauriData)))}` : ""}` +
+        `${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${mainSlotsSentence(screenView, detailView, filterSlot, preset.id === "tauri2-rust-typescript-desktop", preset.id === "android-kotlin-compose", blueprint !== undefined && ((preset.id === "tauri2-rust-typescript-desktop" && !tauriAddHasForm(features, blueprint.domainData.map(tauriData))) || (preset.id === "android-kotlin-compose" && createsWithoutInput(features, blueprint.domainData))), actionsArea)}` : ""}` +
         `\n${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.length > 0 && ownedFeatures.every(feature => feature.invokedBy === "schedule") ? " This feature runs by itself and adds no control to the main screen: it mounts into no slot." : ""}` +
-        `${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") && !ownedFeatures.every(feature => feature.invokedBy === "schedule") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(sharedScreenView(ownedFeatures, preset.id), preset.id, detailView)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${sharedScreenView(ownedFeatures, preset.id).some(feature => (preset.id === "tauri2-rust-typescript-desktop" ? feature.editsRecords : true) && opsOnAny(feature).includes("update")) && sharedScreenView(features, preset.id).some(feature => opsOnAny(feature).includes("create")) ? ` If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them${preset.id === "tauri2-rust-typescript-desktop" ? "" : "; a single mark or toggle action needs no form"}.` : ""}` : ""}` +
+        `${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") && !ownedFeatures.every(feature => feature.invokedBy === "schedule") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(sharedScreenView(ownedFeatures, preset.id, settingsKeys), preset.id, detailView)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${sharedScreenView(ownedFeatures, preset.id, settingsKeys).some(feature => (preset.id === "tauri2-rust-typescript-desktop" ? feature.editsRecords : true) && opsOnAny(feature).includes("update")) && screenView.some(feature => opsOnAny(feature).includes("create")) ? ` If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them${preset.id === "tauri2-rust-typescript-desktop" ? "" : "; a single mark or toggle action needs no form"}.` : ""}` : ""}` +
         `${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}` +
         `${draft.kind === "feature" && ownedFeature && placement?.kind === "page" && kitPaths.includes(placement.pageFile) ? ` Start from kit/${placement.pageFile}, a shell with the layout and one h1${(astroPlan?.collections ?? []).filter(item => item.dataName && ownedFeature.resourceIds.includes(`data:${dataKey(item.dataName)}`)).map(item => placement.pageFile.includes("[slug]") ? `; it reads ${item.dataName} only through list${pascal(item.dataName)}Entries() from src/lib/contentcatalog.ts and renders the declared fields (a long-text field in one element)` : `; it reads no data yet, so add the read of ${item.dataName} through list${pascal(item.dataName)}Entries() from src/lib/contentcatalog.ts and render the declared fields (a long-text field in one element)${astroPlan?.detailCollections.includes(item.name) ? "; when it lists entries, it renders one li containing one a per entry, href the detail route plus the entry id and a trailing slash" : `; ${item.name} has no detail route, so it renders the declared fields of every entry in ascending id order, one li per entry or one element for a single entry, with no a and no href; its focused test asserts that the built HTML contains each field value read from the content files, whatever the values are, and hardcodes no wording the content owner supplies`}`).join("")}.` : ""}` +
         `${draft.kind === "feature" && preset.id === "astro-web" && placement?.kind === "component" && placement.registrationFile === "src/pages/index.astro" ? " The component renders its part of the page only; src/pages/index.astro keeps the one h1." : ""}` +
@@ -2022,13 +2054,15 @@ function refineTauriPhases(phases: readonly GraphPhase[], owners: readonly Graph
   const allTasks = phases.flatMap(phase => phase.tasks)
   const firstMain = allTasks.find(task => task.prompt.includes("You are the first main-surface task"))
   const operations = features.flatMap(feature => Object.values(feature.operationsByData).flat())
-  const shared = sharedScreenView(features, "tauri2-rust-typescript-desktop").flatMap(feature => Object.values(feature.operationsByData).flat())
+  const settingsKeys = settingsKeysOf(blueprint)
+  const screenView = sharedScreenView(features, "tauri2-rust-typescript-desktop", settingsKeys)
+  const shared = screenView.flatMap(feature => Object.values(feature.operationsByData).flat())
   const addHasForm = tauriAddHasForm(features, data)
   const firstMainOwner = firstMain?.ownerIds[0]
   const detailView = features.some(feature => feature.editsRecords)
-  const filters = hasFilterFeature(features, firstMainOwner, "tauri2-rust-typescript-desktop")
-  const entryForm = addHasForm && shared.includes("create") && sharedScreenView(features, "tauri2-rust-typescript-desktop").some(feature => feature.editsRecords && Object.values(feature.operationsByData).some(operations => operations.includes("update")))
-  const slotHosts = tauriSlotHosts(sharedScreenView(features, "tauri2-rust-typescript-desktop"), detailView, filters, entryForm)
+  const filters = hasFilterFeature(features, firstMainOwner, "tauri2-rust-typescript-desktop", settingsKeys)
+  const entryForm = addHasForm && shared.includes("create") && screenView.some(feature => feature.editsRecords && Object.values(feature.operationsByData).some(operations => operations.includes("update")))
+  const slotHosts = tauriSlotHosts(screenView, detailView, filters, entryForm, hasActionsArea(screenView, firstMainOwner))
   return phases.map(phase => ({
     ...phase,
     tasks: phase.tasks.map(task => {

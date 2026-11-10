@@ -1,0 +1,405 @@
+{
+ "productName": "Contact Book",
+ "summary": "Contact Book keeps a device-local list of contacts, each with a name, a phone number, and an email address. The user adds and edits contacts, searches the list by name, and saves all contacts to a CSV file at a location the user chooses. Contacts persist on the device and are restored when the app starts again.",
+ "targetUsers": [
+  "Individuals keeping a personal list of contacts on their own device",
+  "People who need a simple searchable address book with CSV export"
+ ],
+ "goals": [
+  "Keep contacts with a name, a phone number, and an email address",
+  "Let the user add and edit contacts",
+  "Let the user search contacts by name",
+  "Let the user save all contacts to a CSV file they choose",
+  "Store contacts on the device and restore them after restart"
+ ],
+ "nonGoals": [
+  "Deleting contacts",
+  "Syncing contacts with a remote service or account",
+  "Importing contacts from external files"
+ ],
+ "features": [
+  {
+   "name": "Contact list",
+   "userOutcome": "The user sees all saved contacts and can open one to view it.",
+   "trigger": "The app opens, or the user returns to the contact list.",
+   "behavior": "Shows every stored contact as a row with the contact's name, phone number, and email address, ordered alphabetically by name (A to Z, case-insensitive). Selecting a row shows that contact read-only with an Edit button. When no contacts exist, the list shows the text \"No contacts yet\". The list loads all stored contacts when the app starts; if that load fails, the list shows one error message \"Could not load contacts\" and shows no rows.",
+   "failureOutcome": "The stored contacts cannot be read at startup; the list shows \"Could not load contacts\" and no rows.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "With two stored contacts, the list shows both rows ordered alphabetically by name.",
+    "With no stored contacts, the list shows \"No contacts yet\".",
+    "Selecting a row shows that contact's name, phone number, and email address read-only with an Edit button.",
+    "When the store read fails, the list shows \"Could not load contacts\" and no rows."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Contacts"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Contacts",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "launch",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Add contact",
+   "userOutcome": "A new contact with a name, a phone number, and an email address is saved to the device.",
+   "trigger": "The user chooses Add contact from the contact list.",
+   "behavior": "Opens a form with three inputs: Name (text, required), Phone number (text, required), and Email address (text, required). The form checks that all three fields are non-empty and that the email address contains an @ character; if a check fails, the form shows the message \"Enter a name, phone number, and valid email address\" and does not save. On save, the contact is written to the device store and appears in the contact list in alphabetical position by name. If the write fails, the form stays open with the entered values and shows \"Could not save contact\".",
+   "failureOutcome": "The contact cannot be written to the device store; the form stays open with the entered values and shows \"Could not save contact\".",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Saving a contact with name \"Ada Lovelace\", phone \"555-0100\", and email \"ada@example.com\" writes a record that reads back from the store with those three values.",
+    "Submitting the form with an empty name, an empty phone number, or an email without @ shows \"Enter a name, phone number, and valid email address\" and writes no record.",
+    "After a successful save, the new contact appears in the contact list in alphabetical position by name.",
+    "When the store write fails, the form stays open with the entered values and shows \"Could not save contact\"."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Contacts"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Contact list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Contacts",
+     "operations": [
+      "create"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Edit contact",
+   "userOutcome": "An existing contact's name, phone number, or email address is changed and saved.",
+   "trigger": "The user chooses Edit on a contact's read-only view.",
+   "behavior": "Opens the same form as adding, pre-filled with the contact's current name, phone number, and email address. The form checks that all three fields are non-empty and that the email address contains an @ character; if a check fails, the form shows \"Enter a name, phone number, and valid email address\" and does not save. On save, the changed values are written to the device store and the contact list shows the updated values in alphabetical position by name. If the write fails, the form stays open with the entered values and shows \"Could not save contact\".",
+   "failureOutcome": "The changed values cannot be written to the device store; the form stays open with the entered values and shows \"Could not save contact\".",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Opening Edit on a stored contact shows the form pre-filled with that contact's name, phone number, and email address.",
+    "Saving a changed phone number writes the new value, and reading the record back from the store shows the new phone number.",
+    "Submitting an edit with an email without @ shows \"Enter a name, phone number, and valid email address\" and leaves the stored values unchanged.",
+    "When the store write fails, the form stays open with the entered values and shows \"Could not save contact\"."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Contacts"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Contact list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Contacts",
+     "operations": [
+      "edit"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Search contacts by name",
+   "userOutcome": "The user narrows the contact list to contacts whose name contains the typed text.",
+   "trigger": "The user types in the search field above the contact list.",
+   "behavior": "Filters the contact list to contacts whose name contains the typed text, case-insensitive. The search field starts empty, and the full list is shown. Clearing the search field returns the list to showing all contacts. When no contact matches, the list shows \"No matching contacts\". The filtered list keeps the alphabetical order by name.",
+   "failureOutcome": "No contact matches the typed text; the list shows \"No matching contacts\" and the stored contacts are unchanged.",
+   "failureRecovery": "fallback",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Typing \"ada\" shows only contacts whose name contains \"ada\", case-insensitive.",
+    "Typing text that matches no contact shows \"No matching contacts\".",
+    "Clearing the search field shows all contacts again in alphabetical order by name."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Contacts"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Contact list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Contacts",
+     "operations": [
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "text",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Save contacts to CSV",
+   "userOutcome": "All contacts are written to a CSV file at a location the user chooses.",
+   "trigger": "The user chooses Save all to CSV from the contact list.",
+   "behavior": "Opens a Save panel where the user chooses the file location and name, defaulting to contacts.csv. Writes a CSV file with a header row \"Name,Phone,Email\" followed by one row per contact in alphabetical order by name, with each value quoted and any double quote inside a value doubled. If the user cancels the Save panel, no file is written and the list is unchanged. If the write fails, the app shows \"Could not save CSV file\" and leaves any existing file at that location unchanged.",
+   "failureOutcome": "The CSV file cannot be written; the app shows \"Could not save CSV file\" and any existing file at the chosen location is unchanged.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Saving with two stored contacts writes a file whose first line is Name,Phone,Email and whose following lines are the two contacts in alphabetical order by name.",
+    "A contact whose name contains a double quote is written with that quote doubled inside the quoted value.",
+    "Cancelling the Save panel writes no file.",
+    "When the write fails, the app shows \"Could not save CSV file\" and an existing file at the chosen location keeps its previous content."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Contacts",
+    "Contacts CSV export"
+   ],
+   "usesServices": [],
+   "userFileAccess": "saves",
+   "choiceLists": [],
+   "buildsOn": [
+    "Contact list"
+   ],
+   "dataOperations": [
+    {
+     "data": "Contacts",
+     "operations": [
+      "read"
+     ]
+    },
+    {
+     "data": "Contacts CSV export",
+     "operations": [
+      "create"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Contacts",
+   "purpose": "The device-local list of contacts, each with a name, a phone number, and an email address.",
+   "sensitivity": "personal",
+   "retentionIntent": "Kept on the device and restored when the app starts again.",
+   "storage": "records",
+   "writeMode": "direct",
+   "fields": [
+    {
+     "name": "name",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "phone",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "email",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  },
+  {
+   "name": "Contacts CSV export",
+   "purpose": "The CSV file the user chooses to save all contacts to.",
+   "sensitivity": "personal",
+   "retentionIntent": "Written to the location the user chooses in the Save panel and kept there until the user changes it.",
+   "storage": "document",
+   "writeMode": "atomic-replace",
+   "fields": [
+    {
+     "name": "name",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "phone",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    },
+    {
+     "name": "email",
+     "valueType": "text",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": null,
+     "appStamped": null
+    }
+   ],
+   "singleRecord": true,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [
+  "local-storage"
+ ],
+ "qualityRequirements": [
+  "The contact list is ordered alphabetically by name, case-insensitive.",
+  "The CSV export writes a header row \"Name,Phone,Email\" and quotes every value, doubling any double quote inside a value."
+ ],
+ "productConstraints": [
+  "Contacts are stored only on the device; no remote service is called.",
+  "A contact requires a non-empty name, phone number, and email address containing an @ character."
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [
+    "Contact list",
+    "Add contact"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Add contact",
+    "Edit contact",
+    "Search contacts by name",
+    "Save contacts to CSV"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 3,
+   "features": [
+    "Contact list"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}

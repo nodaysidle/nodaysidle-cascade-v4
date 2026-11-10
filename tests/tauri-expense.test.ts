@@ -92,7 +92,8 @@ describe("Tauri timer app: no slots for controls nobody builds", () => {
     expect(shortcut).not.toContain("build the edit form in your own file")
     expect(task(tasks, "TASK-07-TODAY-TOTALS")).toContain("(the filter area or the list region)")
     expect(task(tasks, "TASK-08-ENTRY-EDITING")).toContain("build the edit form in your own file")
-    expect(task(tasks, "TASK-09-WEEK-EXPORT")).toContain("(no named slot")
+    // Round 10: a whole-list export mounts into the actions host the first main task exposes.
+    expect(task(tasks, "TASK-09-WEEK-EXPORT")).toContain('(the "actions" host')
   })
 
   it("states the local-time export rule once, in the document command", async () => {

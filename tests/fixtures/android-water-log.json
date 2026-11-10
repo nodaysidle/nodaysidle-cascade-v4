@@ -1,0 +1,199 @@
+{
+ "productName": "Water Log",
+ "summary": "Water Log helps a person drink enough water by logging each glass with one tap, setting a daily goal in glasses, and seeing how many glasses are logged today. Logs are kept on the device and restored after restart.",
+ "targetUsers": [
+  "People who want to track and increase their daily water intake"
+ ],
+ "goals": [
+  "Log a glass of water with one tap",
+  "Set a daily goal in glasses",
+  "See how many glasses are logged today",
+  "Keep logs on the device and restore them after restart"
+ ],
+ "nonGoals": [],
+ "features": [
+  {
+   "name": "Log a glass of water",
+   "userOutcome": "The user records one glass of water with a single tap and the today count increases by one.",
+   "trigger": "The user taps the 'Log a glass' button on the main screen.",
+   "behavior": "The main screen shows a 'Log a glass' button. Each tap creates one water log record with the moment it was logged stamped by the app. The screen shows the number of glasses logged today, computed from the stored logs whose logged-at moment falls on the current calendar day, and refreshes that count immediately after each tap. Logs are stored on the device and reloaded when the app starts again.",
+   "failureOutcome": "If the log cannot be written to device storage, the record is not added, the today count stays unchanged, and the user sees a message that the glass was not logged.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "Tapping 'Log a glass' once creates exactly one water log record and the displayed today count increases by exactly 1.",
+    "After logging 3 glasses today, the main screen shows a today count of 3.",
+    "After logging glasses and restarting the app, the today count equals the number of glasses logged today before the restart.",
+    "A log created by tapping 'Log a glass' has its logged-at moment stamped by the app without any user input."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Water logs"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [],
+   "dataOperations": [
+    {
+     "data": "Water logs",
+     "operations": [
+      "create",
+      "read"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "click",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": true,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  },
+  {
+   "name": "Set daily goal",
+   "userOutcome": "The user sets how many glasses they aim to drink per day and the goal is kept on the device.",
+   "trigger": "The user changes the 'Daily goal (glasses)' value on the main screen.",
+   "behavior": "The main screen shows a 'Daily goal (glasses)' whole-number field with a minimum of 1 and a maximum of 100, starting at 8. When the user saves a value, it is stored as the daily goal and restored when the app starts again. The main screen shows the daily goal next to the today count.",
+   "failureOutcome": "If the entered goal is empty, below 1, or above 100, nothing is stored and the user sees the field problem on the 'Daily goal (glasses)' field.",
+   "failureRecovery": "retry",
+   "surface": "main",
+   "acceptanceSignals": [
+    "The 'Daily goal (glasses)' field starts at 8 on first launch.",
+    "Saving a goal of 10 stores 10 and the main screen shows a daily goal of 10.",
+    "After saving a goal and restarting the app, the daily goal shows the saved value.",
+    "Entering 0 in 'Daily goal (glasses)' stores nothing and the field shows a problem."
+   ],
+   "usesPlatformNeeds": [
+    "local-storage"
+   ],
+   "usesTray": false,
+   "clipboardAccess": "none",
+   "clipboardWatch": false,
+   "usesData": [
+    "Daily goal"
+   ],
+   "usesServices": [],
+   "userFileAccess": "none",
+   "choiceLists": [],
+   "buildsOn": [
+    "Log a glass of water"
+   ],
+   "dataOperations": [
+    {
+     "data": "Daily goal",
+     "operations": [
+      "read",
+      "update"
+     ]
+    }
+   ],
+   "narrowsListBy": "none",
+   "invokedBy": "user-control",
+   "runsEverySeconds": null,
+   "runsDailyAt": null,
+   "systemSource": "none",
+   "thresholds": [],
+   "labelTemplate": "",
+   "unit": "",
+   "valueDecimals": null,
+   "showsCurrentTime": false,
+   "readsCurrentDay": false,
+   "refreshesEverySeconds": null,
+   "runsAtField": null,
+   "scheduledNotification": null
+  }
+ ],
+ "dataObjects": [
+  {
+   "name": "Water logs",
+   "purpose": "One record per glass of water logged, with the moment it was logged.",
+   "sensitivity": "personal",
+   "retentionIntent": "Kept on the device so the today count survives restarts.",
+   "storage": "records",
+   "writeMode": "direct",
+   "fields": [
+    {
+     "name": "logged at",
+     "valueType": "date-time",
+     "optional": false,
+     "min": null,
+     "max": null,
+     "initial": "now",
+     "appStamped": true
+    }
+   ],
+   "singleRecord": false,
+   "entryCount": null
+  },
+  {
+   "name": "Daily goal",
+   "purpose": "The number of glasses the user aims to drink per day.",
+   "sensitivity": "internal",
+   "retentionIntent": "Kept on the device so the goal survives restarts.",
+   "storage": "settings",
+   "writeMode": "direct",
+   "fields": [
+    {
+     "name": "glasses per day",
+     "valueType": "whole-number",
+     "optional": false,
+     "min": 1,
+     "max": 100,
+     "initial": "8",
+     "appStamped": null
+    }
+   ],
+   "singleRecord": true,
+   "entryCount": null
+  }
+ ],
+ "externalServices": [],
+ "platformNeeds": [
+  "local-storage"
+ ],
+ "qualityRequirements": [
+  "The today count updates on screen immediately after each tap of 'Log a glass'.",
+  "The daily goal and all water logs are restored after the app restarts."
+ ],
+ "productConstraints": [
+  "The daily goal is a whole number of glasses from 1 to 100.",
+  "The today count includes only logs whose logged-at moment falls on the current calendar day."
+ ],
+ "ideaCoverage": [
+  {
+   "sentence": 1,
+   "features": [],
+   "outsideFeatures": "product"
+  },
+  {
+   "sentence": 2,
+   "features": [
+    "Log a glass of water",
+    "Set daily goal"
+   ],
+   "outsideFeatures": "none"
+  },
+  {
+   "sentence": 3,
+   "features": [
+    "Log a glass of water",
+    "Set daily goal"
+   ],
+   "outsideFeatures": "none"
+  }
+ ]
+}
