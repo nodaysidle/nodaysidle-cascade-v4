@@ -6,7 +6,7 @@ import { androidKitNeeds } from "./androidKit"
 import { ANDROID_DELETE_PROMPT, androidChoiceMatchesPicker, androidFormRules } from "./androidForms"
 import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
-import { clockInitial, featureDataUses, fieldChoiceList, featureReferenceIssues, nameKey, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
+import { appSetInitial, clockInitial, featureDataUses, fieldChoiceList, offeredOnCreate, featureReferenceIssues, nameKey, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { gtkStoreInterface, refineGtkContracts, refineGtkPhases } from "./gtkContracts"
 import { kitProjectPaths, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarRoles, waybarTaskNotes } from "./kits"
 import { waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarResponseDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarSourceDetail } from "./waybarContracts"
@@ -27,8 +27,10 @@ export interface DataField {
   readonly optional: boolean
   readonly min?: number | null
   readonly max?: number | null
-  // The value the app sets itself when it creates a record (a status such as Not started); null for a field the user types.
+  // The value the field starts at when a record is created (a status such as Not started); null for a field the user types.
   readonly initial?: string | null
+  // True when a feature that creates the record offers the field as input, so it starts at initial instead of being app-set.
+  readonly offered?: boolean
   // True when an action of the app (not the user's typing) writes the field (a last-watered day).
   readonly appStamped?: boolean
 }
@@ -642,7 +644,7 @@ export function normalizeBlueprint(input: SemanticBlueprint, presetId: PresetId,
       retentionIntent,
       storage: item.storage,
       writeMode: item.writeMode,
-      fields: requireUniqueNames(item.fields.map((field, fieldIndex) => ({ name: cleanMeaning(field.name) || normalizationIssue(`dataObjects[${index}].fields[${fieldIndex}].name`), valueType: field.valueType, optional: field.optional, min: field.min ?? null, max: field.max ?? null, initial: field.initial ?? null, appStamped: field.appStamped ?? false })), `dataObjects[${index}].fields`),
+      fields: requireUniqueNames(item.fields.map((field, fieldIndex) => ({ name: cleanMeaning(field.name) || normalizationIssue(`dataObjects[${index}].fields[${fieldIndex}].name`), valueType: field.valueType, optional: field.optional, min: field.min ?? null, max: field.max ?? null, initial: field.initial ?? null, appStamped: field.appStamped ?? false, ...(offeredOnCreate(source.features, item.name, field) ? { offered: true } : {}) })), `dataObjects[${index}].fields`),
       singleRecord: item.singleRecord,
       entryCount: item.entryCount ?? null,
     }
@@ -1049,7 +1051,7 @@ function androidEditsPicker(feature: SemanticBlueprint["features"][number], opti
 
 // A declared bound is part of the field's type everywhere it is stated.
 function rangeNote(field: DataField): string {
-  const initial = clockInitial(field) ? ", set at creation from the clock (never typed by the user)" : field.initial != null && field.initial !== "" ? `, set to "${field.initial}" by the app when the record is created (never typed by the user)` : ""
+  const initial = clockInitial(field) ? ", set at creation from the clock (never typed by the user)" : appSetInitial(field) ? `, set to "${field.initial}" by the app when the record is created (never typed by the user)` : field.offered && field.initial ? `, starting at "${field.initial}" on the add form` : ""
   if (field.min != null && field.max != null) return `, from ${field.min} to ${field.max}${initial}`
   if (field.min != null) return `, at least ${field.min}${initial}`
   if (field.max != null) return `, at most ${field.max}${initial}`

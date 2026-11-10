@@ -1,4 +1,4 @@
-import { clockInitial } from "./schema"
+import { appSetInitial, clockInitial } from "./schema"
 
 // Android-only: the form, validation, and display rules of records the user enters, derived from the
 // declared field types and optionality alone (never from feature prose). One source for the interface
@@ -12,6 +12,7 @@ export interface AndroidFormField {
   readonly max?: number | null
   readonly initial?: string | null
   readonly appStamped?: boolean | null
+  readonly offered?: boolean
 }
 
 export interface AndroidChoiceList { readonly name: string; readonly options: readonly string[]; readonly initial: string }
@@ -45,9 +46,9 @@ function boundRule(field: AndroidFormField, label: string): string {
 }
 
 export const ANDROID_DISPLAY_FORMATS = "a date as yyyy-MM-dd, a date and time as yyyy-MM-dd HH:mm in the clock's zone, a time of day as HH:mm (24-hour, zero-padded)"
-// A field the app stamps, or sets itself to a declared initial value, is never a form input.
+// A field the app stamps, or sets itself to a declared initial value that no create feature offers, is never a form input.
 const clockOf = (field: AndroidFormField): boolean => clockInitial(field) !== null
-const isEntered = (field: AndroidFormField): boolean => ENTERED_TYPES.includes(field.valueType) && !field.appStamped && (field.initial == null || field.initial === "")
+const isEntered = (field: AndroidFormField): boolean => ENTERED_TYPES.includes(field.valueType) && !field.appStamped && clockInitial(field) === null && !appSetInitial(field)
 const ENTERED_TYPES = ["text", "long-text", "number", "whole-number", "date", "date-time", "time"]
 
 function fieldRule(field: AndroidFormField, choices: readonly AndroidChoiceList[]): string | null {
