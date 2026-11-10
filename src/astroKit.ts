@@ -1,7 +1,7 @@
 import { pascal, type DataField, type NormalizedBlueprint } from "./compiler"
 import type { ProjectIdentity } from "./presets"
 import type { DataValueType } from "./schema"
-import { ASTRO_BUDGET_TEXT, ASTRO_PERFORMANCE_BUDGET, astroCollections, astroDateNotes, fieldKey, astroNavLinks, placeAstroFeatures, seedFileNames, type AstroCollection } from "./astroWeb"
+import { ASTRO_BUDGET_TEXT, ASTRO_PERFORMANCE_BUDGET, astroCollections, astroDateNotes, fieldKey, astroNavLinks, astroTagPages, ASTRO_TAG_EMPTY, placeAstroFeatures, seedFileNames, type AstroCollection } from "./astroWeb"
 
 // Tests read frontmatter by splitting at the first colon, so a plain-word option is written bare; anything YAML would read
 // as another type (true, null, 3) or that holds punctuation stays quoted (round 11 re-audit, Board Game Club).
@@ -39,7 +39,7 @@ const SEED_FOR: Record<DataValueType, string> = {
   date: "2026-01-01",
   "date-time": "2026-01-01",
   time: "\"09:00\"",
-  "text-list": "[Sample item]",
+  "text-list": "[Sample item one, Sample item two]",
   reference: "sample-reference",
 }
 
@@ -102,7 +102,7 @@ const SHOWN_AS: Record<string, (key: string) => string> = {
   flag: key => `{entry.data.${key} ? "Yes" : "No"}`,
   date: key => `{entry.data.${key}.toISOString().slice(0, 10)}`,
   "date-time": key => `{entry.data.${key}.toISOString()}`,
-  "text-list": key => `{entry.data.${key}.join(", ")}`,
+  "text-list": key => `<ol>{entry.data.${key}.map(item => <li>{item}</li>)}</ol>`,
 }
 
 // The detail page shows every declared field. It reads the entries through the catalog function the data contract names;
@@ -149,6 +149,32 @@ import BaseLayout from "${"../".repeat(depth)}layouts/BaseLayout.astro"
 ---
 <BaseLayout title="${title}">
   <h1>${heading}</h1>
+</BaseLayout>
+`
+}
+
+// One page per option of the collection's choice field; getStaticPaths cannot read a frontmatter constant, so the options are inline.
+function tagPage(tag: ReturnType<typeof astroTagPages>[number], project: string, linked: boolean): string {
+  const title = pageKeys(tag.item.fields).title
+  const list = `list${pascal(tag.item.dataName)}Entries`
+  const depth = "../".repeat(tag.pageFile.split("/").length - 2)
+  return `---
+import BaseLayout from "${depth}layouts/BaseLayout.astro"
+import { ${list} } from "${depth}lib/contentcatalog"
+
+export async function getStaticPaths() {
+  const entries = await ${list}()
+  return ${JSON.stringify(tag.options).replaceAll('","', '", "')}.map(tag => ({ params: { tag }, props: { entries: entries.filter(entry => entry.data.${fieldKey(tag.field)} === tag) } }))
+}
+
+const { tag } = Astro.params
+const { entries } = Astro.props
+---
+<BaseLayout title={\`\${tag} — ${project}\`}>
+  <h1>{tag}</h1>
+  {entries.length === 0
+    ? <p>${ASTRO_TAG_EMPTY}</p>
+    : <ul>{entries.map(entry => <li>${linked ? `<a href={\`/${tag.item.name}/\${entry.id}/\`}>{entry.data.${title}}</a>` : `{entry.data.${title}}`}</li>)}</ul>}
 </BaseLayout>
 `
 }
@@ -240,7 +266,8 @@ export function astroKit(identity: ProjectIdentity, blueprint: NormalizedBluepri
   const collections = astroCollections(blueprint)
   const features = blueprint.features.map(feature => ({ ...feature, id: feature.name }))
   const placements = placeAstroFeatures(features, collections)
-  const nav = astroNavLinks(features, placements)
+  const tags = astroTagPages(features, collections, placements)
+  const nav = [...astroNavLinks(features, placements), ...tags.flatMap(tag => tag.options.map(option => ({ href: `${tag.route}/${option}/`, label: label(option), file: tag.pageFile })))]
   const project = esc(blueprint.projectName)
   const siteFeatures = Array.isArray(options.features) ? options.features : ["sitemap"]
   const sitemap = siteFeatures.includes("sitemap")
@@ -257,6 +284,7 @@ export function astroKit(identity: ProjectIdentity, blueprint: NormalizedBluepri
     const item = collections.find(candidate => placement?.kind === "page" && placement.pageFile === `src/pages/${candidate.name}/[slug].astro`)
     return feature.surface === "item-page" && item ? [file(`src/pages/${item.name}/[slug].astro`, detailPage(item))] : []
   })
+  const tagPages = tags.map(tag => file(tag.pageFile, tagPage(tag, project, detailPages.some(page => page.path === `src/pages/${tag.item.name}/[slug].astro`))))
   const catalog = collections.some(item => item.dataName) ? [file(CATALOG_PATH, contentCatalog(collections))] : []
   const content = collections.length ? [
     file("src/content.config.ts", contentConfig(collections)),
@@ -273,7 +301,7 @@ Sample content${mark}. Keep it when the idea supplies no entries; the site owner
   ] : []
   // Only pages copied before TASK-01 may be required here; a shell or detail page belongs to the task that owns it.
   const pageFiles = ["src/pages/index.astro", "src/pages/404.astro"]
-  const ownedFiles = [...shells, ...detailPages, ...catalog].map(item => item.path)
+  const ownedFiles = [...shells, ...detailPages, ...tagPages, ...catalog].map(item => item.path)
 
   const files: AstroKitFile[] = [
     file("package.json", JSON.stringify({
@@ -394,6 +422,7 @@ import BaseLayout from "../layouts/BaseLayout.astro"
 </BaseLayout>
 `),
     ...shells,
+    ...tagPages,
     ...content,
     ...catalog,
     ...detailPages,

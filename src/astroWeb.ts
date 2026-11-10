@@ -175,6 +175,20 @@ export function astroNavLinks(features: readonly PlaceableFeature[], placements:
   })
 }
 
+export const ASTRO_TAG_EMPTY = "No entries yet."
+
+// A tag page groups one collection by its one field that has a declared choice list: one page per option, whether or
+// not an entry has that value. With no such field (or several) the page set is not known here and nothing is planned.
+export function astroTagPages(features: readonly PlaceableFeature[], collections: readonly AstroCollection[], placements: Readonly<Record<string, AstroFeaturePlacement>>): { feature: PlaceableFeature; item: AstroCollection; field: string; options: readonly string[]; pageFile: string; route: string }[] {
+  return features.flatMap(feature => {
+    const placement = placements[feature.id]
+    const item = collectionOf(feature, collections)
+    const fields = item ? item.fields.filter(field => item.choices?.has(field.name)) : []
+    if (feature.surface !== "tag-page" || placement?.kind !== "page" || !item?.dataName || fields.length !== 1) return []
+    return [{ feature, item, field: fields[0]!.name, options: item.choices!.get(fields[0]!.name)!.options, pageFile: placement.pageFile, route: placement.pageFile.replace("src/pages", "").replace(/\/\[tag\]\.astro$/, "") }]
+  })
+}
+
 // A date-time field read by a feature is evaluated when the site is built, never when it is visited.
 export function astroDateNotes(features: readonly PlaceableFeature[], collections: readonly AstroCollection[]): string[] {
   return collections.flatMap(item => {
@@ -203,7 +217,8 @@ export function planAstroWeb(
     const placement = featurePlacements[feature.id]!
     if (placement.kind !== "page") continue
     const route = placement.pageFile.replace("src/pages", "").replace(/(?:\/index)?\.astro$/, "") || "/"
-    routeSummary.push(`${route} — ${placement.pageFile}${feature.surface === "item-page" ? " (build-time content collection)" : ""}`)
+    const tag = astroTagPages([feature], collections, featurePlacements)[0]
+    routeSummary.push(`${route} — ${placement.pageFile}${feature.surface === "item-page" ? " (build-time content collection)" : ""}${tag ? ` (one page per ${tag.field} value: ${tag.options.join(", ")}, each built whether or not an entry has that value, at ${tag.options.map(option => `${tag.route}/${option}/`).join(", ")}; a page with no entry shows "${ASTRO_TAG_EMPTY}" instead of a list; the primary nav links each page)` : ""}`)
   }
 
   // The 404 page always exists: a not-found-page feature owns its text, otherwise the foundation kit file does.

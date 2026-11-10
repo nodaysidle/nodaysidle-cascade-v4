@@ -120,3 +120,41 @@ describe("Tauri: a read-only view of a selected record needs an edit feature (ro
     expect(issues(blueprint)).toEqual([])
   })
 })
+
+// Green Kitchen: nothing linked to the meal-type pages, nothing said which pages exist or what an empty one shows, and
+// the kit printed ingredients and steps as one comma-joined line.
+describe("Astro: a tag page over a fixed choice has a shell, links, and an empty state; list fields are lists (round 12)", () => {
+  const kitFile = (packet: Awaited<ReturnType<typeof compilePacket>>, path: string) => packet.kit.find(item => item.name === `kit/${path}`)?.content ?? ""
+
+  it("ships the tag page shell and links every value from the primary nav", async () => {
+    const packet = await compilePacket(load("astro-green-kitchen.json"), "astro-web")
+    expect(packet.failures).toEqual([])
+    const page = kitFile(packet, "src/pages/recipes/tags/[tag].astro")
+    expect(page).toContain('["breakfast", "lunch", "dinner"]')
+    expect(page).toContain("entry.data.mealType === tag")
+    expect(page).toContain("No entries yet.")
+    expect(page).toContain("href={`/recipes/${entry.id}/`}")
+    const layout = kitFile(packet, "src/layouts/BaseLayout.astro")
+    for (const value of ["breakfast", "lunch", "dinner"]) expect(layout).toContain(`href="/recipes/tags/${value}/"`)
+  })
+
+  it("states the page set, the empty state and the links in the documents", async () => {
+    const packet = await compilePacket(load("astro-green-kitchen.json"), "astro-web")
+    const tasks = packet.documents["TASKS.md"]
+    expect(tasks).toContain("/recipes/tags/[tag] — src/pages/recipes/tags/[tag].astro (one page per meal type value: breakfast, lunch, dinner")
+    const task = section(tasks, "### TASK-04-MEAL-TYPE-PAGE")
+    expect(task).toContain("Start from kit/src/pages/recipes/tags/[tag].astro")
+    expect(task).toContain('"No entries yet."')
+    expect(task).toContain("the primary nav of the kit layout already links each of these pages")
+  })
+
+  it("renders a list field as one li per item and says how a test reads it", async () => {
+    const packet = await compilePacket(load("astro-green-kitchen.json"), "astro-web")
+    const page = kitFile(packet, "src/pages/recipes/[slug].astro")
+    expect(page).toContain("<ol>{entry.data.steps.map(item => <li>{item}</li>)}</ol>")
+    expect(page).not.toContain('.join(", ")')
+    expect(kitFile(packet, "src/content/recipes/01-sample-entry.md")).toContain("steps: [Sample item one, Sample item two]")
+    expect(packet.documents["TRD.md"]).toContain("A list field is one line holding a flow list")
+    expect(section(packet.documents["TASKS.md"], "### TASK-05-RECIPE-PAGE")).toContain("a list field as one ol with one li per item")
+  })
+})
