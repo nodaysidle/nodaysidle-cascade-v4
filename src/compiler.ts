@@ -2110,6 +2110,8 @@ function refineTauriPhases(phases: readonly GraphPhase[], owners: readonly Graph
   const filters = hasFilterFeature(features, firstMainOwner, "tauri2-rust-typescript-desktop", settingsKeys)
   const entryForm = addHasForm && shared.includes("create") && screenView.some(feature => feature.editsRecords && Object.values(feature.operationsByData).some(operations => operations.includes("update")))
   const slotHosts = tauriSlotHosts(screenView, detailView, filters, entryForm, hasActionsArea(screenView, firstMainOwner))
+  // Round 11 re-audit (Reading List): the list task and the filter task must agree on the query value of every choice.
+  const filterQuery = filters ? tauriFilterQuery(blueprint, screenView.filter(feature => feature.ownerId !== firstMainOwner)) : undefined
   return phases.map(phase => ({
     ...phase,
     tasks: phase.tasks.map(task => {
@@ -2127,6 +2129,7 @@ function refineTauriPhases(phases: readonly GraphPhase[], owners: readonly Graph
         detailView,
         slotHosts,
         filters,
+        filterQuery: filterQuery && (task === firstMain || task.featureIds.includes(filterQuery.featureId)) ? filterQuery.rule : undefined,
         countdownTask: features.some(isCountdown) ? allTasks.find(candidate => candidate.featureIds.some(id => features.some(feature => feature.id === id && isCountdown(feature))))?.id : undefined,
         ownFiles: kind === "foundation" ? task.filesToCreate.filter(file => !kitPaths.includes(file)) : undefined,
       })
@@ -2135,6 +2138,28 @@ function refineTauriPhases(phases: readonly GraphPhase[], owners: readonly Graph
       return extra ? { ...task, prompt: `${prompt} ${extra}` } : { ...task, prompt }
     }),
   }))
+}
+
+// A filter whose choice list names a stored choice field's values: "" means every record, any other option is the stored value.
+function tauriFilterQuery(blueprint: NormalizedBlueprint, candidates: readonly GraphFeature[]): { readonly featureId: string; readonly rule: string } | undefined {
+  for (const feature of candidates) {
+    for (const list of feature.choiceLists ?? []) {
+      for (const item of blueprint.domainData.filter(entry => entry.storage === "records")) {
+        for (const field of item.fields) {
+          const stored = fieldChoiceList(blueprint.features, field)
+          if (!stored) continue
+          const values = new Map(stored.options.map(option => [referenceKey(option), option]))
+          const matching = list.options.filter(option => values.has(referenceKey(option)))
+          const all = list.options.filter(option => !values.has(referenceKey(option)))
+          if (matching.length !== stored.options.length || all.length !== 1) continue
+          const start = values.get(referenceKey(list.initial)) ?? ""
+          const rule = `query is "" for ${all[0]} and otherwise the ${field.name} value exactly as stored (${matching.map(option => `${option} writes "${values.get(referenceKey(option))}"`).join(", ")}); it starts as "${start}", and the list shows a record when query is "" or the record's ${field.name} equals query`
+          return { featureId: feature.id, rule }
+        }
+      }
+    }
+  }
+  return undefined
 }
 
 function recoveryRulesFor(preset: PresetContract, blueprint: NormalizedBlueprint): readonly string[] {

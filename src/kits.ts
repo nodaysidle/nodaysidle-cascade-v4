@@ -1930,7 +1930,15 @@ fn refresh_writes_the_cache_with_the_injected_clock() {
     let directory = tempfile::tempdir().expect("temporary directory");
     let path = directory.path().join("cache.json");
     let settings = Settings::default();
-    module::refresh(&path, &settings, 42).expect("refresh");
+    // refresh_with with test hooks: the production fetch reads the real system and store, which a later task wires in.
+    module::refresh_with(
+        &path,
+        &settings,
+        42,
+        |settings, _| Ok(module::empty_state(settings)),
+        |_, _| None,
+    )
+    .expect("refresh");
     let cache = module::read_cache(&path).expect("cache written");
     assert_eq!(cache.updated_unix, 42);
 }

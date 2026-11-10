@@ -33,3 +33,24 @@ describe("round 11 re-audit", () => {
     expect(module).toContain("output.class = String::from(severity_class(output.value));\n            }\n            write_cache(cache_path, &output, now)")
   })
 })
+
+describe("round 11 final audits", () => {
+  it("Tauri: the list task and the filter task state the same query value for every filter choice", async () => {
+    const blueprint = load("tauri-reading-list.json")
+    for (const feature of blueprint.features) feature.behavior = feature.behavior.replace(/The status is not entered; a new article starts as unread\./g, "The status is chosen from unread, reading, done, initially unread.")
+    const tasks = (await compilePacket(blueprint, "tauri2-rust-typescript-desktop")).documents["TASKS.md"]
+    const rule = 'query is "" for All and otherwise the status value exactly as stored'
+    const list = tasks.slice(tasks.indexOf("### TASK-04"), tasks.indexOf("### TASK-05"))
+    const filter = tasks.slice(tasks.indexOf("### TASK-07"), tasks.indexOf("### TASK-08"))
+    expect(list).toContain(rule)
+    expect(filter).toContain(rule)
+    expect(filter).toContain('Done writes "done"')
+  })
+
+  it("Waybar kit: the cache test calls refresh_with with test hooks, never the production fetch", async () => {
+    const packet = await compilePacket(load("waybar-temp-watch.json"), "linux-hyprland-waybar-module")
+    const test = packet.kit.find(file => file.name === "kit/tests/module_output_tests.rs")!.content
+    expect(test).not.toContain("module::refresh(&path")
+    expect(test).toContain("module::refresh_with(\n        &path,")
+  })
+})
