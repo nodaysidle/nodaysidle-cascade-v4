@@ -14,6 +14,23 @@ import {
   type ReviewRequest,
 } from "./review"
 
+export const KIT_BUILD_TIMEOUT_MS = 20 * 60 * 1000
+export const KIT_BUILD_MAX_BUFFER = 64 * 1024 * 1024
+const KIT_BUILD_SCRUBBED_ENV = ["DEEPSEEK_API_KEY", "TYPESAFE_API_KEY", "ANTHROPIC_API_KEY", "CASCADE_API_URL"]
+
+// Kit build children run generated code: they must not inherit the API keys.
+export function kitBuildEnv(base: NodeJS.ProcessEnv, overrides: Record<string, string>): NodeJS.ProcessEnv {
+  const env = { ...base }
+  for (const name of KIT_BUILD_SCRUBBED_ENV) delete env[name]
+  return { ...env, ...overrides }
+}
+
+export function kitBuildErrorText(error: NodeJS.ErrnoException): string {
+  if (error.code === "ETIMEDOUT") return "timed out after 20 minutes"
+  if (error.code === "ENOBUFS") return "the command printed more than 64 MB"
+  return error.message
+}
+
 export const KIT_BUILD_COMMANDS: Readonly<Record<PresetId, readonly (readonly string[])[]>> = {
   "linux-wayland-gtk4-desktop": [
     ["cargo", "fmt", "--check"],
@@ -70,17 +87,25 @@ export async function buildCompiledPacketKit(packet: CompiledPacket, presetId: P
         if (name.endsWith(".sh")) chmodSync(join(scriptsDir, name), 0o755)
       }
     }
-    const env = {
-      ...process.env,
+    const env = kitBuildEnv(process.env, {
       CARGO_TARGET_DIR: cargoTargetDir,
       TMPDIR: cacheTmpDir,
       ANDROID_HOME: process.env.ANDROID_HOME ?? join(home, "Android", "Sdk"),
-    }
+    })
     for (const args of commands) {
       const commandText = args.join(" ")
-      const result = spawnSync(args[0]!, args.slice(1), { cwd: workDir, env, encoding: "utf8" })
+      const result = spawnSync(args[0]!, args.slice(1), {
+        cwd: workDir,
+        env,
+        encoding: "utf8",
+        timeout: KIT_BUILD_TIMEOUT_MS,
+        maxBuffer: KIT_BUILD_MAX_BUFFER,
+        killSignal: "SIGKILL",
+      })
       if (result.status !== 0) {
-        const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim()
+        const combined = result.error
+          ? kitBuildErrorText(result.error)
+          : `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim()
         const tail = combined.split("\n").slice(-15).join("\n")
         return { ok: false, command: commandText, output: tail }
       }

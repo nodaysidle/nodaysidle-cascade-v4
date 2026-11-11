@@ -9,6 +9,7 @@ import { homedir } from "node:os"
 import { basename, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parseArgs } from "node:util"
+import { KIT_BUILD_MAX_BUFFER, KIT_BUILD_TIMEOUT_MS, kitBuildEnv, kitBuildErrorText } from "../../src/review-wire"
 import { applyEdits, buildFixPrompt, Fix, touchedKit, type PacketFile, type ReviewFinding } from "../../src/review"
 import { ideaFromRoundScript, readPacket } from "./review"
 
@@ -80,17 +81,25 @@ export function buildKit(packetDir: string, preset: string): KitBuildResult {
         if (name.endsWith(".sh")) chmodSync(join(scriptsDir, name), 0o755)
       }
     }
-    const env = {
-      ...process.env,
+    const env = kitBuildEnv(process.env, {
       CARGO_TARGET_DIR: cargoTargetDir,
       TMPDIR: cacheTmpDir,
       ANDROID_HOME: process.env.ANDROID_HOME ?? join(home, "Android", "Sdk"),
-    }
+    })
     for (const args of commands) {
       const commandText = args.join(" ")
-      const result = spawnSync(args[0]!, args.slice(1), { cwd: workDir, env, encoding: "utf8" })
+      const result = spawnSync(args[0]!, args.slice(1), {
+        cwd: workDir,
+        env,
+        encoding: "utf8",
+        timeout: KIT_BUILD_TIMEOUT_MS,
+        maxBuffer: KIT_BUILD_MAX_BUFFER,
+        killSignal: "SIGKILL",
+      })
       if (result.status !== 0) {
-        const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim()
+        const combined = result.error
+          ? kitBuildErrorText(result.error)
+          : `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim()
         const tail = combined.split("\n").slice(-15).join("\n")
         return { ok: false, command: commandText, output: tail }
       }
