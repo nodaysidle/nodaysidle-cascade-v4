@@ -18,6 +18,7 @@ import {
   Fix,
   FIX_JSON_SCHEMA,
   KIT_PATH_PUNCTUATION,
+  MAX_KIT_FILES,
   MAX_KIT_PATH_DEPTH,
   MAX_PACKET_FILE_BYTES,
   packetFilesFromCompiled,
@@ -167,6 +168,34 @@ describe("repair paths follow the export rule", () => {
     }
   })
 
+  it("rejects a path that collides with an existing file or folder, and a 65th kit file", () => {
+    const base = [...files, { path: "kit/src/lib.rs", text: "x\n" }, { path: "kit/src/mod/a.rs", text: "x\n" }]
+    for (const edit of [
+      create("kit/src/lib.rs/mod.rs"),
+      create("kit/src/mod"),
+      create("kit/src"),
+      move("kit/src/lib.rs/mod.rs"),
+      move("kit/src/mod"),
+    ]) {
+      const result = applyEdits(base, [edit])
+      expect(result.failed.map(item => item.reason)).toEqual(["the path collides with an existing file or folder"])
+      expect(result.files).toEqual(base)
+    }
+    const sixtyThree = Array.from({ length: MAX_KIT_FILES - 1 }, (_, index) => ({ path: `kit/f${index}.rs`, text: "x\n" }))
+    const full = applyEdits(sixtyThree, [create("kit/last.rs")])
+    expect(full.failed).toEqual([])
+    expect(full.files.filter(file => file.path.startsWith("kit/"))).toHaveLength(MAX_KIT_FILES)
+    const over = applyEdits(full.files, [create("kit/extra.rs")])
+    expect(over.failed.map(item => item.reason)).toEqual(["the kit already has the maximum of 64 files"])
+    expect(over.files).toEqual(full.files)
+  })
+
+  it("still accepts a create next to existing files and a move within the kit", () => {
+    const base = [...files, { path: "kit/src/lib.rs", text: "x\n" }]
+    const result = applyEdits(base, [create("kit/src/main.rs"), move("kit/b.rs")])
+    expect(result.failed).toEqual([])
+  })
+
   it("still accepts valid paths", () => {
     const result = applyEdits(files, [
       create("kit/src/pages/books/[slug].astro", "<h1/>\n"),
@@ -181,6 +210,7 @@ describe("repair paths follow the export rule", () => {
     const rust = readFileSync(join(__dirname, "..", "src-tauri", "src", "export.rs"), "utf8")
     expect(rust).toContain(`MAX_EXPORT_FILE_BYTES: usize = ${MAX_PACKET_FILE_BYTES.toString().replace(/(\d)(?=(\d{3})+$)/g, "$1_")}`)
     expect(rust).toContain(`MAX_KIT_PATH_DEPTH: usize = ${MAX_KIT_PATH_DEPTH}`)
+    expect(rust).toContain(`MAX_KIT_FILES: usize = ${MAX_KIT_FILES}`)
     expect(rust).toContain(`b"${KIT_PATH_PUNCTUATION}"`)
   })
 

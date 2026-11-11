@@ -257,6 +257,7 @@ export function filterVerifiedFindings(review: Review, files: readonly PacketFil
 // Mirrors src-tauri/src/export.rs (a test compares the constants); change both together.
 export const MAX_PACKET_FILE_BYTES = 2_000_000
 export const MAX_KIT_PATH_DEPTH = 16
+export const MAX_KIT_FILES = 64
 export const KIT_PATH_PUNCTUATION = "._-+[]"
 
 function validPacketPath(path: string | undefined): path is string {
@@ -266,6 +267,15 @@ function validPacketPath(path: string | undefined): path is string {
   const parts = path.slice("kit/".length).split("/")
   return parts.length <= MAX_KIT_PATH_DEPTH
     && parts.every(part => part !== "" && !part.startsWith(".") && [...part].every(char => /[A-Za-z0-9]/.test(char) || KIT_PATH_PUNCTUATION.includes(char)))
+}
+
+// A path clashes when an existing file is one of its parent folders or sits inside it.
+function collides(paths: Iterable<string>, target: string, ignore?: string): boolean {
+  for (const path of paths) {
+    if (path === ignore || path === target) continue
+    if (target.startsWith(`${path}/`) || path.startsWith(`${target}/`)) return true
+  }
+  return false
 }
 
 function contentProblem(text: string): string | undefined {
@@ -286,6 +296,10 @@ export function applyEdits(
     if (!validPacketPath(edit.file)) { failed.push({ edit, reason: "invalid packet file path" }); continue }
     if (op === "create") {
       if (texts.has(edit.file)) { failed.push({ edit, reason: "the file already exists in the packet" }); continue }
+      if (collides(texts.keys(), edit.file)) { failed.push({ edit, reason: "the path collides with an existing file or folder" }); continue }
+      if (edit.file.startsWith("kit/") && [...texts.keys()].filter(path => path.startsWith("kit/")).length >= MAX_KIT_FILES) {
+        failed.push({ edit, reason: `the kit already has the maximum of ${MAX_KIT_FILES} files` }); continue
+      }
       const problem = contentProblem(edit.replace)
       if (problem) { failed.push({ edit, reason: problem }); continue }
       texts.set(edit.file, edit.replace)
@@ -306,6 +320,7 @@ export function applyEdits(
       if (text === undefined) { failed.push({ edit, reason: "no such file in the packet" }); continue }
       if (edit.to !== edit.file && texts.has(edit.to)) { failed.push({ edit, reason: "the target file already exists in the packet" }); continue }
       if (REQUIRED_DOCS.has(edit.to)) { failed.push({ edit, reason: "cannot move a required contract document" }); continue }
+      if (collides(texts.keys(), edit.to, edit.file)) { failed.push({ edit, reason: "the path collides with an existing file or folder" }); continue }
       let nextText = text
       if (edit.find !== "") {
         const count = text.split(edit.find).length - 1
