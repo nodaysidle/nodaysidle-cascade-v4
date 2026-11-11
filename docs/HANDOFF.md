@@ -557,6 +557,15 @@ Three QA passes: the first two each said "do not merge" and were right (no route
 open-form value; identical retry prompt after an empty answer; "App.kt holds" against "in your file"; a
 scheduled delete task told to edit `App.kt`). Not verified: no paid run has used any of these four changes.
 
+Re-run after the fixes (same day, app built from `fb5e054`): Alan ran N2 Sleep Log again. The Claude review
+failed with HTTP 401 (the pasted Anthropic key was rejected; the key in the shell environment answered HTTP 200
+on the free model-list endpoint, and the code that sends the key is unchanged since `3e2f5c6`), so the app
+showed the plan 006 "Not reviewed" notice and kept the packet: first live sighting, works as designed. The
+exported packet `/home/arch/dev/nodaysidle/test/sleep-log/` is the compiler's raw output with no repair:
+`cascade verify` passes, the kit builds (`assembleDebug testDebugUnitTest`), and an independent audit (Opus,
+brief with check 11) found 0 blocking: agent-ready, and both earlier findings resolved (the widget of the time
+fields, the route into the status area). Its polish notes are in `plans/README.md`.
+
 ## RESUME HERE (written 2026-11-11, after round 13 and plans 009 to 012)
 
 Start by reading this section and `plans/README.md`. Alan's standing direction: **fix the compiler
@@ -566,7 +575,8 @@ State: `main` = `fb5e054` plus this docs commit, local only, 39 or more commits 
 plans 001 to 012 are DONE. See "Installed app" below.
 
 Open, in the order I would take them:
-1. Alan re-runs N2 Sleep Log and T3 Scratch Pad in the rebuilt app (the two that failed), then more of the 20
+1. Alan re-runs T3 Scratch Pad in the rebuilt app (Sleep Log is done: agent-ready without a repair, but it has
+   had no in-app review because of the 401), then more of the 20
    unused round-13 ideas. For each export: `npm run -s cascade -- verify --packet <dir>`, the kit build
    (`bash scripts/agent-ready/build-round-kits.sh <folder with <preset>/<slug> links>`), and one independent
    read-only audit with `scripts/agent-ready/audit-brief.md` and the idea text from `round13-ideas.md`. Tell the
