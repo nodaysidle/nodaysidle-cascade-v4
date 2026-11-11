@@ -367,12 +367,18 @@ function semanticKey(value: string): string {
   return key || (trimmed ? `u${fnv1a(trimmed).toString(16)}` : "")
 }
 
+// Like semanticKey, but "1.5" / "15", "-5" / "5" and "1,000" / "1000" stay apart: a . or , between digits and a - before a digit (not after a letter or digit) count.
+function listKey(value: string): string {
+  const kept = value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("en-US").match(/[a-z0-9]|(?<=\d)[.,](?=\d)|(?<![a-z0-9])-(?=\d)/g)
+  return kept?.join("") || semanticKey(value)
+}
+
 function uniqueStrings(values: readonly string[]): string[] {
   const seen = new Set<string>()
   const result: string[] = []
   for (const value of values) {
     const normalized = value.trim().replace(/\s+/g, " ")
-    const key = semanticKey(normalized)
+    const key = listKey(normalized)
     if (key && !seen.has(key)) {
       seen.add(key)
       result.push(normalized)
@@ -416,7 +422,8 @@ function cleanMeaning(value: string): string {
     .replace(/\s+\.(?![A-Za-z0-9])/g, ".")
     .replace(/([,;:])(?:\s*[,;:])+/g, "$1")
     .replace(/\s+/g, " ")
-    .replace(/^\s*[:;,.-]+\s*|\s*[:;,-]+\s*$/g, "")
+    // A "-" right before a digit is a minus sign, not a bullet, so it stays at the start.
+    .replace(/^\s*(?:[:;,.]|-(?!\d))+\s*|\s*[:;,-]+\s*$/g, "")
     .trim()
 }
 

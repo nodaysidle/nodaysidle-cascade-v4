@@ -21,6 +21,17 @@ describe("normalization never drops provider content silently", () => {
     expect(auditSemanticIntake(blueprint).map(issue => issue.rule)).toContain("semantic.duplicate-name")
   })
 
+  it("keeps list entries apart when they differ in a decimal point, minus sign or thousands separator", () => {
+    const blueprint = structuredClone(gtk.blueprint)
+    const owner = blueprint.features[0]!
+    owner.choiceLists = [{ name: "Size", options: ["0.5", "5", "1.5", "15", "-5", "1,000", "1000", "Large", "large", "LARGE "], initial: "0.5" }]
+    const normalized = normalizeBlueprint(blueprint, gtk.presetId).features.find(feature => feature.name === owner.name)!
+    expect(normalized.choiceLists![0]!.options).toEqual(["0.5", "5", "1.5", "15", "-5", "1,000", "1000", "Large"])
+    owner.choiceLists = [{ name: "Size", options: ["- Large", "Small"], initial: "Small" }]
+    const bulleted = normalizeBlueprint(blueprint, gtk.presetId).features.find(feature => feature.name === owner.name)!
+    expect(bulleted.choiceLists![0]!.options).toEqual(["Large", "Small"])
+  })
+
   it("refuses two features that become one name after cleaning", () => {
     const blueprint = structuredClone(gtk.blueprint)
     blueprint.features[1]!.name = `${blueprint.features[0]!.name} FEAT-07`
