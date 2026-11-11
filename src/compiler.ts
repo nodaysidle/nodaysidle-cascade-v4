@@ -2022,6 +2022,7 @@ function buildPhases(
           screen: ownedFeatures.length === 0 || ownedFeatures.some(feature => feature.invokedBy !== "schedule"),
           form: ownedFeatures.some(feature => androidFeatureFormDetails(feature, blueprint.domainData, features).some(detail => detail.startsWith("Form (")) ),
           deletes: ownedFeatures.some(feature => blueprint.domainData.some(item => item.storage === "records" && opsOn(feature, item.name).includes("delete"))),
+          writes: ownedFeatures.some(feature => feature.invokedBy !== "schedule" && opsOnAny(feature).some(op => op === "create" || op === "update" || op === "delete")),
           containerTypes: draft.kind === "packaging" ? androidContainerTypes(blueprint) : undefined,
           focusedTestFile: files.focusedTestFile,
           firstMain: draft.id === firstMainOwnerId,
