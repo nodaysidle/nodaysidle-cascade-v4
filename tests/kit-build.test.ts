@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { accessSync, chmodSync, constants, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { homedir, tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { describe, expect, it } from "vitest"
@@ -189,15 +189,17 @@ describeBuild("v4 starter kits compile and pass their own tests", () => {
       }
     }
     const tauri = fixtureCases.find(item => item.presetId === "tauri2-rust-typescript-desktop")!
-    const tauriRoot = materialize(await compilePacket({ ...tauri.blueprint, productName }, tauri.presetId))
+    const tauriPacket = await compilePacket({ ...tauri.blueprint, productName }, tauri.presetId)
+    const tauriRoot = materialize(tauriPacket)
     try {
       run("npm", ["install", "--no-audit", "--no-fund"], tauriRoot)
       run("npm", ["run", "typecheck"], tauriRoot)
       run("npm", ["test"], tauriRoot)
       run("npm", ["run", "build"], tauriRoot)
       run("npm", ["run", "tauri", "--", "icon", "app-icon.svg"], tauriRoot)
-      run("bash", ["-n", "scripts/package_linux.sh"], tauriRoot)
       run("cargo", ["test", "--manifest-path", "src-tauri/Cargo.toml"], tauriRoot, env)
+      run("bash", ["scripts/package_linux.sh"], tauriRoot, env)
+      accessSync(join(tauriRoot, "dist", tauriPacket.graph.identity.slug), constants.X_OK)
     } finally {
       rmSync(tauriRoot, { recursive: true, force: true })
     }

@@ -12,6 +12,6 @@ done_kit(){ cd / && rm -rf -- "$w"; }
 shopt -s nullglob
 for d in "$R"/linux-wayland-gtk4-desktop/* "$R"/linux-hyprland-waybar-module/*; do echo "== $d"; mk "$d"; step cargo fmt --check; step cargo clippy --all-targets --all-features -- -D warnings; step cargo test; done_kit; done
 for d in "$R"/astro-web/*; do echo "== $d"; mk "$d"; for c in "npm install --no-audit --no-fund" "npm run check" "npm test" "npm run build" "npm run test:a11y" "npm run audit:performance"; do step $c; done; done_kit; done
-for d in "$R"/tauri2-rust-typescript-desktop/*; do echo "== $d"; mk "$d"; for c in "npm install --no-audit --no-fund" "npm run typecheck" "npm test" "npm run build" "npm run tauri -- icon app-icon.svg" "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check" "cargo test --manifest-path src-tauri/Cargo.toml"; do step $c; done; done_kit; done
+for d in "$R"/tauri2-rust-typescript-desktop/*; do echo "== $d"; mk "$d"; for c in "npm install --no-audit --no-fund" "npm run typecheck" "npm test" "npm run build" "npm run tauri -- icon app-icon.svg" "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check" "cargo test --manifest-path src-tauri/Cargo.toml" "./scripts/package_linux.sh"; do step $c; done; done_kit; done
 for d in "$R"/android-kotlin-compose/*; do echo "== $d"; mk "$d"; step ./scripts/gradle.sh assembleDebug testDebugUnitTest; done_kit; done
 echo DONE
