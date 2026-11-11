@@ -12,10 +12,14 @@ import {
   applyEdits,
   applyEditsToCompiledPacket,
   buildFixPrompt,
+  buildReviewPromptForPacket,
   DEFAULT_REVIEW_ROUNDS,
   filterVerifiedFindings,
   Fix,
   FIX_JSON_SCHEMA,
+  KIT_PATH_PUNCTUATION,
+  MAX_KIT_PATH_DEPTH,
+  MAX_PACKET_FILE_BYTES,
   packetFilesFromCompiled,
   quoteFound,
   Review,
@@ -133,6 +137,64 @@ describe("packet repair tool", () => {
     ])
     expect(result.files).toEqual(files)
     expect(touchedKit([{ finding: 1, file: "PRD.md", find: "is normal", replace: "is critical", all: true }], [])).toBe(false)
+  })
+})
+
+describe("repair paths follow the export rule", () => {
+  const files = [{ path: "PRD.md", text: "The class is normal." }, { path: "kit/a.rs", text: "let floor = 5;" }]
+  const create = (file: string, replace = "x\n") => ({ finding: 1, op: "create" as const, file, find: "", replace, all: false })
+  const move = (to: string) => ({ finding: 1, op: "move" as const, file: "kit/a.rs", to, find: "", replace: "", all: false })
+
+  it("rejects what the export would reject", () => {
+    const deep = `kit/${Array.from({ length: MAX_KIT_PATH_DEPTH + 1 }, () => "a").join("/")}`
+    for (const edit of [
+      create("kit/.gitignore"),
+      create("kit/src/my file.ts"),
+      create(deep),
+      create("kit/src/empty.ts", ""),
+      create("kit/src/empty.ts", "   \n"),
+      create("kit/src/big.ts", "x".repeat(MAX_PACKET_FILE_BYTES + 1)),
+      create("kit/src/big.ts", "é".repeat(MAX_PACKET_FILE_BYTES / 2 + 1)),
+      create("NOTES.md"),
+      move("kit/.hidden/x.ts"),
+      move("README.md"),
+      { finding: 1, file: "PRD.md", find: "The class is normal.", replace: " ", all: false },
+    ]) {
+      const result = applyEdits(files, [edit])
+      expect(result.failed).toHaveLength(1)
+      expect(result.applied).toEqual([])
+      expect(result.files).toEqual(files)
+    }
+  })
+
+  it("still accepts valid paths", () => {
+    const result = applyEdits(files, [
+      create("kit/src/pages/books/[slug].astro", "<h1/>\n"),
+      { finding: 1, file: "PRD.md", find: "normal", replace: "critical", all: false },
+      move("kit/src/b.rs"),
+    ])
+    expect(result.failed).toEqual([])
+    expect(result.applied).toHaveLength(3)
+  })
+
+  it("keeps its constants equal to src-tauri/src/export.rs", () => {
+    const rust = readFileSync(join(__dirname, "..", "src-tauri", "src", "export.rs"), "utf8")
+    expect(rust).toContain(`MAX_EXPORT_FILE_BYTES: usize = ${MAX_PACKET_FILE_BYTES.toString().replace(/(\d)(?=(\d{3})+$)/g, "$1_")}`)
+    expect(rust).toContain(`MAX_KIT_PATH_DEPTH: usize = ${MAX_KIT_PATH_DEPTH}`)
+    expect(rust).toContain(`b"${KIT_PATH_PUNCTUATION}"`)
+  })
+
+  it("matches quotes across typographic variants, both ways", () => {
+    const plain = [{ path: "PRD.md", text: "Wait... it's \"ok\" and 'fine' now." }]
+    const fancy = [{ path: "PRD.md", text: "Wait\u2026 it\u2019s \u201cok\u201d and \u2018fine\u2019\u00a0now." }]
+    expect(quoteFound("Wait\u2026 it\u2019s \u201cok\u201d and \u2018fine\u2019\u202fnow.", plain)).toBe(true)
+    expect(quoteFound("Wait... it's \"ok\" and 'fine' now.", fancy)).toBe(true)
+    expect(quoteFound("Wait\u2026 it\u2019s \u201cno\u201d", plain)).toBe(false)
+  })
+
+  it("inserts the idea into the review prompt literally", () => {
+    const idea = "pay $' now, $& later, $$ total"
+    expect(buildReviewPromptForPacket("slug", "astro-web", idea, files, [])).toContain(idea)
   })
 })
 
