@@ -230,7 +230,7 @@ describe("repair paths follow the export rule", () => {
   })
 
   const DELAYED_WRITE_CHECK =
-    "11. delayed writes: when a write waits (an autosave delay, a debounce, a timer, a queued save), the packet states what happens to a pending write when the app or window closes or the screen is left (written at once, or lost by design), names the owner and the mechanism, and has an acceptance criterion for it."
+    "11. delayed user input: when a change the user makes is held before it is written (an autosave delay or a debounce), the packet states what happens to the held change when the app or window closes or the screen is left (written at once, or lost by design), names the owner and the mechanism, and has an acceptance criterion for it. A timer that only refreshes data or runs a background job is not a delayed write."
   const numberedChecks = (text: string): string[] => text.split("\n").filter(line => /^\d+\. /.test(line))
 
   it("asks the reviewer about pending delayed writes", () => {
@@ -582,19 +582,21 @@ describe("pipeline review, repair, kit build, and manifest replay", () => {
       expect(repair.verdict).toBe("not-ready")
     })
 
-    it("treats an empty edit list the same way", async () => {
+    it("stops after two empty answers in a row instead of repeating a byte-identical prompt", async () => {
       const { repair, prompts, reviews } = await run([{ edits: [], notes: "x" }], 3)
-      expect(prompts).toHaveLength(3)
+      expect(prompts).toHaveLength(2)
       expect(reviews()).toBe(1)
-      expect(repair.rounds).toBe(3)
+      expect(repair.rounds).toBe(2)
       expect(repair.failedEdits).toBeUndefined()
       expect(repair.verdict).toBe("not-ready")
-      // An empty answer must not be retried with a byte-identical prompt.
-      for (const later of [prompts[1]!, prompts[2]!]) {
-        expect(later).toContain("contained no edits")
-        expect(later).not.toBe(prompts[0])
-      }
+      expect(prompts[1]).toContain("contained no edits")
       expect(prompts[0]).not.toContain("contained no edits")
+    })
+
+    it("keeps retrying when the empty answers are not consecutive", async () => {
+      const { prompts, repair } = await run([{ edits: [], notes: "x" }, { edits: [bad], notes: "y" }, { edits: [], notes: "z" }], 3)
+      expect(prompts).toHaveLength(3)
+      expect(repair.rounds).toBe(3)
     })
 
     it("prints a model-supplied failure path on one short line", () => {

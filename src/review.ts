@@ -163,7 +163,7 @@ const AUDIT_BRIEF_BODY = [
   "8. acceptance criteria mechanically testable; time-based ones use an injected clock; validation commands runnable in a normal dev environment.",
   "9. kit files named in TASKS exist and match what tasks expect.",
   "10. preset-specific build/run path coherent.",
-  "11. delayed writes: when a write waits (an autosave delay, a debounce, a timer, a queued save), the packet states what happens to a pending write when the app or window closes or the screen is left (written at once, or lost by design), names the owner and the mechanism, and has an acceptance criterion for it.",
+  "11. delayed user input: when a change the user makes is held before it is written (an autosave delay or a debounce), the packet states what happens to the held change when the app or window closes or the screen is left (written at once, or lost by design), names the owner and the mechanism, and has an acceptance criterion for it. A timer that only refreshes data or runs a background job is not a delayed write.",
   "",
   "If you find nothing blocking, say so plainly. Do not pad: no style nits.",
   "Output JSON: { slug, blocking: [{where, quote, why, fix}], polish: [...], verdict }.",
@@ -495,7 +495,10 @@ export async function runReviewAndRepairLoop(options: {
     if (edited.applied.length === 0) {
       // The packet did not change: skip the review and let the next round retry, telling the model what failed.
       previousFailures = edited.failed.map(item => ({ file: item.edit.file, reason: item.reason }))
-      previousEmpty = fix.edits.length === 0
+      const empty = fix.edits.length === 0
+      // A second empty answer in a row would get a byte-identical prompt: stop instead of paying for it.
+      if (empty && previousEmpty) break
+      previousEmpty = empty
       continue
     }
     previousFailures = []

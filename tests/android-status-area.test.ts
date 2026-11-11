@@ -29,11 +29,24 @@ describe("Android: a later task can post to the shared status area (round 13)", 
       expect(later.length).toBeGreaterThan(0)
       for (const block of later) expect(block).toContain("showStatus(")
       expect(first[0]).toContain("App.kt")
+      expect(first[0]).toContain("The registration file App.kt passes showStatus and clearStatus")
+      for (const [name, doc] of Object.entries(packet.documents)) expect(doc, name).not.toContain("App.kt holds")
       const users = all.filter(block => block.includes("Status use:"))
       expect(users.length).toBeGreaterThan(0)
       for (const block of users) for (const part of ["showStatus: (String, String) -> Unit", "clearStatus: () -> Unit", "App.kt"]) expect(block, part).toContain(part)
     })
   }
+
+  it("a schedule-invoked feature without a screen gets no App.kt status instruction", async () => {
+    const blueprint = load("android-add-edit-forms.json")
+    blueprint.features = blueprint.features.map(feature => ({ ...feature, invokedBy: "schedule" as const }))
+    const packet = await compilePacket(blueprint, "android-kotlin-compose")
+    const tasks = packet.documents["TASKS.md"]
+    for (const block of blocks(tasks)) {
+      const modify = block.split("\n").find(line => line.includes("Files to modify")) ?? ""
+      if (!modify.includes("App.kt")) expect(block, block.slice(0, 40)).not.toContain("Status use:")
+    }
+  })
 
   it("a product that stores nothing has no status contract", async () => {
     const packet = await compilePacket(load("android-tip-split.json"), "android-kotlin-compose")

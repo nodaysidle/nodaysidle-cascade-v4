@@ -130,7 +130,7 @@ describe("Android: the Field rules fix each input widget (round 13)", () => {
     for (const line of [formLine(androidFormRules("Sleep", fields, { edits: false, itemPage: false })), formLine(androidSettingFormRules("Goal", [fields[0]!]))]) {
       expect(line).toContain("Widget rule:")
       expect(line).toContain("build the widget the Field rule names")
-      for (const widget of ["time picker", "slider"]) expect(line).toContain(widget)
+      for (const widget of ["time picker", "slider", "date picker"]) expect(line).toContain(widget)
     }
   })
   it("the task note points at it", async () => {
