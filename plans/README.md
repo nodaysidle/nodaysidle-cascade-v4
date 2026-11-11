@@ -11,11 +11,11 @@ update your row when done (unless a reviewer dispatched you and maintains this i
 | 001  | Waybar and Tauri packets state the three things an independent audit found missing | P1 | M | — | DONE (reviewed 2026-11-11; branch `advisor/001-waybar-tauri-audit-gaps`, commits 854f295 fb9f648 3087d77; fast-forwarded into `main` on the owner's instruction; re-audit of both recompiled packets: 0 blocking) |
 | 002  | GTK packets state the choice filter, the filter hook, the delete dialog and the edit title | P1 | M | — | DONE (reviewed 2026-11-11; commits 118b8d2 82fc2ab on branch `advisor/002-gtk-compiler-gaps`; audit of the recompiled packet without repairs: 0 blocking; fast-forwarded into `main` on the owner's instruction) |
 | 003  | Android packets share one open-form value and name their tags; Astro pages have one shape | P1 | M | — | DONE (reviewed 2026-11-11; commits 297dd8b 7062fd5 31254de 9cbe16b on the same branch; audits without repairs: Astro 0 blocking, Android 0 blocking after the decimal-count fix; fast-forwarded into `main` on the owner's instruction) |
-| 004  | The review and repair helpers exist once, and the tests cover the copy the app runs (finding A) | P1 | S–M | — | DONE (reviewed 2026-11-11; branch `advisor/004-one-repair-implementation`, commits 343b2af 94845be; not merged) |
-| 005  | A repair cannot write a file the export rejects, and the verdict stops hiding findings (findings B, D, I) | P1 | M | 004 | TODO |
-| 006  | A failed review keeps the compiled packet, and every failure names its service (finding C) | P2 | M | — | TODO |
-| 007  | Kit build commands run without the API keys, with a time limit and a large enough buffer (finding E) | P2 | M | 004 | TODO |
-| 008  | Cleaning a list no longer merges "1.5" with "15" (finding F) | P2 | S | — | TODO |
+| 004  | The review and repair helpers exist once, and the tests cover the copy the app runs (finding A) | P1 | S–M | — | DONE (reviewed 2026-11-11; rebased and fast-forwarded into `main` as 7afb14b 6f15caf) |
+| 005  | A repair cannot write a file the export rejects, and the verdict stops hiding findings (findings B, D, I) | P1 | M | 004 | DONE (2026-11-11; commits 666e592 6251852 ef2df69 70f8e74, plus fbfee57 after QA: file/folder clash and the 64-file kit cap; in `main`) |
+| 006  | A failed review keeps the compiled packet, and every failure names its service (finding C) | P2 | M | — | DONE (2026-11-11; commits 006c67b 82fd014; in `main`; the app notice was not seen in a running app) |
+| 007  | Kit build commands run without the API keys, with a time limit and a large enough buffer (finding E) | P2 | M | 004 | DONE (2026-11-11; commits 508a67b 3ef1fd3, plus 353e042 after QA: closed stdin for the Rust child; in `main`; no real kit build was run) |
+| 008  | Cleaning a list no longer merges "1.5" with "15" (finding F) | P2 | S | — | DONE (2026-11-11; commits 56fc698 3e2f5c6; in `main`. Amended twice: a leading minus before a digit is no longer stripped by `cleanMeaning`, and with the owner's yes the audit key of `graph.acceptance-ownership` uses the same number rule, `numberAwareKey` in `src/schema.ts`) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -30,6 +30,16 @@ Findings A to F and I now have plans 004 to 008. These remain, each with what it
 - L. The unfinished-content check `<[^>]+>` rejects prose like "< 1 ... > 15" (`src/audit.ts`). Waits for: the owner's okay, because it narrows a quality check.
 - M. Repaired documents never re-run the deterministic audit; `blueprint.json` still says validation "pass". Waits for: a short spike to see what the audit reports on repaired text.
 - N. The app's reviewer and an independent auditor grade the same defect differently with the same brief; only blocking findings are repaired. Waits for: paid runs.
+- From the QA pass on plans 005 to 008 (2026-11-11), none blocking, no plan yet:
+  - Kit build timeout kills only the direct child; its own children (a Gradle daemon, cargo) keep running and can hold the shared cargo target lock. Needs process groups in Node (`src/review-wire.ts`) and Rust (`src-tauri/src/export.rs`).
+  - The Rust build helper writes stdout and stderr to files without a size cap (Node caps at 64 MB).
+  - The slow kit-build tests (`tests/kit-build.test.ts`, `tests/gtk-kit-build.test.ts`, `tests/tauri-focus-build.test.ts`) still pass the full environment, keys included; use `kitBuildEnv`. Needs `npm run kit:check`.
+  - Weak tests: no test for `kitBuildErrorText`; the Rust scrub test pins the list, not that it is applied; the closed-stdin test cannot fail when the runner's own stdin is closed.
+  - `applyEdits` checks each edit against the packet as it is at that point: a create listed before the delete or move that makes room for it is rejected (reported as a failed edit).
+  - A dropped blocking finding still counts as agent-ready (owner's decision, see plan 005), and the dropped and failed-edit counts are printed by the CLI only, not shown in the app.
+  - A packet whose review failed shows the green "Gate Clean" badge above the "Not reviewed" panel; no test covers the CLI "review failed" line or the app notice.
+  - Android: option testTags are built from the option slug, so "Size -5" and "Size 5" (or "1.5" and "1,5") get one tag (`src/androidForms.ts:58`, `slug` in `src/compiler.ts`). Reachable now that such options are kept.
+  - List key leftovers: "1-5" merges with "15", "+5" with "5", "-.5" loses its sign. Field and feature names still use `nameKey` on purpose ("Ratio 1.5" and "Ratio 15" are rejected as duplicates).
 - Minor notes from the five preset audits of 2026-11-11 (see `docs/HANDOFF.md`): candidates for one more compiler-text plan per preset.
 - Small: Waybar "1000.00 kB"; CLI DeepSeek fetch has no timeout; GTK Save label accepts any quoted button; `kitBuildError` writes local paths into `blueprint.json`; `package-lock.json` root range for `@anthropic-ai/sdk`; CI has no cargo cache; `--review-rounds` is undocumented; exported packets do not record the original idea text.
 
@@ -38,7 +48,7 @@ Findings A to F and I now have plans 004 to 008. These remain, each with what it
 - 005 requires 004 because both change the repair helpers; after 004 there is one copy to fix.
 - 007 requires 004 because both edit `scripts/agent-ready/fix.ts`.
 - 006 and 008 are independent and can run at any time.
-- Suggested order: 004, then 005, then 008, 006, 007. Run executors one after another in one worktree, not in parallel.
+- Executed 2026-11-11: 004 merged first, then 005, 007 and 008 in parallel worktrees, 006 stacked on 005 (both edit `src/cli.ts` and `tests/review-tool.test.ts`).
 - Each plan was written against commit `d77242f`. Its drift check says what to do if the code has moved.
 
 ## Findings considered and rejected

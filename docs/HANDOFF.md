@@ -478,41 +478,72 @@ Alan said go: `main` was fast-forwarded to `9cbe16b` (local only, not pushed), t
 `main`, and the desktop app was rebuilt and installed (the embedded bundle contains the new GTK, Android and
 Astro text; the app launches). `docs/HANDOFF.md` and `plans/` are still uncommitted.
 
-## RESUME HERE (written 2026-11-11, end of the session)
+## Session 2026-11-11, later: plans 004 to 008 executed by a conductor with Opus 5.5 workers
+
+Alan's instruction: the lead is the conductor (plans, task order, verification), Opus 5.5 workers (`patcher`)
+do the edits in parallel worktrees, one `qa-engine` pass verifies the combined result before `main` moves, and
+the lead stops only for a human decision. "Read the handoff and continue" was taken as the yes to merge 004
+and to execute 005 to 008.
+
+Done, all in `main` (local only, nothing pushed), `main` = `3e2f5c6`:
+- 004 rebased and fast-forwarded (7afb14b 6f15caf).
+- 005 (666e592 6251852 ef2df69 70f8e74): repair paths follow the Rust export rule, quotes match across
+  typographic variants, the idea is inserted literally, the CLI says when there was no review, dropped findings
+  and failed edits are recorded in the repair record. After QA (fbfee57): a create or move that clashes with an
+  existing file or folder is rejected, and so is a 65th kit file.
+- 006 (006c67b 82fd014): a failed Claude review keeps the compiled packet with a "Not reviewed" notice and no
+  verdict; every failure message names its service (DeepSeek, TypeSafe Jev, Claude review).
+- 007 (508a67b 3ef1fd3): kit build children run without the three API keys and `CASCADE_API_URL`, with a 20
+  minute limit, and in Node with a 64 MB buffer. After QA (353e042): the Rust child gets a closed stdin.
+- 008 (56fc698 3e2f5c6): lists, shared acceptance criteria and the audit rule `graph.acceptance-ownership` use
+  one number-aware key (`numberAwareKey`, `src/schema.ts`), so "1.5" and "15", "-5" and "5", "1,000" and "1000"
+  stay apart. Alan said yes to the audit key change (cost: "costs 1,000" and "costs 1000" on two features are no
+  longer a duplicate). A leading minus directly before a digit is no longer stripped by `cleanMeaning`.
+
+Verified: `npm run check` exits 0 on the final state by QA's run (517 vitest tests, 14 Rust tests, fmt, clippy,
+build); the lead re-ran typecheck and the tests in the main checkout after each fast-forward; the 24 round-12
+blueprints compile byte-identically to `6f15caf`; QA ran 20,000 random edit sequences against the new path rule
+with no accepted packet that breaks the export rules, and compiled number pairs for GTK, Waybar, Astro and Android.
+
+What the QA pass was worth: the lead's test runs and diff reading passed all four branches; QA then found that
+005 still let two kinds of bad packet through, and that 008 turned a silent drop into a compile failure (the
+audit key merged what the list no longer merged). Keep the pass.
+
+## RESUME HERE (written 2026-11-11, after plans 004 to 008)
 
 Start by reading this section and `plans/README.md`. Alan's standing direction: **fix the compiler
 (`nodaysidle-cascade-v4`) itself, never the test packets**; the exported packets are only test input.
 
-State of `main` (local only, nothing pushed): compiler fixes for all five presets are merged (`cff338d` ->
-`9cbe16b`), plans and this handoff are committed, 497 tests pass, and the desktop app is rebuilt and installed
-from `9cbe16b`. Each preset's test blueprint has an independent Sonnet audit at 0 blocking (GTK, Astro and
-Android measured without their recorded paid repairs).
+State: `main` = `3e2f5c6` plus this docs commit, local only. All plans 001 to 008 are DONE. See the line
+"Installed app" below for whether the installed app matches.
 
-Waiting for Alan's decision right now:
-1. **Merge plan 004.** Branch `advisor/004-one-repair-implementation` (commits `343b2af`, `94845be`, worktree
-   `.claude/worktrees/agent-a1acf7904adf88d61`) is executed and reviewed: 3 files, `src/review.ts` untouched,
-   497 tests pass, frontend build passes. It branched from `e9e1abd`; `main` has since gained docs-only
-   commits, so merge it with `git merge advisor/004-one-repair-implementation` (a merge commit, no conflict:
-   it touches only `scripts/agent-ready/` and `tests/`) or rebase the branch first. Re-run `npm test` after.
-   No app rebuild is needed. Not merged.
-2. After the merge: execute plan 005 (needs 004), then 008, 006, 007. One Sonnet executor at a time.
-3. Optional small addition to plan 005: a test that the audit brief in `scripts/agent-ready/audit-brief.md`
-   and the constant `AUDIT_BRIEF_BODY` in `src/review.ts` stay identical (they match today, nothing checks it).
+Open, in the order I would take them:
+1. The QA follow-up notes in `plans/README.md` ("From the QA pass on plans 005 to 008"). The two with a user
+   effect: a timed-out kit build leaves grandchild processes running, and Android option testTags collide for
+   options that differ only in a sign or separator. None has a plan yet.
+2. Findings G, H, J, K, L, M, N: each still waits for what `plans/README.md` says (paid runs or Alan's decision).
+3. Nothing was run through the real app with API calls after any of these fixes. The "Not reviewed" notice of
+   plan 006 and the kit build limits of plan 007 have not been seen in a running app or a real kit build.
 
-How this session worked (keep doing it this way):
-- `/improve` advisor mode: the lead session writes only `plans/` and this handoff, never source. A plan goes to
-  a Sonnet executor (Agent tool, `isolation: worktree`); the lead re-runs the done criteria, reads the diff,
-  and only then recommends a merge. Alan decides every merge; merges are fast-forward and local.
+How to work (as done in this session):
+- The lead writes or amends the plan and the brief, a `patcher` (Opus 5.5, `isolation: worktree`) implements it,
+  a `qa-engine` verifies the combined candidate branch read-only (full `npm run check`, the 24-blueprint
+  comparison against `main`, the diff against the plan), the lead reads the final diff, then fast-forwards
+  `main`. A change that narrows a quality check goes to Alan first.
+- Executor brief: first step `git checkout -B <branch> <commit>` (a new worktree starts from an old commit),
+  then `npm ci`. For cargo, `CARGO_TARGET_DIR=<main checkout>/src-tauri/target` avoids a cold Tauri build.
+  `/tmp` is a small RAM disk: no build output there.
+- Harness behaviour seen today: when a worktree worker hands back, the session's directory moves into that
+  worker's worktree, and resuming that worker is then refused. Finish its work with a fresh worker started in
+  that directory, and use absolute paths (`git -C <main checkout>`) for the main checkout.
 - Verification without API spend: recompile a saved blueprint with
-  `npm run -s cascade -- compile --preset <id> --blueprint <file> --option k=v --out <tmp>` and let a fresh
-  Sonnet subagent audit the result with `scripts/agent-ready/audit-brief.md` (tell it nothing about what changed).
-- Two harness traps: a new executor worktree is created from an old commit, so the executor's first step must
-  be `git merge --ff-only <main commit>` and a stop if that fails; and a **resumed** executor lands in the lead
-  session's current directory, so never resume two executors at once.
+  `npm run -s cascade -- compile --preset <id> --blueprint <file> --out <tmp>`.
 - Reports to Alan start with `ALAN`, are short, and end with what was not checked.
 
-Not done: nothing was run through the real app with API calls after the fixes; findings G, H, J, K, L, M, N
-have no plan (see `plans/README.md` for what each waits for); the vault has a session page for 2026-11-11
-(`nodaysidle-vault/wiki/sessions/2026-11-11-cascade-v4-compiler-gaps-five-presets.md`), uncommitted there.
-The old worktree `.claude/worktrees/agent-a3ffb0c89491559bf` and the branches `advisor/001-...`,
-`advisor/002-...` are fully merged and can be removed.
+Leftovers that can be removed (all merged): worktrees under `.claude/worktrees/` and the branches `advisor/*`,
+`integrate/005-007`, `integrate/005-008`, `worktree-agent-*`. `advisor/008-list-dedupe-keeps-numbers-apart`
+(fb89849) is superseded by `advisor/008-audit-key`.
+
+Installed app: rebuilt and installed from `3e2f5c6` with `bash scripts/install-linux-app.sh` on 2026-11-11
+(`~/.local/bin/nodaysidle-cascade-v4` is byte-identical to the fresh release build; the window opens to the
+start screen). No packet was generated in it.
