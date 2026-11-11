@@ -24,7 +24,7 @@
   --warn-soft: rgb(251 191 36 / 12%);
   --danger: #f87171;
   --danger-soft: rgb(248 113 113 / 14%);
-  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --mono: ui-monospace, monospace;
 }
 
 * {
