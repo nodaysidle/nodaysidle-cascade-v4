@@ -11,33 +11,35 @@ update your row when done (unless a reviewer dispatched you and maintains this i
 | 001  | Waybar and Tauri packets state the three things an independent audit found missing | P1 | M | — | DONE (reviewed 2026-11-11; branch `advisor/001-waybar-tauri-audit-gaps`, commits 854f295 fb9f648 3087d77; fast-forwarded into `main` on the owner's instruction; re-audit of both recompiled packets: 0 blocking) |
 | 002  | GTK packets state the choice filter, the filter hook, the delete dialog and the edit title | P1 | M | — | DONE (reviewed 2026-11-11; commits 118b8d2 82fc2ab on branch `advisor/002-gtk-compiler-gaps`; audit of the recompiled packet without repairs: 0 blocking; fast-forwarded into `main` on the owner's instruction) |
 | 003  | Android packets share one open-form value and name their tags; Astro pages have one shape | P1 | M | — | DONE (reviewed 2026-11-11; commits 297dd8b 7062fd5 31254de 9cbe16b on the same branch; audits without repairs: Astro 0 blocking, Android 0 blocking after the decimal-count fix; fast-forwarded into `main` on the owner's instruction) |
+| 004  | The review and repair helpers exist once, and the tests cover the copy the app runs (finding A) | P1 | S–M | — | TODO |
+| 005  | A repair cannot write a file the export rejects, and the verdict stops hiding findings (findings B, D, I) | P1 | M | 004 | TODO |
+| 006  | A failed review keeps the compiled packet, and every failure names its service (finding C) | P2 | M | — | TODO |
+| 007  | Kit build commands run without the API keys, with a time limit and a large enough buffer (finding E) | P2 | M | 004 | TODO |
+| 008  | Cleaning a list no longer merges "1.5" with "15" (finding F) | P2 | S | — | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
 ## Findings from the audit that have no plan yet
 
-The owner has not chosen among these. Suggested next set: A; B+I; C+D; E; F.
+Findings A to F and I now have plans 004 to 008. These remain, each with what it is waiting for:
 
-- A. Repair code exists twice (`scripts/agent-ready/fix.ts`, `scripts/agent-ready/review.ts` versus `src/review.ts`); tests for move, delete, failed edits and prompts cover only the script copies; `src/review-wire.ts` has no tests.
-- B. `validPacketPath` (`src/review.ts`) is looser than the Rust export validation (`src-tauri/src/export.rs`): a repair can create a file the export then rejects, losing the packet; root-level files are recorded as applied but dropped.
-- C. A failed review or repair call discards the already compiled packet (`src/pipeline.ts`, `src/state.ts`), and the error does not name the failing service.
-- D. The verdict hides things: findings whose quote does not match are dropped silently; failed edits are not recorded; the CLI is silent when no Anthropic key is set.
-- E. Kit build child processes inherit the API key environment, have no timeout, and are not cancellable; Node `spawnSync` uses the default 1 MB buffer.
-- F. `uniqueStrings`/`cleanList` merge "1.5" and "15" (key is letters and digits only) and drop one silently (`src/compiler.ts`, `src/schema.ts`).
-- G. The single DeepSeek repair sees only the first failing stage (`src/pipeline.ts`).
-- H. Kit gate commands exist in 5 hand copies and all skip Tauri `cargo clippy` and Android `lintDebug`; README says both ran.
-- I. `.replace("<idea>", idea)` mangles ideas containing `$'`, `$&`, `$$` (`src/review.ts`).
-- J. "Agent-ready" is given without building the kit unless a repair touched it. Needs an owner decision (build time).
-- K. `cleanMeaning` rewrites text inside quotes (`src/compiler.ts`).
-- L. The unfinished-content check `<[^>]+>` rejects prose like "< 1 ... > 15" (`src/audit.ts`). Needs the owner's okay (narrows a quality check).
-- M. Repaired documents never re-run the deterministic audit; `blueprint.json` still says validation "pass". Spike first.
-- N. The app's reviewer and an independent auditor grade the same defect differently (polish versus blocking) with the same brief; only blocking findings are repaired. Tuning needs paid runs.
+- G. The single DeepSeek repair sees only the first failing stage (`src/pipeline.ts`). Waits for: a few paid runs to verify, because it changes what the provider is asked to repair.
+- H. Kit gate commands exist in 5 hand copies and all skip Tauri `cargo clippy` and Android `lintDebug`; README says both ran. Waits for: the owner's decision on the longer build time; needs `npm run kit:check`. Do after 004 and 007.
+- J. "Agent-ready" is given without building the kit unless a repair touched it. Waits for: the owner's decision (adds build time to every run).
+- K. `cleanMeaning` rewrites text inside quotes (`src/compiler.ts`). Plannable; lower priority than 004 to 008.
+- L. The unfinished-content check `<[^>]+>` rejects prose like "< 1 ... > 15" (`src/audit.ts`). Waits for: the owner's okay, because it narrows a quality check.
+- M. Repaired documents never re-run the deterministic audit; `blueprint.json` still says validation "pass". Waits for: a short spike to see what the audit reports on repaired text.
+- N. The app's reviewer and an independent auditor grade the same defect differently with the same brief; only blocking findings are repaired. Waits for: paid runs.
+- Minor notes from the five preset audits of 2026-11-11 (see `docs/HANDOFF.md`): candidates for one more compiler-text plan per preset.
 - Small: Waybar "1000.00 kB"; CLI DeepSeek fetch has no timeout; GTK Save label accepts any quoted button; `kitBuildError` writes local paths into `blueprint.json`; `package-lock.json` root range for `@anthropic-ai/sdk`; CI has no cargo cache; `--review-rounds` is undocumented; exported packets do not record the original idea text.
 
 ## Dependency notes
 
-- A should land before B, D, E and I (they change the code A merges).
-- H needs `npm run kit:check`.
+- 005 requires 004 because both change the repair helpers; after 004 there is one copy to fix.
+- 007 requires 004 because both edit `scripts/agent-ready/fix.ts`.
+- 006 and 008 are independent and can run at any time.
+- Suggested order: 004, then 005, then 008, 006, 007. Run executors one after another in one worktree, not in parallel.
+- Each plan was written against commit `d77242f`. Its drift check says what to do if the code has moved.
 
 ## Findings considered and rejected
 
