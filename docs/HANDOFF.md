@@ -616,8 +616,15 @@ was never changed. Plan 013 (finding P) has his yes and is written (`49f4c1b`); 
 `plans/README.md` for where it stands.
 
 Open, in the order I would take them:
-0. Finding P (Tauri packaging) needs Alan's yes, then a plan 013. Findings Q to W are compiler-text work; Q
-   belongs with finding O.
+0. Plan 013 (finding P) is coded but NOT merged: branch `plan/013` (worktree
+   `.claude/worktrees/agent-a9fd358bcdf629435`), two commits on top of `main` `f556980` (`ac75913` code,
+   `b728e51` kit test). Alan approved it on 2026-11-11 ("you got my yes"); merge once the QA pass is clean.
+   Pushing still needs his word "push". Lead's proof so far: the new `package_linux.sh`, compiled from the Scratch Pad
+   blueprint, ran in `~/.cache/cascade-v4/tmp/scratch-pad-run/` with stock tools, exit 0, and `dist/scratch-pad`
+   has the same SHA-256 as the installed `~/.local/bin/scratch-pad`; `~/.cache/tauri` unchanged. A `qa-engine`
+   pass (full check, real kit build, blueprint comparison) was running when this was written. After QA:
+   fast-forward `main`, mark the row DONE in `plans/README.md`, `trail build`, vault and Supermemory note.
+   Findings Q to W are compiler-text work; Q belongs with finding O.
 1. Alan runs more of the 20
    unused round-13 ideas. For each export: `npm run -s cascade -- verify --packet <dir>`, the kit build
    (`bash scripts/agent-ready/build-round-kits.sh <folder with <preset>/<slug> links>`), and one independent
