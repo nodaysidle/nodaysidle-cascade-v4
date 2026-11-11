@@ -6,7 +6,7 @@ import { androidKitNeeds } from "./androidKit"
 import { ANDROID_DELETE_CLOSES_FORM, ANDROID_DELETE_PROMPT, androidChoiceMatchesPicker, androidFormRules, androidSettingFormRules, androidSettingKeys } from "./androidForms"
 import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
-import { appSetInitial, clockInitial, featureDataUses, fieldChoiceList, offeredOnCreate, featureReferenceIssues, nameKey, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
+import { appSetInitial, clockInitial, featureDataUses, fieldChoiceList, offeredOnCreate, featureReferenceIssues, nameKey, numberAwareKey, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
 import { gtkDocumentInterface, gtkSavedDocument, gtkStoreInterface, refineGtkContracts, refineGtkPhases } from "./gtkContracts"
 import { kitProjectPaths, presetKit, rustKitHelpers, waybarHookSummary, waybarLaunchers, waybarRoles, waybarTaskNotes } from "./kits"
 import { settleWaybarLabel, waybarFeatureDetail, waybarKitParts, waybarLifecycleNote, refineWaybarContracts, waybarPageDetail, waybarRequestDetail, waybarResponseDetail, waybarSettingsInterface, waybarSingleRecordDetail, waybarKeptExtremeRule, waybarSourceDetail } from "./waybarContracts"
@@ -367,10 +367,8 @@ function semanticKey(value: string): string {
   return key || (trimmed ? `u${fnv1a(trimmed).toString(16)}` : "")
 }
 
-// Like semanticKey, but "1.5" / "15", "-5" / "5" and "1,000" / "1000" stay apart: a . or , between digits and a - before a digit (not after a letter or digit) count.
 function listKey(value: string): string {
-  const kept = value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("en-US").match(/[a-z0-9]|(?<=\d)[.,](?=\d)|(?<![a-z0-9])-(?=\d)/g)
-  return kept?.join("") || semanticKey(value)
+  return numberAwareKey(value) || semanticKey(value)
 }
 
 function uniqueStrings(values: readonly string[]): string[] {
@@ -916,7 +914,7 @@ function lowerAcceptanceOwnership(sourceFeatures: readonly GraphFeature[]): {
   const groups = new Map<string, { criteria: string[]; featureIds: string[] }>()
   for (const feature of sourceFeatures) {
     for (const criterion of feature.acceptanceOutcomes) {
-      const key = semanticKey(criterion)
+      const key = listKey(criterion)
       if (!key) continue
       const group = groups.get(key) ?? { criteria: [], featureIds: [] }
       group.criteria.push(criterion)
@@ -928,7 +926,7 @@ function lowerAcceptanceOwnership(sourceFeatures: readonly GraphFeature[]): {
   const sharedKeys = new Set([...groups].filter(([, group]) => unique(group.featureIds).length > 1).map(([key]) => key))
   const directByFeature = new Map<string, string[]>()
   for (const feature of sourceFeatures) {
-    const direct = uniqueStrings(feature.acceptanceOutcomes.filter(criterion => !sharedKeys.has(semanticKey(criterion))))
+    const direct = uniqueStrings(feature.acceptanceOutcomes.filter(criterion => !sharedKeys.has(listKey(criterion))))
       .sort((left, right) => compareCodeUnits(semanticKey(left), semanticKey(right)))
     directByFeature.set(feature.id, direct.length ? direct : [`${feature.name} produces its declared output without claiming another feature's behavior.`])
   }

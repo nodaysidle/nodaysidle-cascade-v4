@@ -6,6 +6,7 @@ import {
   type ProjectGraph,
 } from "./compiler"
 import { PRESET_IDS, PRESETS, type PresetContract } from "./presets"
+import { numberAwareKey } from "./schema"
 import { buildTaskAcceptanceCriteria } from "./taskAcceptance"
 
 export interface AuditFailure {
@@ -75,7 +76,7 @@ function duplicates(values: readonly string[]): string[] {
 }
 
 function acceptanceKey(value: string): string {
-  return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, "")
+  return numberAwareKey(value)
 }
 
 function hasDependencyCycle(nodes: readonly { readonly id: string; readonly dependencies: readonly string[] }[]): boolean {

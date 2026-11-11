@@ -461,6 +461,11 @@ export function nameKey(name: string): string {
   return name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, "")
 }
 
+// Like nameKey, but "1.5" / "15", "-5" / "5" and "1,000" / "1000" stay apart: a . or , between digits and a - before a digit (not after a letter or digit) count. "" when nothing is kept.
+export function numberAwareKey(value: string): string {
+  return (value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("en-US").match(/[a-z0-9]|(?<=\d)[.,](?=\d)|(?<![a-z0-9])-(?=\d)/g) ?? []).join("")
+}
+
 export function referenceKey(name: string): string {
   return name.normalize("NFKC").trim().replace(/\s+/g, " ").replace(/[.]+$/, "").toLocaleLowerCase("en-US")
 }
