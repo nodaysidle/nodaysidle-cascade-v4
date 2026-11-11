@@ -209,11 +209,18 @@ export function buildFixPrompt(
   preset: string,
   files: readonly PacketFile[],
   blocking: readonly ReviewFinding[],
+  previousFailures: readonly { file: string; reason: string }[] = [],
 ): string {
   return [
     ...files.map(file => `<file path="${file.path}">\n${file.text}\n</file>`),
     `These are all text files of one generated packet for the preset ${preset}: five Markdown contracts and a starter kit. A coding agent will build the product from only these files, following TASKS.md task by task. The user's idea: "${idea}".`,
     `An independent reviewer found these blocking defects (a coding agent would stall, build the wrong thing, or hit a contradiction):\n${blocking.map((item, index) => `${index + 1}. Where: ${item.where}\n   Quote: ${item.quote}\n   Why: ${item.why}\n   Reviewer's suggestion: ${item.fix}`).join("\n")}`,
+    ...(previousFailures.length === 0 ? [] : [
+      `The edits of your previous answer could not be applied, so the packet is unchanged:\n${[
+        ...previousFailures.slice(0, 10).map(item => `- ${item.file}: ${item.reason}`),
+        ...(previousFailures.length > 10 ? [`and ${previousFailures.length - 10} more`] : []),
+      ].join("\n")}\nCopy every find text exactly from the file as shown above.`,
+    ]),
     [
       "Repair the packet so that each defect is gone and no new contradiction appears. Return edits.",
       "- Each edit has op ('replace', 'create', 'move', or 'delete'; default 'replace'):",
@@ -456,6 +463,7 @@ export async function runReviewAndRepairLoop(options: {
   let currentReview = filterVerifiedFindings(rawReview, initialFiles.files)
   let unverified = { blocking: rawReview.blocking.length - currentReview.blocking.length, polish: rawReview.polish.length - currentReview.polish.length }
   let failedEdits = 0
+  let previousFailures: { file: string; reason: string }[] = []
 
   const appliedEdits: Edit[] = []
   let rounds = 0
@@ -472,13 +480,18 @@ export async function runReviewAndRepairLoop(options: {
       requestId: `${options.requestId}-fix-${rounds}`,
       apiKey: options.apiKey,
       model,
-      prompt: buildFixPrompt(options.idea, options.presetId, roundFiles.files, currentReview.blocking),
+      prompt: buildFixPrompt(options.idea, options.presetId, roundFiles.files, currentReview.blocking, previousFailures),
       signal: options.signal,
     })
     if (options.signal?.aborted) throw { kind: "cancelled", classification: "cancelled" }
     const edited = await applyEditsToCompiledPacket(currentPacket, fix.edits)
     failedEdits += edited.failed.length
-    if (edited.applied.length === 0) break
+    if (edited.applied.length === 0) {
+      // The packet did not change: skip the review and let the next round retry, telling the model what failed.
+      previousFailures = edited.failed.map(item => ({ file: item.edit.file, reason: item.reason }))
+      continue
+    }
+    previousFailures = []
 
     if (touchedKit(fix.edits, edited.failed) && options.kitBuilder) {
       kitBuilt = true

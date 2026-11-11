@@ -509,6 +509,82 @@ describe("pipeline review, repair, kit build, and manifest replay", () => {
     expect(threeRoundResult.repair.rounds).toBe(3)
     expect(threeRoundResult.repair.agentReady).toBe(true)
   })
+
+  describe("a round with no applied edit does not end the repair", () => {
+    const blocking = { where: "PRD.md", quote: "# Product Requirements Document", why: "Needs marker.", fix: "Add marker." }
+    const bad = { finding: 1, op: "replace" as const, file: "PRD.md", find: "text that is not in the file", replace: "x", all: false }
+    const good = { finding: 1, op: "replace" as const, file: "PRD.md", find: "# Product Requirements Document", replace: "# Product Requirements Document (Reviewed)", all: false }
+    const run = async (answers: readonly { edits: (typeof bad)[]; notes: string }[], maxRounds?: number) => {
+      const base = await compilePacket(fileOrganizerBlueprint, "linux-wayland-gtk4-desktop")
+      const prompts: string[] = []
+      let reviews = 0
+      const result = await runReviewAndRepairLoop({
+        packet: base,
+        idea: "Harbor Sort organizes downloads.",
+        presetId: "linux-wayland-gtk4-desktop",
+        requestId: "req-empty-round",
+        apiKey: "mem-key",
+        maxRounds,
+        reviewProvider: {
+          review: async () => {
+            reviews += 1
+            return { slug: base.projectSlug, blocking: reviews === 1 ? [blocking] : [], polish: [], verdict: "FAIL" }
+          },
+          fix: async ({ prompt }) => {
+            prompts.push(prompt)
+            return answers[Math.min(prompts.length, answers.length) - 1]!
+          },
+        },
+      })
+      return { base, prompts, reviews: () => reviews, ...result }
+    }
+
+    it("retries after failed edits and succeeds on the second round", async () => {
+      const { repair, prompts, reviews, base } = await run([{ edits: [bad], notes: "x" }, { edits: [good], notes: "y" }])
+      expect(prompts).toHaveLength(2)
+      expect(reviews()).toBe(2)
+      expect(repair.rounds).toBe(2)
+      expect(repair.edits).toEqual([good])
+      expect(repair.failedEdits).toBe(1)
+      expect(repair.verdict).toBe("agent-ready")
+      // The second prompt names the failed edit's file and reason; the first has no such section.
+      const reason = (await applyEditsToCompiledPacket(base, [bad])).failed[0]!.reason
+      expect(prompts[1]).toContain(`- PRD.md: ${reason}`)
+      expect(prompts[1]).toContain("could not be applied")
+      expect(prompts[0]).not.toContain("could not be applied")
+    })
+
+    it("uses every round when no answer applies, with one review call", async () => {
+      const { repair, prompts, reviews } = await run([{ edits: [bad], notes: "x" }], 3)
+      expect(prompts).toHaveLength(3)
+      expect(reviews()).toBe(1)
+      expect(repair.rounds).toBe(3)
+      expect(repair.edits).toEqual([])
+      expect(repair.failedEdits).toBe(3)
+      expect(repair.verdict).toBe("not-ready")
+    })
+
+    it("treats an empty edit list the same way", async () => {
+      const { repair, prompts, reviews } = await run([{ edits: [], notes: "x" }], 3)
+      expect(prompts).toHaveLength(3)
+      expect(reviews()).toBe(1)
+      expect(repair.rounds).toBe(3)
+      expect(repair.failedEdits).toBeUndefined()
+      expect(repair.verdict).toBe("not-ready")
+    })
+
+    it("keeps buildFixPrompt byte-identical without failures", async () => {
+      const base = await compilePacket(fileOrganizerBlueprint, "linux-wayland-gtk4-desktop")
+      const { files } = packetFilesFromCompiled(base)
+      const four = buildFixPrompt("idea", "linux-wayland-gtk4-desktop", files, [blocking])
+      expect(buildFixPrompt("idea", "linux-wayland-gtk4-desktop", files, [blocking], [])).toBe(four)
+      const many = Array.from({ length: 12 }, (_, index) => ({ file: `f${index}.md`, reason: "r" }))
+      const withFailures = buildFixPrompt("idea", "linux-wayland-gtk4-desktop", files, [blocking], many)
+      expect(withFailures).toContain("- f9.md: r")
+      expect(withFailures).not.toContain("- f10.md: r")
+      expect(withFailures).toContain("and 2 more")
+    })
+  })
 })
 
 describe("a failed review keeps the compiled packet", () => {
