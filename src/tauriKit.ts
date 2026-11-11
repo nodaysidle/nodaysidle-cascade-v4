@@ -159,8 +159,9 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     ...(uses.linuxOnly ? [] : ["- scripts/package_app.sh builds only the macOS .app (no DMG), signs it ad hoc, and verifies it; with --install it waits for the running app to quit, moves the installed copy to src-tauri/target/rollback/ (never inside /Applications), installs, restores the previous copy if verification fails, registers, and launches by bundle ID. The first run generates src-tauri/icons from app-icon.svg."]),
     "- scripts/package_linux.sh builds the AppImage, writes dist/, and with --install installs it under ~/.local/bin with a desktop entry and icon. On Arch/Omarchy use it for local proof; the AppImage runs on Wayland with GDK_BACKEND=wayland.",
     "- Versions are exact (= in Cargo.toml, no ^ in package.json) because they are tested together; keep src-tauri/Cargo.lock and package-lock.json from the first build, and change a version only on purpose, never by a broad update.",
-    `- Screens are built from src/ui.ts and the classes in src/style.css, never from unstyled elements: button() is sized to its label (primary for the one main action); toolbar() holds a search field and actions; setEnabled() disables a command until it has something to act on (Edit, Delete, Copy with nothing selected); emptyState(title, hint) fills an empty list with one centered message saying how to fill it; list rows use .row with aria-selected for the selection and clampedText() so long text is cut to a few lines with the full text on hover, never a scroll area inside a scrolling list; ${uses.settings ? "settings are settingsGroup() sections of settingsRow() lines, label on the left and control on the right, a switchControl() on the same line as its label, and a footnote under the group; " : ""}body text uses the system font, and monospace only for code.`,
+    `- Screens are built from src/ui.ts and the classes in src/style.css, never from unstyled elements: button() is sized to its label (primary for the one main action); toolbar() holds a search field and actions; setEnabled() disables a command until it has something to act on (Edit, Delete, Copy with nothing selected); emptyState(title, hint) fills an empty list with one centered message saying how to fill it; list rows use .row with aria-selected for the selection and clampedText() so long text is cut to a few lines with the full text on hover, never a scroll area inside a scrolling list; a form is built from field(label, control) lines, one per input, with the label above its control; the detail view of the selected record and a form shell are each a panel(); stored text that can hold line breaks (a note, a snippet, a description) is shown with multilineText(text), which keeps line breaks and indentation and wraps long lines, and is edited in a textarea; ${uses.settings ? "settings are settingsGroup() sections of settingsRow() lines, label on the left and control on the right, a switchControl() on the same line as its label, and a footnote under the group; " : ""}body text uses the system font, and monospace only for code.`,
     "- src/style.css uses the system font and light and dark system colors; the page never scrolls, and .app-content scrolls inside the window.",
+    `- No task edits src/style.css: the helpers and classes above cover the screens of this packet. A look they do not cover is set in the feature's own file through single properties of the element's style object (element.style.gap = "8px"); the content security policy (style-src 'self') blocks a style attribute, setAttribute("style", ...), style.cssText and a style element, but not single style properties.`,
     "",
   ].join("\n")
 }
@@ -377,6 +378,32 @@ export const clampedText = (text: string, lines: 2 | 3 = 2): HTMLElement => {
   return element
 }
 
+/** One labelled control of a form: the label text above the control, tied to it for screen readers. */
+export const field = (label: string, control: HTMLElement): HTMLLabelElement => {
+  const element = document.createElement("label")
+  element.className = "field"
+  const caption = document.createElement("span")
+  caption.textContent = label
+  element.append(caption, control)
+  return element
+}
+
+/** A bordered block that groups related content: the detail view of the selected record, or a form. */
+export const panel = (...children: HTMLElement[]): HTMLElement => {
+  const element = document.createElement("section")
+  element.className = "panel"
+  element.append(...children)
+  return element
+}
+
+/** Stored text shown exactly as entered: line breaks and indentation are kept and long lines wrap. */
+export const multilineText = (text: string): HTMLElement => {
+  const element = document.createElement("p")
+  element.className = "pre-wrap"
+  element.textContent = text
+  return element
+}
+
 /**
  * A confirmation inside the page (no browser or plugin dialog): a modal with the message, a Cancel
  * button, and a confirm button labelled confirmLabel. Resolves true on confirm, false on Cancel or Escape.
@@ -461,7 +488,7 @@ export const switchControl = (checked: boolean, onChange: (checked: boolean) => 
 
 const UI_TEST_TS = `// @vitest-environment happy-dom
 import { describe, expect, it } from "vitest"
-import { button, clampedText, confirmDialog, emptyState, setEnabled, settingsGroup, settingsRow, switchControl } from "../src/ui"
+import { button, clampedText, confirmDialog, emptyState, field, multilineText, panel, setEnabled, settingsGroup, settingsRow, switchControl } from "../src/ui"
 
 describe("ui building blocks", () => {
   it("disables a command until it has something to act on", () => {
@@ -505,6 +532,19 @@ describe("ui building blocks", () => {
     const text = clampedText("A long prompt that goes on and on.", 3)
     expect(text.className).toBe("clamp-3")
     expect(text.title).toBe("A long prompt that goes on and on.")
+  })
+
+  it("builds a labelled field, a panel, and text that keeps its line breaks", () => {
+    const input = document.createElement("input")
+    const labelled = field("Title", input)
+    expect(labelled.tagName).toBe("LABEL")
+    expect(labelled.className).toBe("field")
+    expect(labelled.querySelector("span")?.textContent).toBe("Title")
+    expect(labelled.contains(input)).toBe(true)
+    const text = multilineText("line one\\n  indented")
+    expect(text.className).toBe("pre-wrap")
+    expect(text.textContent).toBe("line one\\n  indented")
+    expect(panel(labelled, text).className).toBe("panel")
   })
 })
 `
@@ -589,6 +629,11 @@ textarea { resize: vertical; }
 .clamp-2 { -webkit-line-clamp: 2; }
 .clamp-3 { -webkit-line-clamp: 3; }
 .muted { color: var(--text-2); }
+.panel { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field > span { color: var(--text-2); }
+.field > input, .field > select, .field > textarea { width: 100%; }
+.pre-wrap { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .settings { display: flex; flex-direction: column; gap: 22px; max-width: 620px; margin: 0 auto; }
 .settings-group h2 { margin: 0 0 6px 4px; font-size: 13px; font-weight: 600; }
