@@ -28,6 +28,10 @@ describe("Android: a later task can post to the shared status area (round 13)", 
       const later = all.filter(block => block !== first[0] && (block.includes("Form rules:") || block.includes("Delete prompt:")))
       expect(later.length).toBeGreaterThan(0)
       for (const block of later) expect(block).toContain("showStatus(")
+      expect(first[0]).toContain("App.kt")
+      const users = all.filter(block => block.includes("Status use:"))
+      expect(users.length).toBeGreaterThan(0)
+      for (const block of users) for (const part of ["showStatus: (String, String) -> Unit", "clearStatus: () -> Unit", "App.kt"]) expect(block, part).toContain(part)
     })
   }
 

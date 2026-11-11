@@ -74,7 +74,7 @@ function fieldRule(field: AndroidFormField, choices: readonly AndroidChoiceList[
 }
 
 // The Field rules decide the widget; prose in the PRD that names another one does not.
-export const ANDROID_WIDGET_RULE = "Widget rule: the Field rules fix the input widget of every field; when the PRD or an acceptance signal describes a field with another widget (a time picker where the rule says a text field, a dropdown, a slider, a stepper), build the widget the Field rules name; the PRD's label, values, and limits still apply."
+export const ANDROID_WIDGET_RULE = "Widget rule: the Field rules fix the input widget of every field; when the PRD or an acceptance signal describes a field with a different widget than its Field rule names (for example a time picker or a slider for a field whose rule says a text field), build the widget the Field rule names; the PRD's label, values, and limits still apply."
 
 // The one validation list of a form that creates or edits records.
 // alwaysVisible: no feature lists the records, so the add form stays on the main screen in its feature's own section.
