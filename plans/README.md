@@ -21,6 +21,7 @@ update your row when done (unless a reviewer dispatched you and maintains this i
 | 011  | A repair round whose edits all fail no longer ends the repair, and the app shows the failed edits (round 13, Sleep Log) | P1 | S–M | — | DONE (2026-11-11; commits 76e560c 355da7a 2680dbc ef8b0f3 fb5e054; in `main`. After QA: one retry after an empty answer, stop on the second empty answer in a row; failed paths cut to 200 characters) |
 | 012  | The review asks what happens to a delayed write when the app closes (round 13, Scratch Pad; owner said yes) | P1 | S | 009–011 | DONE (2026-11-11; commits c1af078 fb5e054; in `main`. After QA the check covers only a change the user made that is held before it is written; a refresh timer is not a delayed write. No paid review has run with it) |
 | 013  | The Tauri kit installs the release binary instead of building an AppImage (finding P; owner said yes) | P1 | S–M | — | DONE (2026-11-11; commits ccb4f63 bd30f61 df1b95a 098cf5e; in `main`. After QA: the real kit build showed that a product name holding one of `/ : * ? " < > |` gave a `tauri.conf.json` Tauri refuses, so `productName` now drops those characters and the packet sentence says so; the macOS script uses the same name) |
+| 014  | Cascade V4 is Linux-only in code and text: remove the macOS leftovers (owner said yes) | P1 | M | 013 | IN PROGRESS (2026-11-11) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
