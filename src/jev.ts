@@ -49,9 +49,9 @@ export type JevClarityLevel = (typeof JEV_CLARITY_LEVELS)[number]
 export const JEV_PLATFORM_NEED_NOUL_PREFIX = "platform-need:"
 
 export const JEV_STORAGE_TIERS = [
-  "keychain",
+  "secret-store",
   "sqlite",
-  "userdefaults",
+  "settings",
   "ephemeral",
   "filesystem",
 ] as const
@@ -600,7 +600,7 @@ export function evaluateJevAtomicAudit(outcomes: readonly JevOutcome[], blueprin
     const tierOutcome = choiceOf(outcomes, jevDataStorageTierNoulId(index))
     const storageTier: JevStorageTier = tierOutcome && (JEV_STORAGE_TIERS as readonly string[]).includes(tierOutcome.choice)
       ? (tierOutcome.choice as JevStorageTier)
-      : "userdefaults"
+      : "settings"
     const tierConfidence = tierOutcome?.confidence ?? 0
     return {
       dataIndex: index,

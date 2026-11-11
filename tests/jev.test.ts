@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { generatePacket } from "../src/pipeline"
 import {
-  JEV_ACCEPTANCE_VERIFIABILITY_THRESHOLD, JEV_INTEGRITY_THRESHOLD, JEV_PRESET_MISMATCH_CONFIDENCE, JEV_VIABILITY_THRESHOLD,
+  JEV_ACCEPTANCE_VERIFIABILITY_THRESHOLD, JEV_INTEGRITY_THRESHOLD, JEV_STORAGE_TIERS, JEV_PRESET_MISMATCH_CONFIDENCE, JEV_VIABILITY_THRESHOLD,
   evaluateJevAtomicAudit, evaluateJevIntake, evaluateJevPostflight, evaluateJevPreflight, jevFeatureCapabilityNoulId, jevFeatureVerifiableNoulId,
   parseJevResponse, type JevNoul, type JevOutcome, type JevRequest,
 } from "../src/jev"
@@ -105,5 +105,13 @@ describe("parseJevResponse refuses malformed input", () => {
     ["an extra outcome key", JSON.stringify({ outcomes: [{ ...good.outcomes[0], note: "x" }, good.outcomes[1]] })],
   ])("refuses %s", (_label, text) => {
     expect(parseJevResponse(text, nouls).ok).toBe(false)
+  })
+})
+
+describe("storage tiers", () => {
+  it("name no macOS store and keep five categories", () => {
+    expect(JEV_STORAGE_TIERS).not.toContain("keychain")
+    expect(JEV_STORAGE_TIERS).not.toContain("userdefaults")
+    expect(JEV_STORAGE_TIERS).toHaveLength(5)
   })
 })

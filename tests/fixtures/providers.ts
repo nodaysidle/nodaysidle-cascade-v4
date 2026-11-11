@@ -36,6 +36,6 @@ function choiceFor(noul: JevNoul, request: JevRequest): string {
   if (noul.id === "clarity") return "clear"
   if (noul.id.endsWith("_idea_fidelity")) return "faithful"
   if (noul.id.endsWith("_capability")) return "none"
-  if (noul.id.startsWith("data_")) return "userdefaults"
+  if (noul.id.startsWith("data_")) return "settings"
   return noul.options[0]!
 }
