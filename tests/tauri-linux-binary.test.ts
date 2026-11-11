@@ -28,4 +28,13 @@ describe("Tauri Linux packet installs the release binary", () => {
     expect(resolvePresetOptions(PRESET, []).values.linuxPackaging).toBe("binary")
     expect(resolvePresetOptions(PRESET, ["linuxPackaging=appimage"]).issues.length).toBeGreaterThan(0)
   })
+
+  it("writes a productName Tauri accepts, and the project name unchanged when it already is", async () => {
+    const productName = (packet: Awaited<ReturnType<typeof compilePacket>>): string => JSON.parse(packet.kit.find(file => file.name === "kit/src-tauri/tauri.conf.json")!.content).productName
+    const hostile = await compilePacket({ ...expenseLogBlueprint, productName: '24h "Hi" \\ Ca$h & Tom\'s 100%' }, PRESET, { linuxPackaging: "binary", wayland: true })
+    expect(productName(hostile)).toMatch(/^[^/:*?"<>|]+$/)
+    expect(productName(hostile)).not.toBe("")
+    const plain = await compilePacket(expenseLogBlueprint, PRESET, { linuxPackaging: "binary", wayland: true })
+    expect(productName(plain)).toBe(plain.graph.identity.projectName)
+  })
 })

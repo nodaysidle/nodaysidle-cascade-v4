@@ -462,7 +462,7 @@ export function tauriSpecialize(preset: PresetContract, blueprint: NormalizedBlu
     overrides.runtimeMode = () => "linux-desktop"
     overrides.packagingRules = [
       "Build the frontend with Vite and the native boundary with Cargo.",
-      "Set tauri.conf.json productName to the locked project name.",
+      "Keep tauri.conf.json productName as the kit sets it: the locked project name without the characters Tauri refuses there (slash, colon, asterisk, question mark, double quote, angle brackets, pipe).",
       "The packet targets Linux only: scripts/package_linux.sh builds the release binary without a bundle, and the installed desktop entry is validated before the launch smoke.",
       "Use least-privilege capabilities for every command and plugin.",
       "Verify the built binary before the launch smoke.",

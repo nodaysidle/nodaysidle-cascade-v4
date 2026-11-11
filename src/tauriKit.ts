@@ -1452,10 +1452,15 @@ fn secrets_round_trip_in_the_test_store() {
 ` : ""}`
 }
 
+// Tauri refuses / : * ? " < > | in productName; the window title and scripts keep the full project name.
+function tauriProductName(identity: ProjectIdentity): string {
+  return identity.projectName.replace(/[/:*?"<>|]/g, "").replace(/\s+/g, " ").trim() || identity.slug
+}
+
 function tauriConf(identity: ProjectIdentity, linuxOnly: boolean): string {
   return `${JSON.stringify({
     $schema: "https://schema.tauri.app/config/2",
-    productName: identity.projectName,
+    productName: tauriProductName(identity),
     version: "0.1.0",
     identifier: identity.bundleId,
     build: {

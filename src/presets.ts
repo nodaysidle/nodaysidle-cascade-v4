@@ -761,7 +761,7 @@ const tauriDesktop: PresetContract = {
     () => "cargo test --manifest-path src-tauri/Cargo.toml",
     () => "npm run tauri -- build --no-bundle",
   ],
-  packagingRules: ["Build the frontend with Vite and the native boundary with Cargo.", "Set tauri.conf.json productName to the locked project name.", "Local proof builds only the native .app on macOS; on Linux build the AppImage or deb and validate the desktop entry.", "Use least-privilege capabilities for every command and plugin.", "Verify the installer or bundle before the launch smoke."],
+  packagingRules: ["Build the frontend with Vite and the native boundary with Cargo.", "Keep tauri.conf.json productName as the kit sets it: the locked project name without the characters Tauri refuses there (slash, colon, asterisk, question mark, double quote, angle brackets, pipe).", "Local proof builds only the native .app on macOS; on Linux build the AppImage or deb and validate the desktop entry.", "Use least-privilege capabilities for every command and plugin.", "Verify the installer or bundle before the launch smoke."],
   wiringRules: [
     "src-tauri/src/lib.rs defines a public app_builder function, generic over tauri::Runtime, that takes and returns a tauri::Builder, initializes every tauri-plugin crate listed in src-tauri/Cargo.toml and registers every #[tauri::command] with invoke_handler(tauri::generate_handler![...]), and nothing else. run() calls app_builder(tauri::Builder::default()) and owns the only setup closure.",
     "src/main.ts constructs every feature with the real call() from src/api.ts (the only file that imports invoke) and the initialized plugin APIs; test doubles exist only under tests/.",
