@@ -69,6 +69,12 @@ describe("Astro pages of a collection without a detail route", () => {
     const text = packet.documents["TASKS.md"]!
     expect(text).not.toContain("or one element for a single entry")
     expect(text).toContain("also when the collection has a single entry")
+    const home = find(tasks(text), "src/pages/index.astro keeps the one h1")
+    expect(home.length).toBeGreaterThan(0)
+    for (const block of home) {
+      expect(block).toContain("entries with an equal value keep ascending entry id order")
+      expect(block).toContain("listScreeningsEntries()")
+    }
     expect(find(tasks(text), "has no detail route").every(block => block.includes("throw an Error"))).toBe(true)
   })
 
