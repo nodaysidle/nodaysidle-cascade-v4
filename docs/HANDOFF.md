@@ -594,7 +594,20 @@ Start by reading this section and `plans/README.md`. Alan's standing direction: 
 State: `main` = `fb5e054` plus this docs commit, local only, 39 or more commits ahead of `origin/main`. All
 plans 001 to 012 are DONE. See "Installed app" below.
 
+Build test (2026-11-11, after the lines above were written): Alan pasted the prompt in
+`/home/arch/dev/nodaysidle/scratch-pad.prompt.md` into Gemini `agy` inside the unmodified UI export
+`/home/arch/dev/nodaysidle/scratch-pad/`. Alan's rule for this test: nobody repairs the folder, the packet or
+the prompt, or the test is void; the lead only reads and measures. Outcome: all 8 tasks built and committed
+without a question, every validation command passes when re-run, and text typed 15 ms before the window
+closes is stored (checked in the installed app through Hyprland, in a hidden workspace). Not a clean pass:
+findings P to W in `plans/README.md`. P is the serious one: the packaging script cannot pass on this machine
+with stock Tauri tools, and the agent patched `~/.cache/tauri` (`linuxdeploy-x86_64.AppImage`, original kept
+as `.real`; `linuxdeploy-plugin-gtk.sh`; a leftover `squashfs-root`). That cache is still patched.
+The installed test app is `~/.local/bin/scratch-pad.AppImage` (desktop entry `com.scratch.pad.desktop`).
+
 Open, in the order I would take them:
+0. Finding P (Tauri packaging) needs Alan's yes, then a plan 013. Findings Q to W are compiler-text work; Q
+   belongs with finding O.
 1. Alan runs more of the 20
    unused round-13 ideas. For each export: `npm run -s cascade -- verify --packet <dir>`, the kit build
    (`bash scripts/agent-ready/build-round-kits.sh <folder with <preset>/<slug> links>`), and one independent
