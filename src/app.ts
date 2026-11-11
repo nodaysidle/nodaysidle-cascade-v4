@@ -15,7 +15,7 @@ import {
   type ProgressStage,
 } from "./pipeline"
 import { PRESET_IDS, PRESETS } from "./presets"
-import type { KitBuilder, ReviewProvider } from "./review"
+import type { KitBuilder, PacketRepairRecord, ReviewProvider } from "./review"
 import type { SemanticIssue } from "./schema"
 import {
   canExport,
@@ -80,6 +80,16 @@ export function statusDetailText(status: AppState["status"], issues: readonly Se
     }
   }
   return statusCopy[status].detail
+}
+
+export function repairMetaText(repair: PacketRepairRecord): string {
+  const edits = `${repair.edits.length} ${repair.edits.length === 1 ? "edit" : "edits"}`
+  const failed = repair.failedEdits ? `, ${repair.failedEdits} could not be applied` : ""
+  const roundsLabel = repair.rounds === 0
+    ? "0 repair rounds"
+    : `${repair.rounds} repair ${repair.rounds === 1 ? "round" : "rounds"} (${edits}${failed})`
+  const dropped = (repair.unverifiedFindings?.blocking ?? 0) + (repair.unverifiedFindings?.polish ?? 0)
+  return `${repair.model} · ${roundsLabel}${dropped > 0 ? ` · ${dropped} findings dropped (quote not in the packet)` : ""}`
 }
 
 function escapeHtml(value: string): string {
@@ -465,10 +475,7 @@ export function mountApp(
     verdictHeading.textContent = repair.agentReady
       ? "Agent-ready (reviewed, 0 blocking)"
       : "Not ready"
-    const roundsLabel = repair.rounds === 0
-      ? "0 repair rounds"
-      : `${repair.rounds} repair ${repair.rounds === 1 ? "round" : "rounds"} (${repair.edits.length} ${repair.edits.length === 1 ? "edit" : "edits"})`
-    verdictMeta.textContent = `${repair.model} · ${roundsLabel}`
+    verdictMeta.textContent = repairMetaText(repair)
 
     const blockingItems: string[] = repair.review.blocking.map(
       item => `<li><strong>${escapeHtml(item.where)}</strong> — ${escapeHtml(item.why)}</li>`,

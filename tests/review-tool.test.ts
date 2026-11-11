@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
+import { repairMetaText } from "../src/app"
 import { compilePacket, verifyPacketHashes } from "../src/compiler"
 import { invokeKitBuilder, invokeReviewProvider } from "../src/bridge"
 import { verifyPacketFolder, writePacketAtomic, type PacketManifest } from "../src/packet"
@@ -22,6 +23,7 @@ import {
   MAX_KIT_PATH_DEPTH,
   MAX_PACKET_FILE_BYTES,
   packetFilesFromCompiled,
+  type PacketRepairRecord,
   quoteFound,
   Review,
   REVIEW_JSON_SCHEMA,
@@ -584,6 +586,21 @@ describe("pipeline review, repair, kit build, and manifest replay", () => {
       expect(withFailures).not.toContain("- f10.md: r")
       expect(withFailures).toContain("and 2 more")
     })
+  })
+})
+
+describe("verdict meta line", () => {
+  const repair = (extra: Partial<PacketRepairRecord>): PacketRepairRecord => ({
+    model: "m", rounds: 1, edits: [], review: { slug: "s", blocking: [], polish: [], verdict: "PASS" }, verdict: "not-ready", agentReady: false, ...extra,
+  })
+  it("keeps the old text when no failures are recorded", () => {
+    expect(repairMetaText(repair({ rounds: 0 }))).toBe("m · 0 repair rounds")
+    expect(repairMetaText(repair({ unverifiedFindings: { blocking: 0, polish: 0 } }))).toBe("m · 1 repair round (0 edits)")
+  })
+  it("shows failed edits and dropped findings", () => {
+    expect(repairMetaText(repair({ failedEdits: 4 }))).toBe("m · 1 repair round (0 edits, 4 could not be applied)")
+    expect(repairMetaText(repair({ rounds: 2, failedEdits: 1, unverifiedFindings: { blocking: 1, polish: 2 } })))
+      .toBe("m · 2 repair rounds (0 edits, 1 could not be applied) · 3 findings dropped (quote not in the packet)")
   })
 })
 
