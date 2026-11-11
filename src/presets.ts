@@ -494,7 +494,7 @@ const linuxGtk: PresetContract = {
     () => "cargo test",
     () => "cargo build --release",
     identity => `desktop-file-validate resources/${identity.bundleId}.desktop`,
-    identity => `appstreamcli validate resources/${identity.bundleId}.metainfo.xml`,
+    identity => `appstreamcli validate --no-net resources/${identity.bundleId}.metainfo.xml`,
   ],
   deviceGates: { rule: "Arch host only: makepkg --printsrcinfo and the Wayland launch check need an Arch-based host with a Wayland session; on another host the completion report names these gates as not run and reports PARTIAL.", commands: ["makepkg --printsrcinfo"] },
   packagingRules: [
