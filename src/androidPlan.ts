@@ -1,4 +1,4 @@
-import { ANDROID_DELETE_PROMPT, ANDROID_DISPLAY_FORMATS } from "./androidForms"
+import { ANDROID_DELETE_CLOSES_FORM, ANDROID_DELETE_PROMPT, ANDROID_DISPLAY_FORMATS } from "./androidForms"
 import type { OwnerKind, ProjectIdentity } from "./presets"
 
 // Android-only planning: the files, contract, and task text a declared schedule, a notification
@@ -154,7 +154,7 @@ export function androidTaskExtras(input: {
   }
   if (input.openForm && input.addForm && !input.firstMain) notes.push("The add form is open exactly when the shared openForm is OpenForm.Add: the Add button of the first main task calls openAdd(), and a successful Save or a close calls closeForm(); keep the typed field values in your own file and build no Add button.")
   if (input.openForm && input.editForm) notes.push("The row's Edit control (label \"Edit\") calls the shared openEdit(id); the edit form is open exactly when the shared openForm is OpenForm.Edit(id), is pre-filled from the stored record, and a successful Save or a close calls closeForm(); keep the typed field values in your own file.")
-  if (input.deletes) notes.push(ANDROID_DELETE_PROMPT)
+  if (input.deletes) notes.push(input.openForm && input.openEdit ? `${ANDROID_DELETE_PROMPT} ${ANDROID_DELETE_CLOSES_FORM}` : ANDROID_DELETE_PROMPT)
   if (input.selectionFor?.length) {
     const names = input.selectionFor.map(item => item.name)
     notes.push(`Shared selection function: export from ${input.focusedTestFile.replace("/test/", "/main/").replace(/Test\.kt$/, ".kt")} ${input.selectionFor.map(item => `${androidSelectionFunction(item.pascal)}(records, today: LocalDate)`).join(" and ")}, one top-level display-free function (no Compose or Android types; it takes the stored records and today's LocalDate, which the caller reads from the injected clock) that returns the stored records (the record type itself, a List of it, never only their names) that ${names.join(" and ")} lists, in the order the list shows them; the Worker maps them to what it posts and the screen builds its rows from them. The screen of this task and the Worker of ${names.join(" and ")} both call that one function and never recompute the rule (the screen calls it only when it shows a section for that feature: a main list of every record stays unfiltered); its name is fixed here, and test it in ${input.focusedTestFile} with Clock.fixed dates before, on, and after each edge of its window.`)

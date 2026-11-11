@@ -93,7 +93,10 @@ export function androidFormRules(dataName: string, fields: readonly AndroidFormF
   ]
 }
 
-export const ANDROID_DELETE_PROMPT = `Delete prompt: the row's Delete control carries testTag "delete-" plus the record id; removing a record first shows an AlertDialog whose confirm button is labelled "Delete" (testTag "confirm-delete") and whose dismiss button is labelled "Cancel" (testTag "cancel-delete"); only "Delete" removes the record, and "Cancel" leaves it and closes the prompt. This is the one rule for every delete: the only exception is a feature whose own behavior says it removes with no confirmation step, and then the row's Delete control removes the record at once and no dialog exists. When the shared view state has an openForm value and it is OpenForm.Edit for the removed record's id, the delete calls closeForm() after the record is removed, so no form stays open for a record that no longer exists.`
+export const ANDROID_DELETE_PROMPT = `Delete prompt: the row's Delete control carries testTag "delete-" plus the record id; removing a record first shows an AlertDialog whose confirm button is labelled "Delete" (testTag "confirm-delete") and whose dismiss button is labelled "Cancel" (testTag "cancel-delete"); only "Delete" removes the record, and "Cancel" leaves it and closes the prompt. This is the one rule for every delete: the only exception is a feature whose own behavior says it removes with no confirmation step, and then the row's Delete control removes the record at once and no dialog exists.`
+
+// Printed only in the open-form variant that has an edit feature: the one case in which OpenForm.Edit exists.
+export const ANDROID_DELETE_CLOSES_FORM = "When the shared openForm is OpenForm.Edit for the removed record's id, the delete calls closeForm() after the record is removed, so no form stays open for a record that no longer exists."
 
 const tagOf = (value: string): string => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
 const PREFERENCES_KEY: Readonly<Record<string, readonly [string, string]>> = {

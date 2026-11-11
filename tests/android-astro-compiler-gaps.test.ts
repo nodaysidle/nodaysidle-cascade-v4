@@ -25,12 +25,35 @@ describe("Android packets share one open-form value", () => {
     const edit = find(list, "openEdit")
     const add = find(list, "Field rules").filter(block => block.includes("OpenForm.Add") && !block.includes("You are the first main-surface task"))
     expect(add).toHaveLength(1)
+    expect(add[0]).toContain("the inline form shell of the add-entry area")
+    expect(add[0]).not.toContain("(the add-entry control)")
     expect(find(edit, "calls the shared openEdit(id)")).toHaveLength(1)
+    const trd = packet.documents["TRD.md"]!
     const del = find(list, "Delete prompt:")
     expect(del).toHaveLength(1)
-    expect(del[0]).toContain("closeForm()")
-    const trd = packet.documents["TRD.md"]!
+    expect(del[0]).toContain("When the shared openForm is OpenForm.Edit for the removed record's id, the delete calls closeForm() after the record is removed")
+    expect(trd).toContain("When the shared openForm is OpenForm.Edit for the removed record's id")
     for (const part of ["field-station-name", "field-total-cost-eur", "stationName", "totalCostEur"]) expect(trd).toContain(part)
+  })
+
+  it("prints the delete-closes-form sentence only when the packet has an edit form", async () => {
+    const full = load("android-add-edit-forms.json")
+    const edit = full.features.filter(item => /edit/i.test(item.name)).map(item => item.name)
+    expect(edit).toHaveLength(1)
+    const withoutEdit = {
+      ...full,
+      features: full.features.filter(item => !edit.includes(item.name)),
+      ideaCoverage: full.ideaCoverage.map(item => ({ ...item, features: item.features.filter(name => !edit.includes(name)) })),
+    }
+    const packet = await compilePacket(withoutEdit, "android-kotlin-compose")
+    expect(packet.failures).toEqual([])
+    const text = packet.documents["TASKS.md"]!
+    expect(text).toContain("Delete prompt:")
+    expect(text).toContain("OpenForm.None")
+    for (const doc of [text, packet.documents["TRD.md"]!]) {
+      expect(doc).not.toContain("OpenForm.Edit")
+      expect(doc).not.toContain("the delete calls closeForm()")
+    }
   })
 
   it("leaves OpenForm.Edit out when no feature edits records", async () => {

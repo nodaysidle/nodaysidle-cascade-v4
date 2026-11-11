@@ -3,7 +3,7 @@ import { CATALOG_PATH } from "./astroKit"
 import { ASTRO_CONTENT_COLLECTION_PERSISTENCE, ASTRO_FOUNDATION_SCRIPT_REQUIREMENTS, astroStaticContentSite, dataKey, planAstroWeb, type AstroRoutePlan } from "./astroWeb"
 import { PRESETS, USER_SELECTED_FILE_PLACEMENT, type OwnerKind, type PermissionCapability, type PresetContract, type PresetId, type PresetOptionValue, type PresetRuntimeMode, type ProjectIdentity } from "./presets"
 import { androidKitNeeds } from "./androidKit"
-import { ANDROID_DELETE_PROMPT, androidChoiceMatchesPicker, androidFormRules, androidSettingFormRules, androidSettingKeys } from "./androidForms"
+import { ANDROID_DELETE_CLOSES_FORM, ANDROID_DELETE_PROMPT, androidChoiceMatchesPicker, androidFormRules, androidSettingFormRules, androidSettingKeys } from "./androidForms"
 import { androidScheduleContract, androidTaskExtras, type AndroidScheduledFeature } from "./androidPlan"
 import { renderPacket } from "./renderers"
 import { appSetInitial, clockInitial, featureDataUses, fieldChoiceList, offeredOnCreate, featureReferenceIssues, nameKey, referenceKey, type DataStorage, type DataValueType, type DataWriteMode, type FeatureRecovery, type FeatureSurface, type PlatformNeed, type SemanticBlueprint, type SemanticIssue } from "./schema"
@@ -1143,7 +1143,14 @@ function androidFormFeature(feature: GraphFeature, item: NormalizedBlueprint["do
   return creates || edits ? { creates, edits } : null
 }
 
-function androidFeatureFormDetails(feature: GraphFeature, data: NormalizedBlueprint["domainData"], features: readonly GraphFeature[]): string[] {
+// The Android packet shows an inline form shell with one shared openForm value (no detail view, an Add control with a form); it has an Edit case when a feature edits records.
+function androidOpenForm(features: readonly GraphFeature[], blueprint: Pick<NormalizedBlueprint, "domainData">): { openForm: boolean; openEdit: boolean } {
+  const screenView = sharedScreenView(features, "android-kotlin-compose", settingsKeysOf(blueprint))
+  const openForm = blueprint.domainData.length > 0 && !features.some(feature => feature.surface === "item-page") && !noListOnScreen(features, blueprint.domainData) && !createsWithoutInput(features, blueprint.domainData) && screenView.some(feature => opsOnAny(feature).includes("create"))
+  return { openForm, openEdit: screenView.some(feature => feature.editsRecords) }
+}
+
+function androidFeatureFormDetails(feature: GraphFeature, data: NormalizedBlueprint["domainData"], features: readonly GraphFeature[], closesForm = false): string[] {
   const itemPage = features.some(other => other.surface === "item-page")
   const alwaysVisible = noListOnScreen(features, data)
   const details = data.flatMap(item => {
@@ -1151,7 +1158,7 @@ function androidFeatureFormDetails(feature: GraphFeature, data: NormalizedBluepr
     if (!form && item.storage === "settings" && opsOn(feature, item.name).includes("update") && feature.surface === "main" && feature.invokedBy === "user-control") return androidSettingFormRules(item.name, item.fields)
     return form ? androidFormRules(item.name, item.fields, { edits: form.edits, creates: form.creates, itemPage, choices: feature.choiceLists, alwaysVisible }) : []
   })
-  if (data.some(item => item.storage === "records" && opsOn(feature, item.name).includes("delete"))) details.push(ANDROID_DELETE_PROMPT)
+  if (data.some(item => item.storage === "records" && opsOn(feature, item.name).includes("delete"))) details.push(closesForm ? `${ANDROID_DELETE_PROMPT} ${ANDROID_DELETE_CLOSES_FORM}` : ANDROID_DELETE_PROMPT)
   return details
 }
 
@@ -1425,13 +1432,13 @@ function tauriSlotHosts(features: readonly GraphFeature[], detailView: boolean, 
 }
 
 // The slot a later feature task mounts into, from its declared operations.
-function slotFor(owned: readonly GraphFeature[], presetId: PresetId, detailView = true, noList = false, noData = false): string {
+function slotFor(owned: readonly GraphFeature[], presetId: PresetId, detailView = true, noList = false, noData = false, formShell = false): string {
   const android = presetId === "android-kotlin-compose"
   const ops = new Set(owned.flatMap(feature => feature.dataOperations))
   if (!ops.size && owned.some(usesActionsArea)) return android ? 'the actions area, testTag "actions"' : presetId === "tauri2-rust-typescript-desktop" ? 'the "actions" host' : "the actions area"
   if (noList && owned[0] && (ops.size || noData)) return noData ? `your own section, testTag "${sectionTag(owned[0])}"` : `your own section, testTag "${sectionTag(owned[0])}"; a stored setting you read is shown only by its own control in the actions area, never again here`
   if (!ops.size && presetId === "tauri2-rust-typescript-desktop") return "no named slot: your own controls, if any (start and stop), sit in the main content area"
-  if (ops.has("create")) return "the add-entry control"
+  if (ops.has("create")) return android && formShell ? "the inline form shell of the add-entry area" : "the add-entry control"
   if (presetId === "tauri2-rust-typescript-desktop" && owned.length > 0 && owned.every(isCountdown)) return "the per-row action area (its Start control and the row's countdown display)"
   if (presetId === "tauri2-rust-typescript-desktop" && owned.length > 0 && owned.every(feature => isTauriRowAction(feature, undefined))) return "the per-row action area"
   if (owned.some(feature => feature.editsRecords)) return detailView ? (presetId === "tauri2-rust-typescript-desktop" ? 'the detail view\'s "detail-actions" slot (its Edit control)' : "the detail view (its Edit control)") : "the per-row action area"
@@ -1517,9 +1524,10 @@ function buildOwnersAndContracts(
   }
 
   const contracts: GraphContract[] = []
+  const closesFormOf = (bp: typeof blueprint, all: readonly GraphFeature[]) => { const open = androidOpenForm(all, bp); return open.openForm && open.openEdit }
   for (const feature of features) {
     const key = feature.id.replace(/^FEAT-/, "")
-    const androidFormDetails = preset.id === "android-kotlin-compose" ? androidFeatureFormDetails(feature, blueprint.domainData, features) : []
+    const androidFormDetails = preset.id === "android-kotlin-compose" ? androidFeatureFormDetails(feature, blueprint.domainData, features, closesFormOf(blueprint, features)) : []
     const interfaceDetails = [`Inputs: ${feature.inputs.join("; ")}`, `Outputs: ${feature.outputs.join("; ")}`, ...feature.choices.map(choice => `Choices: ${choice}`), ...(feature.runsEverySeconds !== null ? [`Schedule: runs by itself every ${feature.runsEverySeconds} seconds; this exact value is the default that code and tests use.`] : []), ...(feature.runsDailyAt !== null ? [`Schedule: runs by itself every day at ${feature.runsDailyAt} local time.`] : []), ...waybarSourceDetail(feature.systemSource), ...(preset.id === "linux-hyprland-waybar-module" ? waybarFeatureDetail(feature) : []), ...androidFormDetails]
     contracts.push(contract(
       `CON-${key}-INTERFACE`,
@@ -2016,8 +2024,8 @@ function buildPhases(
           noData: androidNoData,
           anySchedule,
           detailView,
-          openForm: !detailView && !androidNoList && !androidNoData && !createsWithoutInput(features, blueprint.domainData) && screenView.some(feature => opsOnAny(feature).includes("create")),
-          openEdit: screenView.some(feature => feature.editsRecords),
+          openForm: androidOpenForm(features, blueprint).openForm,
+          openEdit: androidOpenForm(features, blueprint).openEdit,
           addForm: ownedFeatures.some(feature => opsOnAny(feature).includes("create")),
           editForm: ownedFeatures.some(feature => feature.editsRecords),
           selectionFor: androidScheduledFeatures(preset, identity, features, blueprint.domainData).filter(item => item.at === null && item.selectionFiles.includes(files.implementationFile)).map(item => ({ name: item.name, pascal: item.pascal })),
@@ -2069,7 +2077,7 @@ function buildPhases(
         `${draft.kind === "data" && preset.id !== "astro-web" ? " Its focused test must close the store and reopen it at the same location and assert that the stored records are identical." : ""}` +
         `${draft.id === firstMainOwnerId ? ` You are the first main-surface task: also build the main screen content area and the shared view state (the loaded records of every declared data object, plus whatever selection or input state the later feature tasks of this packet need) that later feature tasks extend; later tasks must not replace them. ${androidNoList ? noListSlotsSentence(screenView, firstMainOwnerId, blueprint !== undefined && createsWithoutInput(features, blueprint.domainData), androidNoData) : mainSlotsSentence(screenView, detailView, filterSlot, preset.id === "tauri2-rust-typescript-desktop", preset.id === "android-kotlin-compose", blueprint !== undefined && ((preset.id === "tauri2-rust-typescript-desktop" && !tauriAddHasForm(features, blueprint.domainData.map(tauriData))) || (preset.id === "android-kotlin-compose" && createsWithoutInput(features, blueprint.domainData))), actionsArea, preset.id === "tauri2-rust-typescript-desktop" && screenView.some(feature => isTauriSummary(feature, firstMainOwnerId)))}` : ""}` +
         `\n${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.length > 0 && ownedFeatures.every(feature => feature.invokedBy === "schedule") ? " This feature runs by itself and adds no control to the main screen: it mounts into no slot." : ""}` +
-        `${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") && !ownedFeatures.every(feature => feature.invokedBy === "schedule") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(sharedScreenView(ownedFeatures, preset.id, settingsKeys), preset.id, detailView, androidNoList, androidNoData)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${sharedScreenView(ownedFeatures, preset.id, settingsKeys).some(feature => (preset.id === "tauri2-rust-typescript-desktop" ? feature.editsRecords : true) && opsOnAny(feature).includes("update")) && screenView.some(feature => opsOnAny(feature).includes("create")) ? ` If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them${preset.id === "tauri2-rust-typescript-desktop" ? "" : "; a single mark or toggle action needs no form"}.` : ""}` : ""}` +
+        `${firstMainOwnerId && draft.kind === "feature" && draft.id !== firstMainOwnerId && ownedFeatures.some(feature => feature.surface === "main") && !ownedFeatures.every(feature => feature.invokedBy === "schedule") ? ` Your controls mount into the slots exposed by ${coordinates.get(firstMainOwnerId)!.taskId} (${slotFor(sharedScreenView(ownedFeatures, preset.id, settingsKeys), preset.id, detailView, androidNoList, androidNoData, preset.id === "android-kotlin-compose" && blueprint !== undefined && androidOpenForm(features, blueprint).openForm)}): build them in ${files.implementationFile} and mount them from the shared registration file; do not rebuild the screen.${sharedScreenView(ownedFeatures, preset.id, settingsKeys).some(feature => (preset.id === "tauri2-rust-typescript-desktop" ? feature.editsRecords : true) && opsOnAny(feature).includes("update")) && screenView.some(feature => opsOnAny(feature).includes("create")) ? ` If your acceptance criteria edit stored fields in a form, reuse the form fields and validation that the add task exports from its own file and do not duplicate them${preset.id === "tauri2-rust-typescript-desktop" ? "" : "; a single mark or toggle action needs no form"}.` : ""}` : ""}` +
         `${draft.kind === "packaging" && filesToModify.length ? " Modify the listed shared files only if the wiring check or a validation command fails; otherwise leave them unchanged." : ""}` +
         `${draft.kind === "feature" && ownedFeature && placement?.kind === "page" && kitPaths.includes(placement.pageFile) ? ` Start from kit/${placement.pageFile}, a shell with the layout and one h1${(astroPlan?.collections ?? []).filter(item => item.dataName && ownedFeature.resourceIds.includes(`data:${dataKey(item.dataName)}`)).map(item => placement.pageFile.includes("[slug]") ? `; it reads ${item.dataName} only through list${pascal(item.dataName)}Entries() from src/lib/contentcatalog.ts and renders the declared fields (a long-text field in one element, a list field as one ol with one li per item in stored order)` : placement.pageFile.includes("[tag]") ? `; it reads ${item.dataName} only through list${pascal(item.dataName)}Entries() from src/lib/contentcatalog.ts, builds the pages the route line lists (a value with no entry still builds), and shows the entries of that value as one li each, or "No entries yet." when there are none; the primary nav of the kit layout already links each of these pages, so modify no layout; your focused test asserts each listed page exists in dist/ and that its li count equals the content files with that value` : `; it reads no data yet, so add the read of ${item.dataName} through list${pascal(item.dataName)}Entries() from src/lib/contentcatalog.ts and render the declared fields (a long-text field in one element)${astroPlan?.detailCollections.includes(item.name) ? `; when it lists entries, it renders one li containing one a per entry, href the detail route plus the entry id and a trailing slash; when the PRD orders the list by a field, entries with an equal value keep ascending entry id order (sort the result of list${pascal(item.dataName)}Entries() with a stable sort), and the focused test asserts the order of the built list items against the values in the content files` : `; ${item.name} has no detail route, so it renders the declared fields of every entry in ascending id order, one li per entry inside one ul, also when the collection has a single entry, with no a and no href; when the TRD failure behavior of this feature says the build fails if its content file is missing, make that true in the page itself: throw an Error that names the collection's src/content folder when list${pascal(item.dataName)}Entries() returns no entry, because the collection schema only checks files that exist; its focused test asserts that the built HTML contains each field value read from the content files, whatever the values are, and hardcodes no wording the content owner supplies`}`).join("")}.` : ""}` +
         `${draft.kind === "feature" && preset.id === "astro-web" && placement?.kind === "component" && placement.registrationFile === "src/pages/index.astro" ? " The component renders its part of the page only; src/pages/index.astro keeps the one h1." : ""}` +
