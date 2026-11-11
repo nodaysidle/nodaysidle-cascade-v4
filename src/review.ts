@@ -190,9 +190,9 @@ export function buildReviewPromptForPacket(
   notShown: readonly string[],
 ): string {
   const brief = AUDIT_BRIEF_BODY
-    .replace("<ROOT>/<preset>/<slug>", slug)
-    .replace("<preset>", preset)
-    .replace("<idea>", idea)
+    .replace("<ROOT>/<preset>/<slug>", () => slug)
+    .replace("<preset>", () => preset)
+    .replace("<idea>", () => idea)
   return [
     ...files.map(file => `<file path="${file.path}">\n${file.text}\n</file>`),
     `Not shown: ${notShown.join("; ")}.`,
@@ -231,7 +231,13 @@ export function buildFixPrompt(
   ].join("\n\n")
 }
 
-const flat = (text: string): string => text.replace(/\s+/g, " ").trim()
+const flat = (text: string): string => text
+  .replace(/…/g, "...")
+  .replace(/[“”]/g, '"')
+  .replace(/[‘’]/g, "'")
+  .replace(/[\u00a0\u202f]/g, " ")
+  .replace(/\s+/g, " ")
+  .trim()
 
 export function quoteFound(quote: string, files: readonly PacketFile[]): boolean {
   const wanted = flat(quote)
@@ -246,10 +252,24 @@ export function filterVerifiedFindings(review: Review, files: readonly PacketFil
   }
 }
 
+// Mirrors src-tauri/src/export.rs (a test compares the constants); change both together.
+export const MAX_PACKET_FILE_BYTES = 2_000_000
+export const MAX_KIT_PATH_DEPTH = 16
+export const KIT_PATH_PUNCTUATION = "._-+[]"
+
 function validPacketPath(path: string | undefined): path is string {
-  if (!path || path.startsWith("/") || path.includes("\\") || path === "blueprint.json") return false
-  const parts = path.split("/")
-  return parts.every(part => part !== "" && part !== "." && part !== "..")
+  if (!path) return false
+  if (REQUIRED_DOCS.has(path)) return true
+  if (!path.startsWith("kit/")) return false
+  const parts = path.slice("kit/".length).split("/")
+  return parts.length <= MAX_KIT_PATH_DEPTH
+    && parts.every(part => part !== "" && !part.startsWith(".") && [...part].every(char => /[A-Za-z0-9]/.test(char) || KIT_PATH_PUNCTUATION.includes(char)))
+}
+
+function contentProblem(text: string): string | undefined {
+  if (text.trim() === "") return "a packet file cannot be empty"
+  if (new TextEncoder().encode(text).length > MAX_PACKET_FILE_BYTES) return "the file is larger than the export limit"
+  return undefined
 }
 
 export function applyEdits(
@@ -264,6 +284,8 @@ export function applyEdits(
     if (!validPacketPath(edit.file)) { failed.push({ edit, reason: "invalid packet file path" }); continue }
     if (op === "create") {
       if (texts.has(edit.file)) { failed.push({ edit, reason: "the file already exists in the packet" }); continue }
+      const problem = contentProblem(edit.replace)
+      if (problem) { failed.push({ edit, reason: problem }); continue }
       texts.set(edit.file, edit.replace)
       applied.push(edit)
       continue
@@ -291,6 +313,8 @@ export function applyEdits(
       } else if (edit.replace !== "") {
         nextText = edit.replace
       }
+      const problem = contentProblem(nextText)
+      if (problem) { failed.push({ edit, reason: problem }); continue }
       texts.delete(edit.file)
       texts.set(edit.to, nextText)
       applied.push(edit)
@@ -301,7 +325,10 @@ export function applyEdits(
     const count = edit.find === "" ? 0 : text.split(edit.find).length - 1
     if (count === 0) { failed.push({ edit, reason: "the find text is not in the file" }); continue }
     if (count > 1 && !edit.all) { failed.push({ edit, reason: `the find text occurs ${count} times and all is false` }); continue }
-    texts.set(edit.file, text.split(edit.find).join(edit.replace))
+    const replaced = text.split(edit.find).join(edit.replace)
+    const problem = contentProblem(replaced)
+    if (problem) { failed.push({ edit, reason: problem }); continue }
+    texts.set(edit.file, replaced)
     applied.push(edit)
   }
   const initialOrder = new Map(files.map((file, index) => [file.path, index]))
