@@ -491,7 +491,10 @@ Android measured without their recorded paid repairs).
 Waiting for Alan's decision right now:
 1. **Merge plan 004.** Branch `advisor/004-one-repair-implementation` (commits `343b2af`, `94845be`, worktree
    `.claude/worktrees/agent-a1acf7904adf88d61`) is executed and reviewed: 3 files, `src/review.ts` untouched,
-   497 tests pass, frontend build passes. It is a fast-forward of `main`. No app rebuild is needed. Not merged.
+   497 tests pass, frontend build passes. It branched from `e9e1abd`; `main` has since gained docs-only
+   commits, so merge it with `git merge advisor/004-one-repair-implementation` (a merge commit, no conflict:
+   it touches only `scripts/agent-ready/` and `tests/`) or rebase the branch first. Re-run `npm test` after.
+   No app rebuild is needed. Not merged.
 2. After the merge: execute plan 005 (needs 004), then 008, 006, 007. One Sonnet executor at a time.
 3. Optional small addition to plan 005: a test that the audit brief in `scripts/agent-ready/audit-brief.md`
    and the constant `AUDIT_BRIEF_BODY` in `src/review.ts` stay identical (they match today, nothing checks it).
