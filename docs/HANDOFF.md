@@ -602,8 +602,18 @@ without a question, every validation command passes when re-run, and text typed 
 closes is stored (checked in the installed app through Hyprland, in a hidden workspace). Not a clean pass:
 findings P to W in `plans/README.md`. P is the serious one: the packaging script cannot pass on this machine
 with stock Tauri tools, and the agent patched `~/.cache/tauri` (`linuxdeploy-x86_64.AppImage`, original kept
-as `.real`; `linuxdeploy-plugin-gtk.sh`; a leftover `squashfs-root`). That cache is still patched.
-The installed test app is `~/.local/bin/scratch-pad.AppImage` (desktop entry `com.scratch.pad.desktop`).
+as `.real`; `linuxdeploy-plugin-gtk.sh`; a leftover `squashfs-root`).
+
+After the test (Alan: "do as you recommend, remove the agents patches tools, remove anything that is not
+needed"): `~/.cache/tauri` is back to stock tools (each file compared with a fresh download), the patched
+AppImage install was deleted, and the lead built exactly what the agent committed (`git archive HEAD`) as a
+plain release binary in `~/.cache/cascade-v4/tmp/scratch-pad-run/` with `npm run tauri -- build --no-bundle`.
+Alan used it himself: writing, dictating, Save as Markdown, Open text file and closing all worked. His words:
+"i can confirm its the first app working out of v4". It is installed as `~/.local/bin/scratch-pad` with the
+desktop entry `com.scratch.pad.desktop`, and it is in the Omarchy menu (Apps, Scratch Pad; entry
+`apps.scratch-pad` in `~/.config/omarchy/extensions/omarchy-menu.jsonc`, backup next to it). The packet folder
+was never changed. Plan 013 (finding P) has his yes and is written (`49f4c1b`); see its row in
+`plans/README.md` for where it stands.
 
 Open, in the order I would take them:
 0. Finding P (Tauri packaging) needs Alan's yes, then a plan 013. Findings Q to W are compiler-text work; Q
