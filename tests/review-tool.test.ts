@@ -480,3 +480,79 @@ describe("pipeline review, repair, kit build, and manifest replay", () => {
     expect(threeRoundResult.repair.agentReady).toBe(true)
   })
 })
+
+describe("a failed review keeps the compiled packet", () => {
+  const input = {
+    requestId: "pipe-review-fail",
+    idea: "Harbor Sort helps people organize downloads into named folders with preview, undo, and search.",
+    presetId: "linux-wayland-gtk4-desktop" as const,
+    model: "deepseek-flash" as const,
+    apiUrl: "https://api.deepseek.com/responses",
+    apiKey: "mem-deepseek",
+    jevApiKey: "mem-jev",
+    anthropicApiKey: "mem-anthropic",
+    atomicAuditor: true,
+  }
+  const failing = { kind: "http", classification: "http-error", httpStatus: 529, body: "sk-secret" }
+  const failingBlocking = { slug: "harbor-sort", blocking: [{ where: "PRD.md", quote: "# Product Requirements Document", why: "x", fix: "y" }], polish: [], verdict: "FAIL" }
+
+  it("returns the unreviewed packet when review rejects", async () => {
+    const result = await generatePacket(input, fixtureProvider(fileOrganizerBlueprint), undefined, fixtureJevProvider, {
+      review: async () => { throw failing },
+      fix: async () => ({ edits: [], notes: "" }),
+    })
+    expect(result.status).toBe("gate-clean")
+    expect(result.packet).toBeDefined()
+    expect(result.exportable).toBe(true)
+    expect(result.repair).toBeUndefined()
+    expect(result.packet?.repair).toBeUndefined()
+    expect(result.reviewFailure?.service).toBe("claude-review")
+    expect(result.reviewFailure?.failure.httpStatus).toBe(529)
+    expect(result.issues[0]!.message).toContain("Claude review")
+    expect(JSON.stringify(result.reviewFailure)).not.toContain("sk-secret")
+  })
+
+  it("returns the unreviewed packet when fix rejects in round 1", async () => {
+    const result = await generatePacket(input, fixtureProvider(fileOrganizerBlueprint), undefined, fixtureJevProvider, {
+      review: async () => failingBlocking,
+      fix: async () => { throw failing },
+    })
+    expect(result.status).toBe("gate-clean")
+    expect(result.packet).toBeDefined()
+    expect(result.repair).toBeUndefined()
+    expect(result.reviewFailure?.service).toBe("claude-review")
+  })
+
+  it("stays cancelled, with no packet, when the run is cancelled during review", async () => {
+    const controller = new AbortController()
+    const result = await generatePacket({ ...input, signal: controller.signal }, fixtureProvider(fileOrganizerBlueprint), undefined, fixtureJevProvider, {
+      review: async () => { controller.abort(); throw failing },
+      fix: async () => ({ edits: [], notes: "" }),
+    })
+    expect(result.status).toBe("cancelled")
+    expect(result.packet).toBeUndefined()
+    expect(result.reviewFailure).toBeUndefined()
+  })
+
+  it("names the failing service in every failure message", async () => {
+    const deepseek = await generatePacket(input, async () => { throw failing }, undefined, fixtureJevProvider)
+    expect(deepseek.issues[0]!.message).toContain("DeepSeek")
+    const jev = await generatePacket(input, fixtureProvider(fileOrganizerBlueprint), undefined, async () => { throw new Error("down") })
+    expect(jev.status).toBe("jev-failure")
+    expect(jev.issues[0]!.message).toContain("TypeSafe Jev")
+  })
+
+  it("keeps the packet and the review failure in app state, and clears the keys", async () => {
+    const result = await generatePacket(input, fixtureProvider(fileOrganizerBlueprint), undefined, fixtureJevProvider, {
+      review: async () => { throw failing },
+      fix: async () => ({ edits: [], notes: "" }),
+    })
+    const ready = createInitialState({ idea: input.idea, apiKey: "a", jevApiKey: "b", anthropicApiKey: "c" })
+    const state = reduceAppState(ready, { type: "generation-succeeded", packet: result.packet!, blueprint: result.blueprint, reviewFailure: result.reviewFailure })
+    expect(state.packet).toBeDefined()
+    expect(canExport(state)).toBe(true)
+    expect(state.form.apiKey + state.form.jevApiKey + state.form.anthropicApiKey).toBe("")
+    expect(state.reviewFailure?.service).toBe("claude-review")
+    expect(state.reviewFailure?.message).toContain("Claude review")
+  })
+})
