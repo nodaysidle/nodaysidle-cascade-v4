@@ -228,6 +228,22 @@ describe("repair paths follow the export rule", () => {
     const idea = "pay $' now, $& later, $$ total"
     expect(buildReviewPromptForPacket("slug", "astro-web", idea, files, [])).toContain(idea)
   })
+
+  const DELAYED_WRITE_CHECK =
+    "11. delayed writes: when a write waits (an autosave delay, a debounce, a timer, a queued save), the packet states what happens to a pending write when the app or window closes or the screen is left (written at once, or lost by design), names the owner and the mechanism, and has an acceptance criterion for it."
+  const numberedChecks = (text: string): string[] => text.split("\n").filter(line => /^\d+\. /.test(line))
+
+  it("asks the reviewer about pending delayed writes", () => {
+    expect(buildReviewPromptForPacket("slug", "astro-web", "an idea", files, [])).toContain(DELAYED_WRITE_CHECK)
+  })
+
+  it("keeps the numbered checks of audit-brief.md equal to the review prompt", () => {
+    const brief = readFileSync(join(__dirname, "../scripts/agent-ready/audit-brief.md"), "utf8")
+    const prompt = buildReviewPromptForPacket("slug", "astro-web", "an idea", files, [])
+    const fromBrief = numberedChecks(brief)
+    expect(fromBrief).toHaveLength(11)
+    expect(numberedChecks(prompt)).toEqual(fromBrief)
+  })
 })
 
 describe("pipeline review, repair, kit build, and manifest replay", () => {

@@ -15,6 +15,7 @@ Check specifically:
 8. acceptance criteria mechanically testable; time-based ones use an injected clock; validation commands runnable in a normal dev environment.
 9. kit files named in TASKS exist and match what tasks expect.
 10. preset-specific build/run path coherent.
+11. delayed writes: when a write waits (an autosave delay, a debounce, a timer, a queued save), the packet states what happens to a pending write when the app or window closes or the screen is left (written at once, or lost by design), names the owner and the mechanism, and has an acceptance criterion for it.
 
 If you find nothing blocking, say so plainly. Do not pad: no style nits.
 Output JSON: { slug, blocking: [{where, quote, why, fix}], polish: [...], verdict }.
