@@ -37,4 +37,10 @@ describe("Tauri Linux packet installs the release binary", () => {
     const plain = await compilePacket(expenseLogBlueprint, PRESET, { linuxPackaging: "binary", wayland: true })
     expect(productName(plain)).toBe(plain.graph.identity.projectName)
   })
+
+  it("names the macOS bundle after the productName Tauri builds it from", async () => {
+    const packet = await compilePacket({ ...expenseLogBlueprint, productName: '24h "Hi" \\ Ca$h & Tom\'s 100%' }, PRESET, {})
+    const line = packet.kit.find(file => file.name === "kit/scripts/package_app.sh")?.content.split("\n").find(l => l.startsWith("APP_NAME="))
+    expect(line).toBe(`APP_NAME='24h Hi \\ Ca$h & Tom'\\''s 100%'`)
+  })
 })

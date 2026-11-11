@@ -911,7 +911,7 @@ function packageScript(identity: ProjectIdentity): string {
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-APP_NAME=${shellWord(identity.projectName)}
+APP_NAME=${shellWord(tauriProductName(identity))}
 BUNDLE_ID="${identity.bundleId}"
 SIGN_IDENTITY="\${SIGN_IDENTITY:--}"
 APP="src-tauri/target/release/bundle/macos/$APP_NAME.app"
