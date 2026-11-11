@@ -353,6 +353,7 @@ fn run_with_timeout(command: &mut Command, limit: Duration) -> io::Result<(ExitS
     let stdout_path = dir.join(".cascade-build-stdout");
     let stderr_path = dir.join(".cascade-build-stderr");
     let mut child = command
+        .stdin(Stdio::null())
         .stdout(Stdio::from(File::create(&stdout_path)?))
         .stderr(Stdio::from(File::create(&stderr_path)?))
         .spawn()?;
@@ -518,6 +519,19 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         assert_eq!(error.kind(), io::ErrorKind::TimedOut);
         assert!(start.elapsed() < Duration::from_secs(4));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_with_timeout_gives_the_command_no_stdin() {
+        let dir = create_staging_directory(&std::env::temp_dir(), "timeout-test").unwrap();
+        let mut command = Command::new("sh");
+        command.args(["-c", "cat"]).current_dir(&dir);
+        let start = Instant::now();
+        let result = run_with_timeout(&mut command, Duration::from_secs(5));
+        let _ = fs::remove_dir_all(&dir);
+        assert!(result.unwrap().0.success());
+        assert!(start.elapsed() < Duration::from_secs(3));
     }
 
     fn packet(extra: &[&str]) -> Vec<ExportFile> {
