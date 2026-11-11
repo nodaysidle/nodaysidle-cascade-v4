@@ -4,7 +4,7 @@ import { expenseLogBlueprint } from "./fixtures/tauriExpense"
 import { focusLedgerBlueprint } from "./fixtures/tauriFocus"
 
 const PRESET = "tauri2-rust-typescript-desktop"
-const linux = { linuxPackaging: "appimage", wayland: true } as const
+const linux = { linuxPackaging: "binary", wayland: true } as const
 
 const task = (tasks: string, id: string): string => tasks.split("### ").find(block => block.startsWith(id)) ?? ""
 const kitFile = (packet: Awaited<ReturnType<typeof compilePacket>>, name: string): string => packet.kit.find(file => file.name === `kit/${name}`)?.content ?? ""
@@ -71,8 +71,8 @@ describe("Tauri expense log: recovery, form ownership, and boilerplate", () => {
   it("wires the lifecycle owner into run() and sets the Wayland desktop entry from the option", async () => {
     const packet = await compilePacket(expenseLogBlueprint, PRESET, linux)
     expect(task(packet.documents["TASKS.md"], "TASK-03-LIFECYCLE-COORDINATOR")).toContain("exit in the RunEvent::Exit arm")
-    expect(kitFile(packet, "scripts/package_linux.sh")).toContain("Exec=env GDK_BACKEND=wayland $INSTALL_DIR/bin/$SLUG.AppImage")
-    const plain = await compilePacket(expenseLogBlueprint, PRESET, { linuxPackaging: "appimage", wayland: false })
+    expect(kitFile(packet, "scripts/package_linux.sh")).toContain("Exec=env GDK_BACKEND=wayland $INSTALL_DIR/bin/$SLUG\n")
+    const plain = await compilePacket(expenseLogBlueprint, PRESET, { linuxPackaging: "binary", wayland: false })
     expect(kitFile(plain, "scripts/package_linux.sh")).not.toContain("GDK_BACKEND=wayland $INSTALL_DIR")
   })
 })

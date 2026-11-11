@@ -463,18 +463,18 @@ export function tauriSpecialize(preset: PresetContract, blueprint: NormalizedBlu
     overrides.packagingRules = [
       "Build the frontend with Vite and the native boundary with Cargo.",
       "Set tauri.conf.json productName to the locked project name.",
-      "The packet targets Linux only: scripts/package_linux.sh builds the AppImage, and the installed desktop entry is validated before the launch smoke.",
+      "The packet targets Linux only: scripts/package_linux.sh builds the release binary without a bundle, and the installed desktop entry is validated before the launch smoke.",
       "Use least-privilege capabilities for every command and plugin.",
-      "Verify the AppImage before the launch smoke.",
+      "Verify the built binary before the launch smoke.",
     ]
-    overrides.installationDecision = () => "For local proof, run ./scripts/package_linux.sh --install: it builds the AppImage, installs it under ~/.local/bin with a desktop entry and icon, and keeps the previous AppImage in dist/rollback/ as the rollback copy; then launch the installed identity."
-    overrides.signingDecision = () => "Local proof is unsigned. Record the SHA-256 checksum of the built AppImage in the completion report."
-    overrides.outputArtifact = "Linux AppImage"
-    overrides.artifactPath = identity => `dist/${identity.slug}.AppImage`
+    overrides.installationDecision = () => "For local proof, run ./scripts/package_linux.sh --install: it builds the release binary, installs it under ~/.local/bin with a desktop entry and icon, and keeps the previous binary in dist/rollback/ as the rollback copy; then launch the installed identity."
+    overrides.signingDecision = () => "Local proof is unsigned. Record the SHA-256 checksum of the built binary in the completion report."
+    overrides.outputArtifact = "Linux release binary"
+    overrides.artifactPath = identity => `dist/${identity.slug}`
     overrides.completionEvidence = [
       "TypeScript, Vitest, Rust format, Clippy, and Cargo tests pass.",
       "npm run tauri -- build --no-bundle compiles the release binary with the locked capabilities.",
-      "scripts/package_linux.sh builds the AppImage, which installs and launches.",
+      "scripts/package_linux.sh builds the release binary, which installs and launches.",
       "Local data and temporary-resource cleanup survive a restart smoke.",
     ]
     overrides.validationCommands = [...preset.validationCommands, () => "./scripts/package_linux.sh"]

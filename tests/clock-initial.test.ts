@@ -50,7 +50,7 @@ describe("a date or date-time stamped from the clock at creation (initial today 
   it("Tauri: the create caller stamps a date from the injected clock and a number must be finite", async () => {
     const blueprint = JSON.parse(readFileSync(new URL("./fixtures/tauri-recipe-timer.json", import.meta.url), "utf8")) as SemanticBlueprint
     blueprint.dataObjects[0]!.fields.push({ name: "added", valueType: "date", optional: false, initial: "today" }, { name: "weight", valueType: "number", optional: true })
-    const packet = await compilePacket(blueprint, "tauri2-rust-typescript-desktop", { linuxPackaging: "appimage", wayland: true })
+    const packet = await compilePacket(blueprint, "tauri2-rust-typescript-desktop", { linuxPackaging: "binary", wayland: true })
     expect(packet.failures).toEqual([])
     const trd = packet.documents["TRD.md"]
     expect(trd).toContain("Clock-set on create: added is today's local day as YYYY-MM-DD from the injected clock")

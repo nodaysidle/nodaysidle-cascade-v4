@@ -7,7 +7,7 @@ const load = (name: string): SemanticBlueprint => JSON.parse(readFileSync(new UR
 const task = (tasks: string, id: string): string => tasks.split("### ").find(block => block.startsWith(id)) ?? ""
 const TAURI = "tauri2-rust-typescript-desktop"
 const GTK = "linux-wayland-gtk4-desktop"
-const linux = { linuxPackaging: "appimage", wayland: true } as const
+const linux = { linuxPackaging: "binary", wayland: true } as const
 
 // Round 11: a field with an initial value that the create feature also offers (a choice list, a toggle) was called app-set,
 // while the same task built a picker for it (Reading List status) or the PRD put a toggle on the Add form (Book Shelf favorite).

@@ -778,7 +778,7 @@ const tauriDesktop: PresetContract = {
   foundationValidationCommands: ["npm install", "npm run tauri -- icon app-icon.svg", "npm run typecheck", "npm test", "npm run build", "cargo test --manifest-path src-tauri/Cargo.toml"],
   specialize: tauriSpecialize,
   options: [
-    { id: "linuxPackaging", label: "Linux package", type: "select", values: ["appimage"], default: "appimage", description: "The packaging script builds an AppImage." },
+    { id: "linuxPackaging", label: "Linux package", type: "select", values: ["binary"], default: "binary", description: "The packaging script installs the release binary under ~/.local/bin." },
     { id: "wayland", label: "Verify native Wayland", type: "toggle", default: true, description: "Recorded in the packet; the installed desktop entry launches with GDK_BACKEND=wayland, and the launch check requires native Wayland." },
   ],
   capabilities: {

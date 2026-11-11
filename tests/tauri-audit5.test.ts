@@ -4,7 +4,7 @@ import { compilePacket } from "../src/compiler"
 import { auditSemanticIntake, type SemanticBlueprint } from "../src/schema"
 
 const PRESET = "tauri2-rust-typescript-desktop"
-const linux = { linuxPackaging: "appimage", wayland: true } as const
+const linux = { linuxPackaging: "binary", wayland: true } as const
 const load = (name: string): SemanticBlueprint => JSON.parse(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8")) as SemanticBlueprint
 const task = (tasks: string, id: string): string => tasks.split("### ").find(block => block.startsWith(id)) ?? ""
 const kitFile = (packet: Awaited<ReturnType<typeof compilePacket>>, name: string): string => packet.kit.find(file => file.name === `kit/${name}`)?.content ?? ""

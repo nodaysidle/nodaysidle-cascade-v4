@@ -4,7 +4,7 @@ import { buildBlueprintInstructions } from "../src/schema"
 import { expenseLogBlueprint } from "./fixtures/tauriExpense"
 
 const PRESET = "tauri2-rust-typescript-desktop"
-const linux = { linuxPackaging: "appimage", wayland: true } as const
+const linux = { linuxPackaging: "binary", wayland: true } as const
 const task = (tasks: string, id: string): string => tasks.split("### ").find(block => block.startsWith(id)) ?? ""
 
 // The expense log with its date stamped by the app at creation, the shape of a journal's "date added".

@@ -157,7 +157,7 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     ...(uses.shortcut ? ["- src/shortcut.ts is the only file that names the system-wide accelerator (DEFAULT_ACCELERATOR, CommandOrControl+Shift+Space). registerShortcut(onPress, onFailure) registers it; a refused registration calls onFailure and returns false, and the app keeps working through its in-app controls. The capability file grants only global-shortcut register and unregister."] : []),
     ...(uses.records ? ["- src-tauri/tests/kit_tests.rs compares schema_version with database::MIGRATIONS.len(), so adding a migration needs no edit to that test."] : []),
     ...(uses.linuxOnly ? [] : ["- scripts/package_app.sh builds only the macOS .app (no DMG), signs it ad hoc, and verifies it; with --install it waits for the running app to quit, moves the installed copy to src-tauri/target/rollback/ (never inside /Applications), installs, restores the previous copy if verification fails, registers, and launches by bundle ID. The first run generates src-tauri/icons from app-icon.svg."]),
-    "- scripts/package_linux.sh builds the AppImage, writes dist/, and with --install installs it under ~/.local/bin with a desktop entry and icon. On Arch/Omarchy use it for local proof; the AppImage runs on Wayland with GDK_BACKEND=wayland.",
+    "- scripts/package_linux.sh builds the release binary without a bundle, copies it to dist/, and with --install installs it under ~/.local/bin with a desktop entry and icon. On Arch/Omarchy use it for local proof; the installed desktop entry starts it on Wayland with GDK_BACKEND=wayland.",
     "- Versions are exact (= in Cargo.toml, no ^ in package.json) because they are tested together; keep src-tauri/Cargo.lock and package-lock.json from the first build, and change a version only on purpose, never by a broad update.",
     `- Screens are built from src/ui.ts and the classes in src/style.css, never from unstyled elements: button() is sized to its label (primary for the one main action); toolbar() holds a search field and actions; setEnabled() disables a command until it has something to act on (Edit, Delete, Copy with nothing selected); emptyState(title, hint) fills an empty list with one centered message saying how to fill it; list rows use .row with aria-selected for the selection and clampedText() so long text is cut to a few lines with the full text on hover, never a scroll area inside a scrolling list; a form is built from field(label, control) lines, one per input, with the label above its control; the detail view of the selected record and a form shell are each a panel(); stored text that can hold line breaks (a note, a snippet, a description) is shown with multilineText(text), which keeps line breaks and indentation and wraps long lines, and is edited in a textarea; ${uses.settings ? "settings are settingsGroup() sections of settingsRow() lines, label on the left and control on the right, a switchControl() on the same line as its label, and a footnote under the group; " : ""}body text uses the system font, and monospace only for code.`,
     "- src/style.css uses the system font and light and dark system colors; the page never scrolls, and .app-content scrolls inside the window.",
@@ -845,7 +845,7 @@ const APP_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" heigh
 
 function packageLinuxScript(identity: ProjectIdentity, wayland: boolean): string {
   return `#!/usr/bin/env bash
-# Build an AppImage, install it for the current user, and add the desktop entry.
+# Build the release binary, install it for the current user, and add the desktop entry.
 # Usage: scripts/package_linux.sh [--install]
 set -euo pipefail
 
@@ -863,33 +863,33 @@ for arg in "$@"; do
 done
 
 [ -f src-tauri/icons/128x128.png ] || npm run tauri -- icon app-icon.svg
-npm run tauri -- build --bundles appimage
+npm run tauri -- build --no-bundle
 
-mkdir -p dist
-APPIMAGE="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' | head -1)"
-if [ -z "$APPIMAGE" ]; then
-  echo "AppImage was not produced" >&2
+BINARY="\${CARGO_TARGET_DIR:-src-tauri/target}/release/$SLUG"
+if [ ! -x "$BINARY" ]; then
+  echo "Release binary was not produced: $BINARY" >&2
   exit 1
 fi
-cp "$APPIMAGE" "dist/$SLUG.AppImage"
+mkdir -p dist
+cp "$BINARY" "dist/$SLUG"
 
 if [ "$install" = false ]; then
-  echo "Built dist/$SLUG.AppImage; rerun with --install to install it."
+  echo "Built dist/$SLUG; rerun with --install to install it."
   exit 0
 fi
 
 mkdir -p "$INSTALL_DIR/bin" "$INSTALL_DIR/share/applications" "$INSTALL_DIR/share/icons/hicolor/128x128/apps"
-if [ -f "$INSTALL_DIR/bin/$SLUG.AppImage" ]; then
+if [ -f "$INSTALL_DIR/bin/$SLUG" ]; then
   mkdir -p dist/rollback
-  cp "$INSTALL_DIR/bin/$SLUG.AppImage" "dist/rollback/$SLUG.AppImage"
+  cp "$INSTALL_DIR/bin/$SLUG" "dist/rollback/$SLUG"
 fi
-install -m755 "dist/$SLUG.AppImage" "$INSTALL_DIR/bin/$SLUG.AppImage"
+install -m755 "dist/$SLUG" "$INSTALL_DIR/bin/$SLUG"
 install -m644 src-tauri/icons/128x128.png "$INSTALL_DIR/share/icons/hicolor/128x128/apps/$SLUG.png"
 cat > "$INSTALL_DIR/share/applications/${identity.bundleId}.desktop" <<DESKTOP
 [Desktop Entry]
 Name=$APP_NAME
 Comment=$APP_NAME
-Exec=${wayland ? "env GDK_BACKEND=wayland " : ""}$INSTALL_DIR/bin/$SLUG.AppImage
+Exec=${wayland ? "env GDK_BACKEND=wayland " : ""}$INSTALL_DIR/bin/$SLUG
 Icon=$SLUG
 Terminal=false
 Type=Application

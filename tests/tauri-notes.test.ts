@@ -3,7 +3,7 @@ import { compilePacket } from "../src/compiler"
 import { bugNotesBlueprint, habitStreakBlueprint, quickNotesBlueprint, timeZonesBlueprint } from "./fixtures/tauriNotes"
 
 const PRESET = "tauri2-rust-typescript-desktop"
-const linux = { linuxPackaging: "appimage", wayland: true } as const
+const linux = { linuxPackaging: "binary", wayland: true } as const
 
 const task = (tasks: string, id: string): string => tasks.split("### ").find(block => block.startsWith(id)) ?? ""
 const modified = (tasks: string, id: string): string => task(tasks, id).match(/- Files to modify: (.*)/)?.[1] ?? ""
@@ -75,7 +75,7 @@ describe("Tauri habit tracker with a calendar-day record", () => {
     expect(kitFile(packet, "tests/ui.test.ts")).not.toContain("settings")
   })
 
-  it("keeps the frontend build output apart from the AppImage and exposes the platform module", async () => {
+  it("keeps the frontend build output apart from the packaged binary in dist/ and exposes the platform module", async () => {
     const packet = await compilePacket(habitStreakBlueprint, PRESET, linux)
     expect(kitFile(packet, "vite.config.ts")).toContain('outDir: "dist-web"')
     expect(kitFile(packet, "src-tauri/tauri.conf.json")).toContain('"frontendDist": "../dist-web"')

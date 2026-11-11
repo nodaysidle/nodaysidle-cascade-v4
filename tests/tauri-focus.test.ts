@@ -3,7 +3,7 @@ import { compilePacket } from "../src/compiler"
 import { focusLedgerBlueprint } from "./fixtures/tauriFocus"
 
 const PRESET = "tauri2-rust-typescript-desktop"
-const linux = { linuxPackaging: "appimage", wayland: true } as const
+const linux = { linuxPackaging: "binary", wayland: true } as const
 
 const task = (tasks: string, id: string): string => tasks.split("### ").find(block => block.startsWith(id)) ?? ""
 const kitFile = (packet: Awaited<ReturnType<typeof compilePacket>>, name: string): string => packet.kit.find(file => file.name === `kit/${name}`)?.content ?? ""

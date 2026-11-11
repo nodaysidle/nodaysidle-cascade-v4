@@ -21,7 +21,7 @@ describeBuild("Tauri Linux-only kit with a global shortcut", () => {
   it("Tauri 2 Linux kit builds and passes its own tests", async () => {
     mkdirSync(target, { recursive: true })
     mkdirSync(temporary, { recursive: true })
-    const packet = await compilePacket(focusLedgerBlueprint, "tauri2-rust-typescript-desktop", { linuxPackaging: "appimage", wayland: true })
+    const packet = await compilePacket(focusLedgerBlueprint, "tauri2-rust-typescript-desktop", { linuxPackaging: "binary", wayland: true })
     const root = mkdtempSync(join(tmpdir(), "cascade-v4-kit-"))
     for (const file of packet.kit) {
       const path = join(root, file.name.replace(/^kit\//, ""))
