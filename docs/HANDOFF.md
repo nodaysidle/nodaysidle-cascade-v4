@@ -574,6 +574,18 @@ happens with fewer than 7; the row tags and the number format of the list are pr
 contracts, not in the list task that builds the rows; "a successful Save or a close calls closeForm()" names no
 close control. The repair retry of plan 011 did not run (nothing to repair).
 
+Scratch Pad re-run with check 11 (`/home/arch/dev/nodaysidle/scratch-pad/`, 07:13, overwrites the first
+export): in-app review agent-ready, 0 blocking, 1 repair round, 21 edits, kit built and passed after the
+repair. The packet now states the close rule in PRD, ARD, TRD and TASKS: the editor's `flush()` runs from
+`getCurrentWindow().onCloseRequested` in `src/main.ts`, and the repair added `core:window:allow-destroy` to the
+kit's capability file. `cascade verify` passes, the kit's seven commands pass, and an independent audit (Opus,
+without the `repair` key) found 0 blocking: agent-ready; it checked the handler against `@tauri-apps/api`
+2.11.1 (the API calls `destroy()` itself after the handler, so the handler is correct as written). So check 11
+did what it was added for. The design is still written by the repair model each run (finding O): the audit's
+polish notes are list and delete boilerplate, unnamed factories, no DOM test environment line in the feature
+tasks, and a second row if `list_note` fails at launch. Round 13 stands at five of five agent-ready by
+independent audit (Room Paint, Deadline Days, Peak List, Sleep Log, Scratch Pad).
+
 ## RESUME HERE (written 2026-11-11, after round 13 and plans 009 to 012)
 
 Start by reading this section and `plans/README.md`. Alan's standing direction: **fix the compiler
@@ -583,8 +595,7 @@ State: `main` = `fb5e054` plus this docs commit, local only, 39 or more commits 
 plans 001 to 012 are DONE. See "Installed app" below.
 
 Open, in the order I would take them:
-1. Alan re-runs T3 Scratch Pad in the rebuilt app (Sleep Log is done: agent-ready in the app with no repair and
-   by independent audit), then more of the 20
+1. Alan runs more of the 20
    unused round-13 ideas. For each export: `npm run -s cascade -- verify --packet <dir>`, the kit build
    (`bash scripts/agent-ready/build-round-kits.sh <folder with <preset>/<slug> links>`), and one independent
    read-only audit with `scripts/agent-ready/audit-brief.md` and the idea text from `round13-ideas.md`. Tell the
