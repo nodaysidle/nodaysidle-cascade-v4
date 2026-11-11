@@ -148,7 +148,7 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     ...(uses.records ? ["- database.rs applies MIGRATIONS in order and records the schema version in PRAGMA user_version; append new migrations, never edit a shipped one. database::open creates the data folder (create_dir_all) before opening records.sqlite3, so a launch step that opens the store before manage_state still works on a fresh install."] : []),
     ...(uses.timestamps ? ["- src-tauri/Cargo.toml already has the time crate (parsing, formatting) for the RFC3339 date-time fields: validate with time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339) and require a UTC offset; write no parser of your own."] : []),
     ...(uses.services ? ["- src-tauri/Cargo.toml already has reqwest (json) for the declared services; integration owners use one reqwest::Client and add no HTTP crate of their own."] : []),
-    ...(uses.secrets ? ["- vault.rs is the only place secrets are stored: generic passwords in the Linux Secret Service under the bundle ID's credentials service. Tests use MemoryStore, never the Secret Service."] : []),
+    ...(uses.secrets ? ["- vault.rs is the only place secrets are stored: generic passwords in the Linux Secret Service under the bundle ID's credentials service. Tests use MemoryStore, never the Secret Service. The app needs a running Secret Service (GNOME Keyring or KWallet) on the session bus; without one, saving or reading a secret returns a storage error."] : []),
     ...(uses.tray ? ["- The tray keeps the app running: closing the main window hides it, Show brings it back, and Quit (or quitting from outside) exits. RunEvent::ExitRequested with no exit code is prevented; an explicit exit code is not. Only the main window hides: every other window closes for real, so it is created fresh and loads current data each time it opens instead of showing a stale list."] : []),
     ...(uses.shortcut ? ["- src/shortcut.ts is the only file that names the system-wide accelerator (DEFAULT_ACCELERATOR, CommandOrControl+Shift+Space). registerShortcut(onPress, onFailure) registers it; a refused registration calls onFailure and returns false, and the app keeps working through its in-app controls. The capability file grants only global-shortcut register and unregister."] : []),
     ...(uses.records ? ["- src-tauri/tests/kit_tests.rs compares schema_version with database::MIGRATIONS.len(), so adding a migration needs no edit to that test."] : []),
@@ -1261,7 +1261,7 @@ impl SecretStore for SecretServiceStore {
 }
 
 /// The test double for SecretStore. It lives here so tests can reach it; production code never
-/// constructs it (the packaging test checks run() uses SecretServiceStore).
+/// constructs it (run() constructs SecretServiceStore).
 #[derive(Default)]
 pub struct MemoryStore {
     map: Mutex<HashMap<String, String>>,
