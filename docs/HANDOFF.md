@@ -616,15 +616,16 @@ was never changed. Plan 013 (finding P) has his yes and is written (`49f4c1b`); 
 `plans/README.md` for where it stands.
 
 Open, in the order I would take them:
-0. Plan 013 (finding P) is coded but NOT merged: branch `plan/013` (worktree
-   `.claude/worktrees/agent-a9fd358bcdf629435`), two commits on top of `main` `f556980` (`ac75913` code,
-   `b728e51` kit test). Alan approved it on 2026-11-11 ("you got my yes"); merge once the QA pass is clean.
-   Pushing still needs his word "push". Lead's proof so far: the new `package_linux.sh`, compiled from the Scratch Pad
-   blueprint, ran in `~/.cache/cascade-v4/tmp/scratch-pad-run/` with stock tools, exit 0, and `dist/scratch-pad`
-   has the same SHA-256 as the installed `~/.local/bin/scratch-pad`; `~/.cache/tauri` unchanged. A `qa-engine`
-   pass (full check, real kit build, blueprint comparison) was running when this was written. After QA:
-   fast-forward `main`, mark the row DONE in `plans/README.md`, `trail build`, vault and Supermemory note.
-   Findings Q to W are compiler-text work; Q belongs with finding O.
+0. Plan 013 (finding P) is DONE and in `main` (`ccb4f63 bd30f61 df1b95a 098cf5e`, Alan's yes 2026-11-11, not
+   pushed). The Tauri kit's `scripts/package_linux.sh` builds with `--no-bundle`, copies the binary to
+   `dist/<slug>` and with `--install` puts it under `~/.local/bin`; no Tauri packet text names an AppImage. QA
+   (`qa-engine`, two passes): `npm run check` exit 0 (541 tests), all 15 real kit builds exit 0, 19 non-Tauri
+   round-12 packets byte-identical, the 5 Tauri ones changed only in packaging texts and the productName
+   sentence. The real kit build exposed one more gap, fixed in the same plan: `tauri.conf.json` `productName`
+   drops the characters Tauri refuses. Lead's proof: the new script ran on the Scratch Pad build copy with stock
+   tools and gave a binary byte-identical to the installed one. Not run: the macOS script (cannot run here),
+   `--install` on the real home. New notes X, Y, Z in `plans/README.md`. Findings Q to W are compiler-text
+   work; Q belongs with finding O.
 1. Alan runs more of the 20
    unused round-13 ideas. For each export: `npm run -s cascade -- verify --packet <dir>`, the kit build
    (`bash scripts/agent-ready/build-round-kits.sh <folder with <preset>/<slug> links>`), and one independent
@@ -659,7 +660,7 @@ How to work (as done in this session):
 Leftovers that can be removed when Alan says so (all merged): the worktrees under `.claude/worktrees/` and the
 branches `advisor/*`, `integrate/*`, `worktree-agent-*`.
 
-Installed app: rebuilt and installed from `fb5e054` with `bash scripts/install-linux-app.sh` on 2026-11-11
-(`~/.local/bin/nodaysidle-cascade-v4` is byte-identical to the fresh release build, and the frontend bundle
-built in the same run contains the four new texts). The window was not opened after this install, and no
-packet was generated in it.
+Installed app: rebuilt and installed from `098cf5e` (plan 013) with `bash scripts/install-linux-app.sh` on
+2026-11-11 (`~/.local/bin/nodaysidle-cascade-v4` is byte-identical to the fresh release build, and the frontend
+bundle holds the new option text). A copy of the app that was already open keeps the old compiler until it is
+restarted. The window was not opened after this install, and no packet was generated in it.
