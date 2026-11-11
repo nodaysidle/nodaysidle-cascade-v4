@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { auditCapabilities } from "../src/capabilities"
+import { androidFormRules, androidSettingFormRules } from "../src/androidForms"
 import { compilePacket } from "../src/compiler"
 import { PRESETS } from "../src/presets"
 import { auditSemanticIntake } from "../src/schema"
@@ -118,5 +119,22 @@ describe("Android form, validation, and notification contracts", () => {
     expect(tasks).toContain('"summary-row-" plus the record id')
     expect(tasks).toContain("asserted by the packaging focused test as well")
     expect(packet.documents["ARD.md"]).not.toContain("the kit's SettingsRepository, built on Jetpack DataStore, holds run and permission state")
+  })
+})
+
+// Round 13 Sleep Log: the PRD said "time pickers" while the form contract said text fields; the contract must say it wins.
+describe("Android: the Field rules fix each input widget (round 13)", () => {
+  const fields = [{ name: "Wake-up time", valueType: "time", optional: false }, { name: "Day", valueType: "date", optional: false }]
+  const formLine = (lines: string[]) => lines.find(line => line.startsWith("Form ("))!
+  it("both Form lines carry one widget rule", () => {
+    for (const line of [formLine(androidFormRules("Sleep", fields, { edits: false, itemPage: false })), formLine(androidSettingFormRules("Goal", [fields[0]!]))]) {
+      expect(line).toContain("Widget rule:")
+      expect(line).toContain("build the widget the Field rules name")
+      for (const widget of ["time picker", "dropdown", "slider", "stepper"]) expect(line).toContain(widget)
+    }
+  })
+  it("the task note points at it", async () => {
+    const packet = await compilePacket(withForm, "android-kotlin-compose")
+    expect(packet.documents["TASKS.md"]).toContain("the Field rules also fix each field's widget, whatever widget the PRD's prose names")
   })
 })

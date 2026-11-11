@@ -156,7 +156,7 @@ export function androidTaskExtras(input: {
     notes.push(`Registration: this feature adds no control or route, so App.kt and AppContainer.kt stay unchanged; only ${applicationFile(identity).split("/").pop()} changes.`)
   }
   if (input.form) {
-    notes.push("Form rules: build the form exactly as the Form, Field rules and Rejection details of the owned interface contracts say; the same validation function backs the Save rejection, the failure behavior, and the focused test, and the form and its validation are exported for any edit task to reuse.")
+    notes.push("Form rules: build the form exactly as the Form, Field rules and Rejection details of the owned interface contracts say; the Field rules also fix each field's widget, whatever widget the PRD's prose names; the same validation function backs the Save rejection, the failure behavior, and the focused test, and the form and its validation are exported for any edit task to reuse.")
   }
   if (input.openForm && input.addForm && !input.firstMain) notes.push("The add form is open exactly when the shared openForm is OpenForm.Add: the Add button of the first main task calls openAdd(), and a successful Save or a close calls closeForm(); keep the typed field values in your own file and build no Add button.")
   if (input.openForm && input.editForm) notes.push("The row's Edit control (label \"Edit\") calls the shared openEdit(id); the edit form is open exactly when the shared openForm is OpenForm.Edit(id), is pre-filled from the stored record, and a successful Save or a close calls closeForm(); keep the typed field values in your own file.")
