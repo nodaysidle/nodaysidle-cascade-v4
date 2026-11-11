@@ -1,0 +1,388 @@
+{
+  "productName": "Tea Cellar",
+  "summary": "Tea Cellar is a local app for keeping loose-leaf teas. Each tea records a name, a tea type (green, black, oolong, or herbal), a steep temperature in degrees Celsius, and a steep time in seconds. Users add, edit, filter by tea type, and delete teas after confirming, and the collection is stored on the device and restored after restart.",
+  "targetUsers": [
+    "Loose-leaf tea drinkers who keep several teas on hand",
+    "Home tea enthusiasts who want consistent brewing temperatures and times"
+  ],
+  "goals": [
+    "Keep a personal collection of loose-leaf teas with brewing parameters",
+    "Let the user add, edit, filter, and delete teas",
+    "Persist the collection on the device and restore it after restart"
+  ],
+  "nonGoals": [
+    "Brewing timers or guided brewing sessions",
+    "Online tea catalogs, shopping, or sharing",
+    "Tracking brewing history or tasting notes"
+  ],
+  "features": [
+    {
+      "name": "Tea collection list",
+      "userOutcome": "The user sees every stored tea with its name, tea type, steep temperature, and steep time.",
+      "trigger": "The user opens the app or returns to the main screen.",
+      "behavior": "Shows all stored teas as a list, newest created first, with each row displaying the tea name, tea type, steep temperature in degrees Celsius, and steep time in seconds. When no teas are stored, the list shows the empty-state text 'No teas yet. Add your first tea.' The list is restored from device storage when the app starts.",
+      "failureOutcome": "If stored teas cannot be loaded, the list shows no rows and the app keeps running.",
+      "failureRecovery": "fallback",
+      "surface": "main",
+      "acceptanceSignals": [
+        "With no stored teas, the list shows the text 'No teas yet. Add your first tea.'",
+        "After a tea is added, its name, tea type, steep temperature, and steep time appear as a row in the list.",
+        "After the app is restarted, previously added teas appear again in the list."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Tea"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [
+        {
+          "name": "Tea type",
+          "options": [
+            "green",
+            "black",
+            "oolong",
+            "herbal"
+          ],
+          "initial": "green"
+        }
+      ],
+      "buildsOn": [],
+      "dataOperations": [
+        {
+          "data": "Tea",
+          "operations": [
+            "read"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "launch",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Add tea",
+      "userOutcome": "The user adds a new loose-leaf tea to the collection.",
+      "trigger": "The user chooses Add in the window header bar.",
+      "behavior": "Opens an add dialog with inputs for name, tea type (green, black, oolong, or herbal, starting at green), steep temperature in degrees Celsius, and steep time in seconds. The name is required and must be non-empty after trimming. Steep temperature and steep time are required whole numbers. Choosing the Add button saves the tea to device storage and closes the dialog; the new tea appears in the collection list.",
+      "failureOutcome": "If the name is empty after trimming, the Add button is disabled and the tea is not saved.",
+      "failureRecovery": "retry",
+      "surface": "main",
+      "acceptanceSignals": [
+        "With an empty name, the Add button is disabled and no tea is created.",
+        "With a name, a tea type, a steep temperature, and a steep time entered, choosing the Add button creates a tea that appears in the collection list.",
+        "The tea type choice list offers green, black, oolong, and herbal, with green selected initially."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Tea"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [
+        {
+          "name": "Tea type",
+          "options": [
+            "green",
+            "black",
+            "oolong",
+            "herbal"
+          ],
+          "initial": "green"
+        }
+      ],
+      "buildsOn": [
+        "Tea collection list"
+      ],
+      "dataOperations": [
+        {
+          "data": "Tea",
+          "operations": [
+            "create"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Edit tea",
+      "userOutcome": "The user changes the name, tea type, steep temperature, or steep time of an existing tea.",
+      "trigger": "The user chooses a tea in the collection list and opens it for editing.",
+      "behavior": "Opens an edit dialog prefilled with the tea's current name, tea type, steep temperature, and steep time. The name is required and must be non-empty after trimming. Steep temperature and steep time are required whole numbers. Choosing Save updates the stored tea and closes the dialog; the updated values appear in the collection list.",
+      "failureOutcome": "If the name is empty after trimming, the Save button is disabled and the stored tea is unchanged.",
+      "failureRecovery": "retry",
+      "surface": "main",
+      "acceptanceSignals": [
+        "The edit dialog shows the tea's current name, tea type, steep temperature, and steep time.",
+        "With an empty name, the Save button is disabled and the stored tea keeps its previous values.",
+        "After saving a changed steep time, the collection list shows the new steep time for that tea."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Tea"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [
+        {
+          "name": "Tea type",
+          "options": [
+            "green",
+            "black",
+            "oolong",
+            "herbal"
+          ],
+          "initial": "green"
+        }
+      ],
+      "buildsOn": [
+        "Tea collection list"
+      ],
+      "dataOperations": [
+        {
+          "data": "Tea",
+          "operations": [
+            "read",
+            "edit"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Filter teas by type",
+      "userOutcome": "The user narrows the collection list to teas of one tea type.",
+      "trigger": "The user picks a tea type in the filter control.",
+      "behavior": "The filter control offers All, green, black, oolong, and herbal, starting at All. Choosing a tea type shows only teas of that type in the collection list; choosing All shows every tea again.",
+      "failureOutcome": "If no teas match the selected tea type, the list shows no rows and the app keeps running.",
+      "failureRecovery": "fallback",
+      "surface": "main",
+      "acceptanceSignals": [
+        "The filter control offers All, green, black, oolong, and herbal, with All selected initially.",
+        "With green selected, only teas whose tea type is green appear in the collection list.",
+        "Choosing All shows every stored tea again."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Tea"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [
+        {
+          "name": "Tea type filter",
+          "options": [
+            "All",
+            "green",
+            "black",
+            "oolong",
+            "herbal"
+          ],
+          "initial": "All"
+        }
+      ],
+      "buildsOn": [
+        "Tea collection list"
+      ],
+      "dataOperations": [
+        {
+          "data": "Tea",
+          "operations": [
+            "read"
+          ]
+        }
+      ],
+      "narrowsListBy": "flag",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Delete tea",
+      "userOutcome": "The user removes a tea from the collection after confirming.",
+      "trigger": "The user chooses Delete for a tea in the collection list.",
+      "behavior": "Shows a confirmation dialog asking whether to delete the tea. Confirming removes the tea from device storage and from the collection list; cancelling leaves the tea unchanged.",
+      "failureOutcome": "If the tea cannot be removed from storage, the tea stays in the collection list and the confirmation dialog stays open.",
+      "failureRecovery": "retry",
+      "surface": "main",
+      "acceptanceSignals": [
+        "Choosing Delete shows a confirmation dialog before anything is removed.",
+        "Cancelling the confirmation dialog leaves the tea in the collection list.",
+        "Confirming the dialog removes the tea from the collection list and from device storage."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Tea"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [],
+      "buildsOn": [
+        "Tea collection list"
+      ],
+      "dataOperations": [
+        {
+          "data": "Tea",
+          "operations": [
+            "delete"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    }
+  ],
+  "dataObjects": [
+    {
+      "name": "Tea",
+      "purpose": "A loose-leaf tea in the user's collection with its brewing parameters.",
+      "sensitivity": "internal",
+      "retentionIntent": "Kept on the device until the user deletes the tea.",
+      "storage": "records",
+      "writeMode": "atomic-replace",
+      "fields": [
+        {
+          "name": "name",
+          "valueType": "text",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "tea type",
+          "valueType": "text",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "steep temperature",
+          "valueType": "whole-number",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "steep time",
+          "valueType": "whole-number",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        }
+      ],
+      "singleRecord": false,
+      "entryCount": null
+    }
+  ],
+  "externalServices": [],
+  "platformNeeds": [
+    "local-storage"
+  ],
+  "qualityRequirements": [
+    "Tea records are written atomically so a failed save leaves the previous stored collection unchanged.",
+    "The collection list is ordered newest created first."
+  ],
+  "productConstraints": [
+    "Tea type is limited to green, black, oolong, or herbal.",
+    "Steep temperature is entered in degrees Celsius and steep time in seconds.",
+    "Deleting a tea always requires confirmation."
+  ],
+  "ideaCoverage": [
+    {
+      "sentence": 1,
+      "features": [
+        "Tea collection list"
+      ],
+      "outsideFeatures": "none"
+    },
+    {
+      "sentence": 2,
+      "features": [
+        "Add tea",
+        "Edit tea",
+        "Filter teas by type",
+        "Delete tea"
+      ],
+      "outsideFeatures": "none"
+    },
+    {
+      "sentence": 3,
+      "features": [
+        "Tea collection list"
+      ],
+      "outsideFeatures": "none"
+    }
+  ]
+}
