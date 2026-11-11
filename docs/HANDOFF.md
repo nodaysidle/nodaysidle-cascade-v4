@@ -626,6 +626,16 @@ Open, in the order I would take them:
    tools and gave a binary byte-identical to the installed one. Not run: the macOS script (cannot run here),
    `--install` on the real home. New notes X, Y, Z in `plans/README.md`. Findings Q to W are compiler-text
    work; Q belongs with finding O.
+0b. Plan 014 is DONE and in `main` (`f0c466e ce503cc 42670e0 db3200f a49aec2`, Alan's yes 2026-11-11): Cascade V4
+   is Linux-only in code and text. The Tauri base preset is the Linux preset (no option switch, no macOS
+   script, no Info.plist / keychain / Windows / cross-platform wording); the kit's secret store is
+   `SecretServiceStore` (keyring 4.2.0 uses the Secret Service on Linux, proven by a probe). The app itself lost
+   its macOS rename code, the Windows line and 47 unused icon files. QA: `npm run check` exit 0 (541 tests), 15
+   real kit builds exit 0, a real secret kit builds and packages, 19 non-Tauri round-12 packets byte-identical.
+   A fresh sweep compiled 538 packets and found no macOS, Apple or Windows text in any of them. Left on purpose:
+   `src/jev.ts` storage tiers `keychain` / `userdefaults` (they are part of what the paid review asks; needs
+   Alan's yes), the prose guards that catch Swift/Xcode in provider text, `MacosLauncher` (required argument of
+   tauri-plugin-autostart). QA notes X and Y in `plans/README.md` are closed by this plan.
 1. Alan runs more of the 20
    unused round-13 ideas. For each export: `npm run -s cascade -- verify --packet <dir>`, the kit build
    (`bash scripts/agent-ready/build-round-kits.sh <folder with <preset>/<slug> links>`), and one independent
@@ -660,7 +670,7 @@ How to work (as done in this session):
 Leftovers that can be removed when Alan says so (all merged): the worktrees under `.claude/worktrees/` and the
 branches `advisor/*`, `integrate/*`, `worktree-agent-*`.
 
-Installed app: rebuilt and installed from `098cf5e` (plan 013) with `bash scripts/install-linux-app.sh` on
+Installed app: rebuilt and installed from `a49aec2` (plan 014) with `bash scripts/install-linux-app.sh` on
 2026-11-11 (`~/.local/bin/nodaysidle-cascade-v4` is byte-identical to the fresh release build, and the frontend
 bundle holds the new option text). A copy of the app that was already open keeps the old compiler until it is
-restarted. The window was not opened after this install, and no packet was generated in it.
+restarted. After this install the app was started once in a hidden workspace: it opens a native Wayland window. No packet was generated in it.
