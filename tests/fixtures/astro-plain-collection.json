@@ -1,0 +1,267 @@
+{
+  "productName": "Cinema Club",
+  "summary": "A static website for a neighborhood film society. The home page lists screenings newest year first with film title, director, release year, and runtime in minutes; each screening has its own page with synopsis and discussion notes; an about page gives the venue address.",
+  "targetUsers": [
+    "Members and visitors of a neighborhood film society",
+    "Film society organizers who publish the screening program"
+  ],
+  "goals": [
+    "Show the screening program on the home page ordered newest year first",
+    "Give each screening a page with its synopsis and discussion notes",
+    "Provide an about page with the venue address"
+  ],
+  "nonGoals": [
+    "Online ticket sales or reservations",
+    "User accounts or member sign-in",
+    "Runtime editing of content by visitors"
+  ],
+  "features": [
+    {
+      "name": "Screening program home page",
+      "userOutcome": "A visitor sees every screening listed newest year first with film title, director, release year, and runtime in minutes.",
+      "trigger": "A visitor opens the home page.",
+      "behavior": "The home page lists all screenings ordered by release year descending, newest year first. Each list entry shows the film title, the director, the release year, and the runtime in minutes. Each entry links to that screening's own page.",
+      "failureOutcome": "The build fails when a screening content file is missing a required value such as film title, director, release year, or runtime.",
+      "failureRecovery": "retry",
+      "surface": "main",
+      "acceptanceSignals": [
+        "The built home page lists every screening from the content files.",
+        "On the built home page, screenings appear ordered by release year descending, newest year first.",
+        "Each home page list entry shows the film title, director, release year, and runtime in minutes.",
+        "Each home page list entry links to the page for that screening."
+      ],
+      "usesPlatformNeeds": [],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Screenings"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [],
+      "buildsOn": [],
+      "dataOperations": [
+        {
+          "data": "Screenings",
+          "operations": [
+            "read"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "click",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Screening detail page",
+      "userOutcome": "A visitor reads one screening's synopsis and discussion notes on its own page.",
+      "trigger": "A visitor follows a link to a screening from the home page.",
+      "behavior": "Each screening has its own page showing the film title, director, release year, runtime in minutes, the synopsis, and the discussion notes.",
+      "failureOutcome": "The build fails when a screening content file is missing its synopsis or discussion notes.",
+      "failureRecovery": "retry",
+      "surface": "item-page",
+      "acceptanceSignals": [
+        "A page exists for each screening in the content files.",
+        "Each screening page shows the film title, director, release year, and runtime in minutes.",
+        "Each screening page shows that screening's synopsis text.",
+        "Each screening page shows that screening's discussion notes text."
+      ],
+      "usesPlatformNeeds": [],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Screenings"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [],
+      "buildsOn": [
+        "Screening program home page"
+      ],
+      "dataOperations": [
+        {
+          "data": "Screenings",
+          "operations": [
+            "read"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "click",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "About page",
+      "userOutcome": "A visitor finds the venue address of the film society.",
+      "trigger": "A visitor opens the about page.",
+      "behavior": "The about page shows the venue address of the film society.",
+      "failureOutcome": "The build fails when the venue address content file is missing.",
+      "failureRecovery": "retry",
+      "surface": "about-page",
+      "acceptanceSignals": [
+        "The built about page exists.",
+        "The built about page shows the venue address text from the content files."
+      ],
+      "usesPlatformNeeds": [],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Venue"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [],
+      "buildsOn": [],
+      "dataOperations": [
+        {
+          "data": "Venue",
+          "operations": [
+            "read"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "click",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    }
+  ],
+  "dataObjects": [
+    {
+      "name": "Screenings",
+      "purpose": "The film society's screening program: one record per screening.",
+      "sensitivity": "public",
+      "retentionIntent": "Kept as site content and rebuilt into pages on each build.",
+      "storage": "records",
+      "writeMode": "direct",
+      "fields": [
+        {
+          "name": "film title",
+          "valueType": "text",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "director",
+          "valueType": "text",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "release year",
+          "valueType": "whole-number",
+          "optional": false,
+          "min": 1000,
+          "max": 9999,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "runtime in minutes",
+          "valueType": "whole-number",
+          "optional": false,
+          "min": 0,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "synopsis",
+          "valueType": "long-text",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        },
+        {
+          "name": "discussion notes",
+          "valueType": "long-text",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        }
+      ],
+      "singleRecord": false,
+      "entryCount": null
+    },
+    {
+      "name": "Venue",
+      "purpose": "The film society's venue details shown on the about page.",
+      "sensitivity": "public",
+      "retentionIntent": "Kept as site content and rebuilt into the about page on each build.",
+      "storage": "records",
+      "writeMode": "direct",
+      "fields": [
+        {
+          "name": "venue address",
+          "valueType": "text",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": null
+        }
+      ],
+      "singleRecord": true,
+      "entryCount": null
+    }
+  ],
+  "externalServices": [],
+  "platformNeeds": [],
+  "qualityRequirements": [
+    "The home page list order is deterministic: release year descending, newest year first.",
+    "Every screening in the content files produces exactly one detail page reachable from the home page."
+  ],
+  "productConstraints": [
+    "The site is static: pages are built once from content files.",
+    "An address that matches no page shows the site's 404 page."
+  ],
+  "ideaCoverage": [
+    {
+      "sentence": 1,
+      "features": [],
+      "outsideFeatures": "product"
+    },
+    {
+      "sentence": 2,
+      "features": [
+        "Screening program home page",
+        "Screening detail page",
+        "About page"
+      ],
+      "outsideFeatures": "none"
+    }
+  ]
+}

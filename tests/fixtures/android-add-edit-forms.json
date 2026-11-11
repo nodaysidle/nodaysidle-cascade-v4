@@ -1,0 +1,302 @@
+{
+  "productName": "Fuel Log",
+  "summary": "Fuel Log records a car's fill-ups on the device. The user adds a fill-up with a station name, liters added with one decimal, and total cost in euros with two decimals, edits or deletes a fill-up, and sees the fill-ups newest first. Fill-ups persist on the device and are restored after restart.",
+  "targetUsers": [
+    "Car owners who track their fill-ups",
+    "Drivers who want a simple on-device record of fuel purchases"
+  ],
+  "goals": [
+    "Record each fill-up with station name, liters, and total cost",
+    "Let the user correct or remove a recorded fill-up",
+    "Show fill-ups newest first",
+    "Keep fill-ups on the device and restore them after restart"
+  ],
+  "nonGoals": [
+    "Computing fuel economy or consumption statistics",
+    "Syncing fill-ups across devices or to a server",
+    "Tracking maintenance or other car expenses"
+  ],
+  "features": [
+    {
+      "name": "Fill-up list",
+      "userOutcome": "The user sees all recorded fill-ups newest first.",
+      "trigger": "The user opens Fuel Log.",
+      "behavior": "The main screen shows a list of fill-ups ordered newest first by the moment each fill-up was added. Each row shows the station name, the liters added with one decimal, and the total cost in euros with two decimals. When no fill-ups exist, the list area shows an empty state. Fill-ups are read from on-device storage when the screen appears, so previously saved fill-ups are restored after restart.",
+      "failureOutcome": "If stored fill-ups cannot be read, the list shows an empty state and the app continues running.",
+      "failureRecovery": "fallback",
+      "surface": "main",
+      "acceptanceSignals": [
+        "With three saved fill-ups added in order A, B, C, the list shows C first, then B, then A.",
+        "A row for a fill-up with 42.5 liters and 68.40 euros shows the station name, \"42.5\" and \"68.40\".",
+        "After the app is restarted, the same fill-ups appear in the list in the same order.",
+        "With no saved fill-ups, the list area shows an empty state."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Fill-ups"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [],
+      "buildsOn": [],
+      "dataOperations": [
+        {
+          "data": "Fill-ups",
+          "operations": [
+            "read"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "launch",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Add fill-up",
+      "userOutcome": "The user records a new fill-up with station name, liters, and total cost.",
+      "trigger": "The user activates the \"Add fill-up\" button.",
+      "behavior": "The \"Add fill-up\" button opens a form with the fields \"Station name\" (text, required, trimmed, trimmed-empty counts as empty), \"Liters\" (number with at most one decimal place, required), and \"Total cost (EUR)\" (number with at most two decimal places, required). The form's submit button is \"Save\". When the form is invalid, nothing is stored and the user sees the field problem. When valid, the fill-up is stored on the device with the moment it was added, the form closes, and the new fill-up appears at the top of the list.",
+      "failureOutcome": "If the fill-up cannot be written to storage, nothing is added to the list and the user sees that the fill-up was not saved.",
+      "failureRecovery": "retry",
+      "surface": "main",
+      "acceptanceSignals": [
+        "Activating \"Add fill-up\" opens a form with the fields \"Station name\", \"Liters\", and \"Total cost (EUR)\" and the button \"Save\".",
+        "Submitting with an empty or whitespace-only \"Station name\" stores nothing and shows the field problem.",
+        "Submitting with \"Liters\" of 42.55 stores nothing and shows the field problem.",
+        "Submitting with \"Total cost (EUR)\" of 68.405 stores nothing and shows the field problem.",
+        "Submitting station name \"Shell\", liters 42.5, and total cost 68.40 stores the fill-up and shows it at the top of the list with \"42.5\" and \"68.40\"."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Fill-ups"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [],
+      "buildsOn": [
+        "Fill-up list"
+      ],
+      "dataOperations": [
+        {
+          "data": "Fill-ups",
+          "operations": [
+            "create"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Edit fill-up",
+      "userOutcome": "The user corrects the station name, liters, or total cost of an existing fill-up.",
+      "trigger": "The user activates the \"Edit\" button on a fill-up row.",
+      "behavior": "The \"Edit\" button on a row opens a form pre-filled with that fill-up's \"Station name\", \"Liters\", and \"Total cost (EUR)\". The form's submit button is \"Save\". The user can change all three fields; the moment the fill-up was added stays unchanged. When the form is invalid, nothing is stored and the user sees the field problem. When valid, the changed values are stored on the device and the row shows the new values.",
+      "failureOutcome": "If the change cannot be written to storage, the stored fill-up stays as it was and the user sees that the change was not saved.",
+      "failureRecovery": "retry",
+      "surface": "main",
+      "acceptanceSignals": [
+        "Activating \"Edit\" on a row opens a form pre-filled with that fill-up's \"Station name\", \"Liters\", and \"Total cost (EUR)\".",
+        "Changing \"Liters\" to 40.0 and submitting stores the new value and the row shows \"40.0\".",
+        "Clearing \"Station name\" and submitting stores nothing and shows the field problem.",
+        "After an edit, the fill-up keeps its position in the newest-first order."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Fill-ups"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [],
+      "buildsOn": [
+        "Fill-up list"
+      ],
+      "dataOperations": [
+        {
+          "data": "Fill-ups",
+          "operations": [
+            "edit"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    },
+    {
+      "name": "Delete fill-up",
+      "userOutcome": "The user removes a fill-up that should not be recorded.",
+      "trigger": "The user activates the \"Delete\" button on a fill-up row.",
+      "behavior": "The \"Delete\" button on a row asks for confirmation in a confirmation dialog. Confirming removes the fill-up from on-device storage and from the list; cancelling leaves the fill-up unchanged.",
+      "failureOutcome": "If the fill-up cannot be removed from storage, it stays in the list and the user sees that it was not deleted.",
+      "failureRecovery": "retry",
+      "surface": "main",
+      "acceptanceSignals": [
+        "Activating \"Delete\" on a row shows a confirmation dialog.",
+        "Confirming the dialog removes the fill-up from the list and from storage after restart.",
+        "Cancelling the dialog leaves the fill-up in the list."
+      ],
+      "usesPlatformNeeds": [
+        "local-storage"
+      ],
+      "usesTray": false,
+      "clipboardAccess": "none",
+      "clipboardWatch": false,
+      "usesData": [
+        "Fill-ups"
+      ],
+      "usesServices": [],
+      "userFileAccess": "none",
+      "choiceLists": [],
+      "buildsOn": [
+        "Fill-up list"
+      ],
+      "dataOperations": [
+        {
+          "data": "Fill-ups",
+          "operations": [
+            "delete"
+          ]
+        }
+      ],
+      "narrowsListBy": "none",
+      "invokedBy": "user-control",
+      "runsEverySeconds": null,
+      "runsDailyAt": null,
+      "systemSource": "none",
+      "showsCurrentTime": false,
+      "readsCurrentDay": false,
+      "refreshesEverySeconds": null,
+      "runsAtField": null,
+      "scheduledNotification": null
+    }
+  ],
+  "dataObjects": [
+    {
+      "name": "Fill-ups",
+      "purpose": "Records each car fill-up with its station name, liters added, total cost in euros, and the moment it was added.",
+      "sensitivity": "personal",
+      "retentionIntent": "Kept on the device until the user deletes the fill-up.",
+      "storage": "records",
+      "writeMode": "atomic-replace",
+      "fields": [
+        {
+          "name": "Station name",
+          "valueType": "text",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": null,
+          "appStamped": false
+        },
+        {
+          "name": "Liters",
+          "valueType": "number",
+          "optional": false,
+          "min": 0,
+          "max": null,
+          "initial": null,
+          "appStamped": false
+        },
+        {
+          "name": "Total cost (EUR)",
+          "valueType": "number",
+          "optional": false,
+          "min": 0,
+          "max": null,
+          "initial": null,
+          "appStamped": false
+        },
+        {
+          "name": "Added at",
+          "valueType": "date-time",
+          "optional": false,
+          "min": null,
+          "max": null,
+          "initial": "now",
+          "appStamped": false
+        }
+      ],
+      "singleRecord": false,
+      "entryCount": null
+    }
+  ],
+  "externalServices": [],
+  "platformNeeds": [
+    "local-storage"
+  ],
+  "qualityRequirements": [
+    "Liters are shown with exactly one decimal place and total cost with exactly two decimal places.",
+    "Fill-ups are restored after restart with the same values and the same newest-first order.",
+    "The list orders fill-ups by the moment they were added, newest first."
+  ],
+  "productConstraints": [
+    "Liters accept at most one decimal place.",
+    "Total cost is entered and shown in euros with at most two decimal places.",
+    "Station name is required and trimmed; a trimmed-empty value counts as empty."
+  ],
+  "ideaCoverage": [
+    {
+      "sentence": 1,
+      "features": [
+        "Fill-up list",
+        "Add fill-up"
+      ],
+      "outsideFeatures": "none"
+    },
+    {
+      "sentence": 2,
+      "features": [
+        "Add fill-up",
+        "Edit fill-up",
+        "Delete fill-up",
+        "Fill-up list"
+      ],
+      "outsideFeatures": "none"
+    },
+    {
+      "sentence": 3,
+      "features": [
+        "Fill-up list"
+      ],
+      "outsideFeatures": "none"
+    }
+  ]
+}

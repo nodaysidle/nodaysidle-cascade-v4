@@ -113,6 +113,13 @@ export function androidTaskExtras(input: {
   // Some feature of the packet runs on a schedule (a Worker exists).
   readonly anySchedule?: boolean
   readonly detailView?: boolean
+  // The main screen has an inline form shell with one shared open-form value (Android without a detail view, with an Add control).
+  readonly openForm?: boolean
+  // A feature edits records, so the open-form value has an Edit case.
+  readonly openEdit?: boolean
+  // This task's features create records through a form / edit them.
+  readonly addForm?: boolean
+  readonly editForm?: boolean
   // Scheduled features whose notification lists values this owner's feature already selects.
   readonly selectionFor?: readonly { readonly name: string; readonly pascal: string }[]
   // Some owned feature renders on a screen (it is not only a schedule).
@@ -145,6 +152,8 @@ export function androidTaskExtras(input: {
   if (input.form) {
     notes.push("Form rules: build the form exactly as the Form, Field rules and Rejection details of the owned interface contracts say; the same validation function backs the Save rejection, the failure behavior, and the focused test, and the form and its validation are exported for any edit task to reuse.")
   }
+  if (input.openForm && input.addForm && !input.firstMain) notes.push("The add form is open exactly when the shared openForm is OpenForm.Add: the Add button of the first main task calls openAdd(), and a successful Save or a close calls closeForm(); keep the typed field values in your own file and build no Add button.")
+  if (input.openForm && input.editForm) notes.push("The row's Edit control (label \"Edit\") calls the shared openEdit(id); the edit form is open exactly when the shared openForm is OpenForm.Edit(id), is pre-filled from the stored record, and a successful Save or a close calls closeForm(); keep the typed field values in your own file.")
   if (input.deletes) notes.push(ANDROID_DELETE_PROMPT)
   if (input.selectionFor?.length) {
     const names = input.selectionFor.map(item => item.name)
@@ -165,7 +174,7 @@ export function androidTaskExtras(input: {
   } else if (input.firstMain && input.noList) {
     notes.push(`With no list, your focused test drives your own acceptance criteria through the real screen (your control in its slot, the value it shows, and that value after the store is reopened) and asserts that every other slot exists; an acceptance criterion that needs a control a later task builds is verified by that task. Every stored date or time the screen shows is formatted as ${ANDROID_DISPLAY_FORMATS}. State that a later task owns (its typed field values) lives in that task's own feature file, never in the shared view state, because later tasks modify only the registration files.`)
   } else if (input.firstMain) {
-    notes.push(`Every list row${input.detailView ? " and detail view" : ""} shows every stored field the PRD says that list${input.detailView ? " or view" : ""} shows, in the form the stored value has (for a date, the formatted date: ${ANDROID_DISPLAY_FORMATS}); a value an acceptance outcome asserts on screen is shown there too. An acceptance criterion of yours that names a control a later task builds (its form, its row button) is verified by that task; your focused test seeds records through the repository and asserts only the list, its empty state, and the empty host areas. State that a later task owns (an open form, a pending delete, a mark) lives in that task's own feature file, never in the shared view state, because later tasks modify only the registration files.`)
+    notes.push(`Every list row${input.detailView ? " and detail view" : ""} shows every stored field the PRD says that list${input.detailView ? " or view" : ""} shows, in the form the stored value has (for a date, the formatted date: ${ANDROID_DISPLAY_FORMATS}); a value an acceptance outcome asserts on screen is shown there too. An acceptance criterion of yours that names a control a later task builds (its form, its row button) is verified by that task; your focused test seeds records through the repository and asserts only the list, its empty state, and the empty host areas. ${input.openForm ? `Open-form rule (the one shared exception): the shared view state in your file holds exactly one open-form value, openForm, of the sealed type OpenForm with the cases OpenForm.None (initial), OpenForm.Add${input.openEdit ? " and OpenForm.Edit(val id: Long)" : ""}, and exposes exactly these functions: openAdd()${input.openEdit ? ", openEdit(id: Long)" : ""} and closeForm(). Because it is a single value, opening one form replaces any open one and no feature calls another feature. The form shell renders the form that openForm names and nothing for OpenForm.None. Every other state a later task owns (its typed field values, a pending delete, a mark) lives in that task's own feature file, never in the shared view state, because later tasks modify only the registration files.` : "State that a later task owns (an open form, a pending delete, a mark) lives in that task's own feature file, never in the shared view state, because later tasks modify only the registration files."}`)
   }
   if (input.kind === "permission" && input.notifications) {
     modify.push(`app/src/main/java/${identity.packagePath}/MainActivity.kt`)

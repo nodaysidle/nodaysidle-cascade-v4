@@ -24,7 +24,7 @@ describe("Android bounded choice field", () => {
     expect(trd).not.toContain("identifies it (a date or name kept once per record)")
     expect(trd).toContain('"row-" plus the record id')
     expect(trd).toContain('"empty-state"')
-    expect(packet.documents["TASKS.md"]).toContain('the Add button (testTag "add-entry") plus the inline form shell')
+    expect(packet.documents["TASKS.md"]).toContain('the Add button (testTag "add-entry"; labelled as the PRD or an acceptance signal quotes it, else "Add"), which you build and which calls the shared openAdd(), plus the inline form shell')
   })
 
   it("states bounds on a typed number field and keeps feature tasks off AppContainer.kt", async () => {
