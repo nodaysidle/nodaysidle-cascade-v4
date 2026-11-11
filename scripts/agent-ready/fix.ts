@@ -9,98 +9,8 @@ import { homedir } from "node:os"
 import { basename, dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parseArgs } from "node:util"
-import { z } from "zod"
-import { ideaFromRoundScript, readPacket, type PacketFile } from "./review"
-
-const REQUIRED_DOCS = new Set(["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS.md"])
-const DOC_ORDER = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS.md"]
-
-const Edit = z.object({
-  // 1-based number of the blocking finding this edit resolves.
-  finding: z.number().int(),
-  // Optional so saved r1/r2 fix.json files stay valid; defaults to "replace".
-  op: z.enum(["replace", "create", "move", "delete"]).optional(),
-  file: z.string(),
-  // Destination path when op is "move".
-  to: z.string().optional(),
-  find: z.string(),
-  replace: z.string(),
-  // true replaces every occurrence in the file; false requires exactly one.
-  all: z.boolean(),
-})
-export const Fix = z.object({ edits: z.array(Edit), notes: z.string() })
-export type Edit = z.infer<typeof Edit>
-
-export interface EditFailure { readonly edit: Edit; readonly reason: string }
-
-function validPacketPath(path: string | undefined): path is string {
-  if (!path || path.startsWith("/") || path.includes("\\") || path === "blueprint.json") return false
-  const parts = path.split("/")
-  return parts.every(part => part !== "" && part !== "." && part !== "..")
-}
-
-// Exact text replacement and file operations (create, move, delete). An edit that does not match is reported, never guessed at.
-export function applyEdits(files: readonly PacketFile[], edits: readonly Edit[]): { files: PacketFile[]; failed: EditFailure[] } {
-  const texts = new Map(files.map(file => [file.path, file.text]))
-  const failed: EditFailure[] = []
-  for (const edit of edits) {
-    const op = edit.op ?? "replace"
-    if (!validPacketPath(edit.file)) { failed.push({ edit, reason: "invalid packet file path" }); continue }
-    if (op === "create") {
-      if (texts.has(edit.file)) { failed.push({ edit, reason: "the file already exists in the packet" }); continue }
-      texts.set(edit.file, edit.replace)
-      continue
-    }
-    if (op === "delete") {
-      if (REQUIRED_DOCS.has(edit.file)) { failed.push({ edit, reason: "cannot delete a required contract document" }); continue }
-      if (!texts.has(edit.file)) { failed.push({ edit, reason: "no such file in the packet" }); continue }
-      texts.delete(edit.file)
-      continue
-    }
-    if (op === "move") {
-      if (!validPacketPath(edit.to)) { failed.push({ edit, reason: "move requires a valid target path in to" }); continue }
-      if (REQUIRED_DOCS.has(edit.file)) { failed.push({ edit, reason: "cannot move a required contract document" }); continue }
-      const text = texts.get(edit.file)
-      if (text === undefined) { failed.push({ edit, reason: "no such file in the packet" }); continue }
-      if (edit.to !== edit.file && texts.has(edit.to)) { failed.push({ edit, reason: "the target file already exists in the packet" }); continue }
-      if (REQUIRED_DOCS.has(edit.to)) { failed.push({ edit, reason: "cannot move a required contract document" }); continue }
-      let nextText = text
-      if (edit.find !== "") {
-        const count = text.split(edit.find).length - 1
-        if (count === 0) { failed.push({ edit, reason: "the find text is not in the file" }); continue }
-        if (count > 1 && !edit.all) { failed.push({ edit, reason: `the find text occurs ${count} times and all is false` }); continue }
-        nextText = text.split(edit.find).join(edit.replace)
-      } else if (edit.replace !== "") {
-        nextText = edit.replace
-      }
-      texts.delete(edit.file)
-      texts.set(edit.to, nextText)
-      continue
-    }
-    const text = texts.get(edit.file)
-    if (text === undefined) { failed.push({ edit, reason: "no such file in the packet" }); continue }
-    const count = edit.find === "" ? 0 : text.split(edit.find).length - 1
-    if (count === 0) { failed.push({ edit, reason: "the find text is not in the file" }); continue }
-    if (count > 1 && !edit.all) { failed.push({ edit, reason: `the find text occurs ${count} times and all is false` }); continue }
-    texts.set(edit.file, text.split(edit.find).join(edit.replace))
-  }
-  const initialOrder = new Map(files.map((file, index) => [file.path, index]))
-  const orderedPaths = [...texts.keys()].sort((left, right) => {
-    const leftDoc = DOC_ORDER.indexOf(left)
-    const rightDoc = DOC_ORDER.indexOf(right)
-    if (leftDoc !== -1 || rightDoc !== -1) {
-      if (leftDoc !== -1 && rightDoc !== -1) return leftDoc - rightDoc
-      return leftDoc !== -1 ? -1 : 1
-    }
-    const leftInitial = initialOrder.get(left)
-    const rightInitial = initialOrder.get(right)
-    if (leftInitial !== undefined && rightInitial !== undefined && files.every(file => texts.has(file.path)) && texts.size === files.length) {
-      return leftInitial - rightInitial
-    }
-    return left < right ? -1 : left > right ? 1 : 0
-  })
-  return { files: orderedPaths.map(path => ({ path, text: texts.get(path)! })), failed }
-}
+import { applyEdits, buildFixPrompt, Fix, touchedKit, type PacketFile, type ReviewFinding } from "../../src/review"
+import { ideaFromRoundScript, readPacket } from "./review"
 
 export function writePacketEdits(outDir: string, before: readonly PacketFile[], after: readonly PacketFile[]): void {
   const afterPaths = new Set(after.map(file => file.path))
@@ -112,11 +22,6 @@ export function writePacketEdits(outDir: string, before: readonly PacketFile[], 
     mkdirSync(dirname(target), { recursive: true })
     writeFileSync(target, file.text)
   }
-}
-
-export function touchedKit(edits: readonly Edit[], failed: readonly EditFailure[]): boolean {
-  const failedEdits = new Set(failed.map(item => item.edit))
-  return edits.some(edit => !failedEdits.has(edit) && (edit.file.startsWith("kit/") || (edit.to?.startsWith("kit/") ?? false)))
 }
 
 export interface KitBuildResult {
@@ -196,32 +101,6 @@ export function buildKit(packetDir: string, preset: string): KitBuildResult {
   }
 }
 
-interface BlockingFinding { readonly where: string; readonly quote: string; readonly why: string; readonly fix: string }
-
-export function buildFixPrompt(idea: string, preset: string, files: readonly PacketFile[], blocking: readonly BlockingFinding[]): string {
-  return [
-    ...files.map(file => `<file path="${file.path}">\n${file.text}\n</file>`),
-    `These are all text files of one generated packet for the preset ${preset}: five Markdown contracts and a starter kit. A coding agent will build the product from only these files, following TASKS.md task by task. The user's idea: "${idea}".`,
-    `An independent reviewer found these blocking defects (a coding agent would stall, build the wrong thing, or hit a contradiction):\n${blocking.map((item, index) => `${index + 1}. Where: ${item.where}\n   Quote: ${item.quote}\n   Why: ${item.why}\n   Reviewer's suggestion: ${item.fix}`).join("\n")}`,
-    [
-      "Repair the packet so that each defect is gone and no new contradiction appears. Return edits.",
-      "- Each edit has op ('replace', 'create', 'move', or 'delete'; default 'replace'):",
-      "  * 'replace': names file, a find text copied exactly from that file, and its replacement in replace. Keep find as short as it can be while still being unique in the file; set all to true only to replace every occurrence of a repeated sentence.",
-      "  * 'create': creates a new kit file at file (under kit/...) with full content in replace (set find to '' and all to false).",
-      "  * 'move': moves/renames a kit file from file to 'to' (under kit/...). Set find to '' and replace to '' to move unchanged, or set replace to the full new content (with find ''), or set find and replace to edit while moving.",
-      "  * 'delete': deletes a kit file at file (set find to '', replace to '', all to false). Never delete or move the five Markdown contracts.",
-      "- The same fact is often printed in several documents (PRD, ARD, TRD, TASKS, AGENTS) and in the kit. Change every copy, so the documents and the kit agree afterwards.",
-      "- Build exactly the user's idea: add no feature it did not ask for, and remove any control, screen, store or rule that the idea and its features do not need.",
-      "- Where the packet leaves a rule open, choose the simplest rule that fits the idea and the kit's real code, and state it once in precise words (exact text, exact function name and signature, exact number).",
-      "- Keep IDs, file paths, owners, task order and validation commands unless a defect requires a change. When a task must create, move, or modify another file, move/rename the corresponding file in kit/ as well and update that task's file lists, the kit README, and the AGENTS Owner Map and shared-file lines to match.",
-      "- You may edit, create, move, or delete a kit file when the defect is in the kit; the kit is built immediately after your edits and must still build and pass its own tests, so change its imports, paths, and tests together with its code.",
-      "- An acceptance example with numbers must be recomputed by you from the stated rule before you write it.",
-      "- Change nothing that the defects do not require.",
-      "In notes, say in a few plain sentences what you decided for each defect.",
-    ].join("\n"),
-  ].join("\n\n")
-}
-
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: { model: { type: "string" }, packet: { type: "string" }, review: { type: "string" }, idea: { type: "string" }, out: { type: "string" } } })
   if (!values.model || !values.packet || !values.review || !values.out) throw new Error("Usage: fix.ts --model <claude model id> --packet <folder> --review <review.json> --out <new folder> [--idea <text>]")
@@ -231,7 +110,7 @@ async function main(): Promise<void> {
   if (!idea) throw new Error(`No idea text for ${packet}: pass --idea`)
   const out = resolve(values.out)
   if (existsSync(out)) throw new Error(`The output folder already exists: ${out}`)
-  const blocking = (JSON.parse(readFileSync(values.review, "utf8")) as { review: { blocking: BlockingFinding[] } }).review.blocking
+  const blocking = (JSON.parse(readFileSync(values.review, "utf8")) as { review: { blocking: ReviewFinding[] } }).review.blocking
   if (blocking.length === 0) throw new Error("The review has no blocking finding; nothing to repair.")
   const { files } = readPacket(packet)
   const prompt = buildFixPrompt(idea, preset, files, blocking)

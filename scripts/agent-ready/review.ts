@@ -8,17 +8,11 @@ import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs"
 import { basename, dirname, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parseArgs } from "node:util"
-import { z } from "zod"
+import { buildReviewPromptForPacket, quoteFound, Review, type PacketFile } from "../../src/review"
 
 const here = dirname(fileURLToPath(import.meta.url))
 const DOCUMENTS = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS.md"]
 const MAX_KIT_FILE_BYTES = 60_000
-
-const Finding = z.object({ where: z.string(), quote: z.string(), why: z.string(), fix: z.string() })
-export const Review = z.object({ slug: z.string(), blocking: z.array(Finding), polish: z.array(Finding), verdict: z.string() })
-export type Review = z.infer<typeof Review>
-
-export interface PacketFile { readonly path: string; readonly text: string }
 
 function walk(folder: string): string[] {
   return readdirSync(folder).sort().flatMap(name => {
@@ -53,27 +47,10 @@ export function ideaFromRoundScript(packet: string): string | undefined {
 }
 
 export function buildReviewPrompt(packet: string, idea: string, files: readonly PacketFile[], notShown: readonly string[]): string {
-  const preset = basename(dirname(packet))
-  const brief = readFileSync(join(here, "audit-brief.md"), "utf8").split("\n").slice(2).join("\n")
-    .replace("<ROOT>/<preset>/<slug>", basename(packet))
-    .replace("<preset>", preset)
-    .replace("<idea>", idea)
-  return [
-    ...files.map(file => `<file path="${file.path}">\n${file.text}\n</file>`),
-    `Not shown: ${notShown.join("; ")}.`,
-    "Every file of the packet is given above, except those listed as not shown. Nothing else exists: you cannot run commands or open other files.",
-    brief,
-    "Every quote must be copied exactly from one file above, and every 'where' must start with that file's path. Report every blocking defect. Report at most 8 polish items, the most harmful first.",
-  ].join("\n\n")
+  return buildReviewPromptForPacket(basename(packet), basename(dirname(packet)), idea, files, notShown)
 }
 
 const flat = (text: string): string => text.replace(/\s+/g, " ").trim()
-
-// A finding whose quote is in no file is not evidence; the caller sees which ones those are.
-export function quoteFound(quote: string, files: readonly PacketFile[]): boolean {
-  const wanted = flat(quote)
-  return wanted !== "" && files.some(file => flat(file.text).includes(wanted))
-}
 
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: { model: { type: "string" }, packet: { type: "string" }, idea: { type: "string" }, out: { type: "string" }, "dry-run": { type: "boolean" } } })
