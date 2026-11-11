@@ -57,8 +57,6 @@ export interface TauriKitUses {
   readonly secrets: boolean
   readonly services: boolean
   readonly tray: boolean
-  // True when the preset option linuxPackaging is set: the kit ships no macOS packaging or signing.
-  readonly linuxOnly: boolean
   // The Wayland option: the installed desktop entry launches with GDK_BACKEND=wayland.
   readonly wayland: boolean
   readonly shortcut: boolean
@@ -79,7 +77,6 @@ export function tauriKitUses(blueprint: NormalizedBlueprint, options: Readonly<R
       || blueprint.domainData.some(item => item.storage === "secret"),
     services: blueprint.externalServices.length > 0,
     tray: needs.has("background-execution"),
-    linuxOnly: typeof options.linuxPackaging === "string" && options.linuxPackaging.length > 0,
     wayland: options.wayland === true,
     shortcut: needs.has("global-hotkey"),
     timestamps: blueprint.domainData.some(item => item.storage === "records" && item.fields.some(field => field.valueType === "date-time")),
@@ -111,7 +108,6 @@ export function tauriKitFiles(identity: ProjectIdentity, uses: TauriKitUses): Ta
     { path: "tests/kit.test.ts", content: KIT_TEST_TS },
     { path: "tests/ui.test.ts", content: uses.settings ? UI_TEST_TS : UI_TEST_TS.replace(", settingsGroup, settingsRow, switchControl", "").replace(/  it\("names every settings control[\s\S]*?\n  \}\)\n\n/, "") },
     { path: "app-icon.svg", content: APP_ICON_SVG },
-    ...(uses.linuxOnly ? [] : [{ path: "scripts/package_app.sh", content: packageScript(identity) }]),
     { path: "scripts/package_linux.sh", content: packageLinuxScript(identity, uses.wayland) },
     { path: "src-tauri/Cargo.toml", content: cargoToml(identity, lib, uses) },
     { path: "src-tauri/build.rs", content: BUILD_RS },
@@ -124,7 +120,7 @@ export function tauriKitFiles(identity: ProjectIdentity, uses: TauriKitUses): Ta
     ...(uses.records ? [{ path: "src-tauri/src/database.rs", content: DATABASE_RS }] : []),
     ...(uses.secrets ? [{ path: "src-tauri/src/vault.rs", content: VAULT_RS }] : []),
     { path: "src-tauri/tests/kit_tests.rs", content: kitTestsRs(lib, uses) },
-    { path: "src-tauri/tauri.conf.json", content: tauriConf(identity, uses.linuxOnly) },
+    { path: "src-tauri/tauri.conf.json", content: tauriConf(identity) },
     { path: "src-tauri/capabilities/default.json", content: capabilities(uses) },
   ]
 }
@@ -152,11 +148,10 @@ export function tauriKitReadme(identity: ProjectIdentity, paths: readonly string
     ...(uses.records ? ["- database.rs applies MIGRATIONS in order and records the schema version in PRAGMA user_version; append new migrations, never edit a shipped one. database::open creates the data folder (create_dir_all) before opening records.sqlite3, so a launch step that opens the store before manage_state still works on a fresh install."] : []),
     ...(uses.timestamps ? ["- src-tauri/Cargo.toml already has the time crate (parsing, formatting) for the RFC3339 date-time fields: validate with time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339) and require a UTC offset; write no parser of your own."] : []),
     ...(uses.services ? ["- src-tauri/Cargo.toml already has reqwest (json) for the declared services; integration owners use one reqwest::Client and add no HTTP crate of their own."] : []),
-    ...(uses.secrets ? ["- vault.rs is the only place secrets are stored: generic passwords in the login keychain under the bundle ID's credentials service. Tests use MemoryStore, never the keychain."] : []),
+    ...(uses.secrets ? ["- vault.rs is the only place secrets are stored: generic passwords in the Linux Secret Service under the bundle ID's credentials service. Tests use MemoryStore, never the Secret Service."] : []),
     ...(uses.tray ? ["- The tray keeps the app running: closing the main window hides it, Show brings it back, and Quit (or quitting from outside) exits. RunEvent::ExitRequested with no exit code is prevented; an explicit exit code is not. Only the main window hides: every other window closes for real, so it is created fresh and loads current data each time it opens instead of showing a stale list."] : []),
     ...(uses.shortcut ? ["- src/shortcut.ts is the only file that names the system-wide accelerator (DEFAULT_ACCELERATOR, CommandOrControl+Shift+Space). registerShortcut(onPress, onFailure) registers it; a refused registration calls onFailure and returns false, and the app keeps working through its in-app controls. The capability file grants only global-shortcut register and unregister."] : []),
     ...(uses.records ? ["- src-tauri/tests/kit_tests.rs compares schema_version with database::MIGRATIONS.len(), so adding a migration needs no edit to that test."] : []),
-    ...(uses.linuxOnly ? [] : ["- scripts/package_app.sh builds only the macOS .app (no DMG), signs it ad hoc, and verifies it; with --install it waits for the running app to quit, moves the installed copy to src-tauri/target/rollback/ (never inside /Applications), installs, restores the previous copy if verification fails, registers, and launches by bundle ID. The first run generates src-tauri/icons from app-icon.svg."]),
     "- scripts/package_linux.sh builds the release binary without a bundle, copies it to dist/, and with --install installs it under ~/.local/bin with a desktop entry and icon. On Arch/Omarchy use it for local proof; the installed desktop entry starts it on Wayland with GDK_BACKEND=wayland.",
     "- Versions are exact (= in Cargo.toml, no ^ in package.json) because they are tested together; keep src-tauri/Cargo.lock and package-lock.json from the first build, and change a version only on purpose, never by a broad update.",
     `- Screens are built from src/ui.ts and the classes in src/style.css, never from unstyled elements: button() is sized to its label (primary for the one main action); toolbar() holds a search field and actions; setEnabled() disables a command until it has something to act on (Edit, Delete, Copy with nothing selected); emptyState(title, hint) fills an empty list with one centered message saying how to fill it; list rows use .row with aria-selected for the selection and clampedText() so long text is cut to a few lines with the full text on hover, never a scroll area inside a scrolling list; a form is built from field(label, control) lines, one per input, with the label above its control; the detail view of the selected record and a form shell are each a panel(); stored text that can hold line breaks (a note, a snippet, a description) is shown with multilineText(text), which keeps line breaks and indentation and wraps long lines, and is edited in a textarea; ${uses.settings ? "settings are settingsGroup() sections of settingsRow() lines, label on the left and control on the right, a switchControl() on the same line as its label, and a footnote under the group; " : ""}body text uses the system font, and monospace only for code.`,
@@ -561,7 +556,7 @@ const STYLE_CSS = `/* Native-feeling base: system font, system colors in light a
   --accent: #0a84ff;
   --danger: #d70015;
   --danger-bg: #fff0f0;
-  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 13px/1.45 system-ui, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -900,65 +895,6 @@ echo "Installed $APP_NAME under $INSTALL_DIR"
 `;
 }
 
-function packageScript(identity: ProjectIdentity): string {
-  return `#!/usr/bin/env bash
-# Builds the macOS app bundle only (no DMG; that is a release step), signs it ad hoc, and verifies it.
-# Usage: scripts/package_app.sh [--install]
-#   --install  quit the running app, move any installed copy to src-tauri/target/rollback/ (never
-#              inside /Applications), install the verified app, register it, and launch it by bundle ID.
-#              If the new copy fails verification, the previous app is put back.
-# SIGN_IDENTITY selects a Developer ID; the default "-" signs ad hoc for local proof.
-set -euo pipefail
-
-cd "$(dirname "$0")/.."
-APP_NAME=${shellWord(tauriProductName(identity))}
-BUNDLE_ID="${identity.bundleId}"
-SIGN_IDENTITY="\${SIGN_IDENTITY:--}"
-APP="src-tauri/target/release/bundle/macos/$APP_NAME.app"
-INSTALLED="/Applications/$APP_NAME.app"
-ROLLBACK="src-tauri/target/rollback/$APP_NAME.app"
-LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-
-install=false
-for arg in "$@"; do
-  case "$arg" in
-    --install) install=true ;;
-    *) echo "Unknown argument: $arg" >&2; exit 2 ;;
-  esac
-done
-
-[ -f src-tauri/icons/icon.icns ] || npm run tauri -- icon app-icon.svg
-npm run tauri -- build --bundles app
-codesign --force --deep --sign "$SIGN_IDENTITY" "$APP"
-codesign --verify --deep --strict "$APP"
-
-if [ "$install" = true ]; then
-  osascript -e "tell application id \\"$BUNDLE_ID\\" to quit" >/dev/null 2>&1 || true
-  # Launching while the old process is still quitting fails with error -600.
-  for _ in $(seq 1 50); do
-    pgrep -f "$INSTALLED/Contents/MacOS/" >/dev/null || break
-    sleep 0.2
-  done
-  if [ -d "$INSTALLED" ]; then
-    rm -rf "$ROLLBACK"
-    mkdir -p "$(dirname "$ROLLBACK")"
-    mv "$INSTALLED" "$ROLLBACK"
-  fi
-  cp -R "$APP" "$INSTALLED"
-  if ! codesign --verify --deep --strict "$INSTALLED"; then
-    rm -rf "$INSTALLED"
-    [ -d "$ROLLBACK" ] && mv "$ROLLBACK" "$INSTALLED"
-    echo "The new app failed verification; the previous app was restored." >&2
-    exit 1
-  fi
-  # Only the installed bundle stays registered, so open -b always starts it.
-  "$LSREGISTER" -u "$APP" >/dev/null 2>&1 || true
-  "$LSREGISTER" -f "$INSTALLED"
-  open -b "$BUNDLE_ID"
-fi
-`
-}
-
 function cargoToml(identity: ProjectIdentity, lib: string, uses: TauriKitUses): string {
   const tauriFeatures = uses.tray ? `["tray-icon"]` : "[]"
   const testFeatures = uses.tray ? `["tray-icon", "test"]` : `["test"]`
@@ -1011,10 +947,7 @@ const BUILD_RS = `fn main() {
 `
 
 function mainRs(lib: string): string {
-  return `// Prevents an extra console window on Windows in release.
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
-fn main() {
+  return `fn main() {
     ${lib}::run()
 }
 `
@@ -1135,7 +1068,7 @@ pub fn run() {
     app_builder(tauri::Builder::default())
         .setup(|app| {
             let folder = app.path().app_data_dir()?;${uses.secrets ? `
-            let secrets = Box::new(vault::KeychainStore::new(&app.config().identifier));
+            let secrets = Box::new(vault::SecretServiceStore::new(&app.config().identifier));
             manage_state(app, &folder, secrets)?;` : `
             manage_state(app, &folder)?;`}${uses.tray ? "\n            install_tray(app)?;" : ""}
             Ok(())
@@ -1281,37 +1214,37 @@ use crate::error::AppError;
 
 const SAVE_FAILED: &str = "The key could not be saved. The previous key was kept.";
 
-/// Where secrets live. The app uses the login keychain; tests use MemoryStore, so a test run never
-/// touches the user's keychain.
+/// Where secrets live. The app uses the Linux Secret Service; tests use MemoryStore, so a test run never
+/// touches the user's stored secrets.
 pub trait SecretStore: Send + Sync {
     fn read(&self, account: &str) -> Result<Option<String>, AppError>;
     fn write(&self, account: &str, secret: &str) -> Result<(), AppError>;
     fn delete(&self, account: &str) -> Result<(), AppError>;
 }
 
-/// Generic passwords in the macOS login keychain (keyring's apple-native store), under one service
+/// Generic passwords in the Linux Secret Service (through the keyring crate), under one service
 /// named after the bundle identifier. Secrets never go to the frontend after they are saved.
-pub struct KeychainStore {
+pub struct SecretServiceStore {
     service: String,
 }
 
-impl KeychainStore {
+impl SecretServiceStore {
     pub fn new(identifier: &str) -> Self {
         Self { service: format!("{identifier}.credentials") }
     }
 
     fn entry(&self, account: &str) -> Result<keyring::Entry, AppError> {
         keyring::Entry::new(&self.service, account)
-            .map_err(|_| AppError::Storage("The keychain could not be opened.".into()))
+            .map_err(|_| AppError::Storage("The Secret Service could not be opened.".into()))
     }
 }
 
-impl SecretStore for KeychainStore {
+impl SecretStore for SecretServiceStore {
     fn read(&self, account: &str) -> Result<Option<String>, AppError> {
         match self.entry(account)?.get_password() {
             Ok(secret) => Ok(Some(secret)),
             Err(keyring::Error::NoEntry) => Ok(None),
-            Err(_) => Err(AppError::Storage("The key could not be read from the keychain.".into())),
+            Err(_) => Err(AppError::Storage("The key could not be read from the Secret Service.".into())),
         }
     }
 
@@ -1328,7 +1261,7 @@ impl SecretStore for KeychainStore {
 }
 
 /// The test double for SecretStore. It lives here so tests can reach it; production code never
-/// constructs it (the packaging test checks run() uses KeychainStore).
+/// constructs it (the packaging test checks run() uses SecretServiceStore).
 #[derive(Default)]
 pub struct MemoryStore {
     map: Mutex<HashMap<String, String>>,
@@ -1457,7 +1390,7 @@ function tauriProductName(identity: ProjectIdentity): string {
   return identity.projectName.replace(/[/:*?"<>|]/g, "").replace(/\s+/g, " ").trim() || identity.slug
 }
 
-function tauriConf(identity: ProjectIdentity, linuxOnly: boolean): string {
+function tauriConf(identity: ProjectIdentity): string {
   return `${JSON.stringify({
     $schema: "https://schema.tauri.app/config/2",
     productName: tauriProductName(identity),
@@ -1477,8 +1410,7 @@ function tauriConf(identity: ProjectIdentity, linuxOnly: boolean): string {
     bundle: {
       active: true,
       targets: "all",
-      icon: ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
-      ...(linuxOnly ? {} : { macOS: { minimumSystemVersion: "13.0", signingIdentity: "-" } }),
+      icon: ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png"],
     },
   }, null, 2)}\n`
 }

@@ -235,7 +235,7 @@ function renderTRD(graph: ProjectGraph): string {
     ...astroDesignSystemSection(graph),
     section("Project Layout", bullets([...new Set(graph.phases.flatMap(phase => phase.tasks.flatMap(task => task.filesToCreate)))])),
     section("Owner-to-File and Focused-Test Map", bullets([
-      `OWN-FOUNDATION — Foundation — implementation ${graph.foundationFiles[0] ?? "Package.swift"} — focused test ${graph.phases[0]?.tasks[0]?.focusedTests[0] ?? "ContractTests.swift"} — command ${graph.validationCommands[0] ?? "swift test"}`,
+      `OWN-FOUNDATION — Foundation — implementation ${graph.foundationFiles[0] ?? "the foundation file"} — focused test ${graph.phases[0]?.tasks[0]?.focusedTests[0] ?? "the foundation test"} — command ${graph.validationCommands[0] ?? "npm test"}`,
       ...graph.owners.map(owner => `${owner.id} — ${owner.name} — implementation ${owner.implementationFile} — focused test ${owner.focusedTestFile} — command ${owner.focusedTestCommand}`),
     ])),
     section("Interface Contracts", contractsOfKind(graph, "interface")),

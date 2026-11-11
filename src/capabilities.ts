@@ -7,7 +7,7 @@ import { featureTexts, waybarCapabilityIssues } from "./waybarContracts"
 const SELECTED_RECORD_VIEW = /\b(read-only|details?) (view|pane|panel|page)\b|\bselecting (a|an|the) \w+ (shows|opens|displays)\b|\bopen(s|ing)? (one|it|an? \w+|the \w+) to (view|see)\b/i
 
 // The preset declares what the platform can express. The blueprint declares what the product
-// needs. This is the gate that stops a Wayland packet from promising macOS-only automation.
+// needs. This is the gate that stops a Wayland packet from promising automation the platform cannot do.
 export function auditCapabilities(blueprint: SemanticBlueprint, preset: PresetContract): SemanticIssue[] {
   const issues: SemanticIssue[] = []
   if (preset.id === "astro-web") {

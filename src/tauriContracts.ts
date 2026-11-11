@@ -401,7 +401,6 @@ export function tauriSpecialize(preset: PresetContract, blueprint: NormalizedBlu
   const http = blueprint.externalServices.length > 0 || blueprint.platformNeeds.includes("network")
   const secrets = blueprint.externalServices.some(service => service.credentialRequirement !== "none") || blueprint.domainData.some(item => item.storage === "secret")
   const records = blueprint.persistenceNeeds.some(need => need.storage === "records")
-  const linux = typeof options.linuxPackaging === "string" && options.linuxPackaging.length > 0
   const overrides: { -readonly [K in keyof PresetContract]?: PresetContract[K] } = {}
   // The kit already carries every plugin, dependency, and capability grant the blueprint declares, so only
   // the packaging task touches Cargo.toml and capabilities/default.json, and only when its wiring check fails.
@@ -456,28 +455,6 @@ export function tauriSpecialize(preset: PresetContract, blueprint: NormalizedBlu
       "The TypeScript DOM frontend owns presentation and sends typed Tauri invoke requests; Rust commands own filesystem, persistence, and platform operations behind least-privilege capabilities.",
       "Managed Rust state owns cancellable operations and returns allowlisted serializable results; frontend state never receives unrestricted paths.",
     ]
-  }
-  if (linux) {
-    overrides.platform = "Linux (Wayland verified)"
-    overrides.runtimeMode = () => "linux-desktop"
-    overrides.packagingRules = [
-      "Build the frontend with Vite and the native boundary with Cargo.",
-      "Keep tauri.conf.json productName as the kit sets it: the locked project name without the characters Tauri refuses there (slash, colon, asterisk, question mark, double quote, angle brackets, pipe).",
-      "The packet targets Linux only: scripts/package_linux.sh builds the release binary without a bundle, and the installed desktop entry is validated before the launch smoke.",
-      "Use least-privilege capabilities for every command and plugin.",
-      "Verify the built binary before the launch smoke.",
-    ]
-    overrides.installationDecision = () => "For local proof, run ./scripts/package_linux.sh --install: it builds the release binary, installs it under ~/.local/bin with a desktop entry and icon, and keeps the previous binary in dist/rollback/ as the rollback copy; then launch the installed identity."
-    overrides.signingDecision = () => "Local proof is unsigned. Record the SHA-256 checksum of the built binary in the completion report."
-    overrides.outputArtifact = "Linux release binary"
-    overrides.artifactPath = identity => `dist/${identity.slug}`
-    overrides.completionEvidence = [
-      "TypeScript, Vitest, Rust format, Clippy, and Cargo tests pass.",
-      "npm run tauri -- build --no-bundle compiles the release binary with the locked capabilities.",
-      "scripts/package_linux.sh builds the release binary, which installs and launches.",
-      "Local data and temporary-resource cleanup survive a restart smoke.",
-    ]
-    overrides.validationCommands = [...preset.validationCommands, () => "./scripts/package_linux.sh"]
   }
   return overrides
 }

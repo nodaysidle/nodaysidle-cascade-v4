@@ -20,7 +20,7 @@ export type PresetId = (typeof PRESET_IDS)[number]
 export type OwnerKind = "feature" | "integration" | "data" | "credential" | "permission" | "lifecycle" | "packaging"
 export const PERMISSION_CAPABILITIES = ["microphone", "accessibility", "notifications", "filesystem", "network", "camera", "location", "global-input", "clipboard", "background-startup", "background-execution"] as const
 export type PermissionCapability = (typeof PERMISSION_CAPABILITIES)[number]
-export type PresetRuntimeMode = "native" | "waybar" | "cross-platform" | "linux-desktop" | "static" | "server" | "android"
+export type PresetRuntimeMode = "native" | "waybar" | "linux-desktop" | "static" | "server" | "android"
 
 export interface PresetSemanticInput {
   readonly externalServices: readonly { readonly credentialRequirement: "none" | "api-key" }[]
@@ -275,13 +275,13 @@ const waybarPermissionTexts: NonNullable<PresetContract["permissionTexts"]> = {
 }
 
 const tauriPermissionPatterns: Readonly<Record<PermissionCapability, string>> = {
-  microphone: "On macOS declare NSMicrophoneUsageDescription in src-tauri/Info.plist; on Linux request capture through the desktop portal and PipeWire; expose one Rust command for platform authorization and never capture before approval.",
+  microphone: "Request capture through the desktop portal and PipeWire; expose one Rust command for platform authorization and never capture before approval.",
   accessibility: "Keep platform accessibility adapters behind one Rust command with denial recovery. On Wayland, controlling another app is outside the compositor's security model.",
   notifications: "Use tauri-plugin-notification with the notification:default permission; check isPermissionGranted() and requestPermission() only from a user action before sendNotification().",
   filesystem: "Use tauri-plugin-dialog only to let the user choose paths; Rust commands read and write only those chosen paths, including paths saved earlier to reopen, with std::fs after canonicalizing each existing path (for a save target that may not exist yet, its parent directory); the frontend gets no tauri-plugin-fs access.",
   network: "Perform remote calls in Rust with an allowlisted HTTPS destination and privacy-safe errors.",
-  camera: "On macOS declare NSCameraUsageDescription in src-tauri/Info.plist; on Linux request capture through the portal and PipeWire; request access only after an explicit action.",
-  location: "On macOS declare the location usage strings in src-tauri/Info.plist; on Linux use GeoClue2 through the portal; denial keeps non-location behavior available.",
+  camera: "Request capture through the portal and PipeWire; request access only after an explicit action.",
+  location: "Use GeoClue2 through the portal; denial keeps non-location behavior available.",
   "global-input": "Register one system-wide accelerator with tauri-plugin-global-shortcut from src/shortcut.ts, where the constant DEFAULT_ACCELERATOR (CommandOrControl+Shift+Space) is the only place the key combination is written; the capability file grants only global-shortcut:allow-register and global-shortcut:allow-unregister. If registration fails, show the feature's declared failure message and keep every in-app control working; there is no retry and no compositor bind.",
   clipboard: "Use tauri-plugin-clipboard-manager: a copy-only feature gets clipboard-manager:allow-write-text and never reads; grant allow-read-text only to a feature that reads clipboard content from an explicit action.",
   "background-startup": "Use tauri-plugin-autostart behind an explicit setting; on Linux prefer a systemd user unit or a Hyprland exec-once line when the plugin does not work on Wayland.",
@@ -706,7 +706,7 @@ const tauriDesktop: PresetContract = {
     "The feature that shows a list owns loading it when the app starts and the one error message for that load failing; no other feature repeats it. A feature that writes a file the user chooses states in its behavior the exact layout of that file (heading text and level, separators, how each date or time is written), because a note or record has no title of its own.",
   ],
   label: "Tauri 2 Rust + TypeScript Desktop",
-  platform: "macOS, Windows, and Linux (Wayland verified)",
+  platform: "Linux (Wayland verified)",
   implementationMarker: "tauri::Builder",
   allowedTechnologies: ["Tauri 2", "Rust", "TypeScript", "Vite", "DOM-driven frontend", "platform-safe Tauri commands and capabilities", "time (RFC3339 date-time parsing)", "reqwest", "tokio-tungstenite when streaming is required", "Vitest", "Cargo test"],
   forbiddenTechnologies: ["Electron", "Flutter", "SwiftUI application architecture"],
@@ -733,7 +733,7 @@ const tauriDesktop: PresetContract = {
     : kind === "packaging"
       ? ["src-tauri/src/lib.rs", "src-tauri/Cargo.toml", "src-tauri/capabilities/default.json", "src-tauri/tauri.conf.json", "src-tauri/tests/kit_tests.rs"]
       : ["src-tauri/src/lib.rs", "src-tauri/Cargo.toml", "src-tauri/capabilities/default.json", "src-tauri/src/platform/mod.rs", "src-tauri/tests/kit_tests.rs"],
-  runtimeMode: () => "cross-platform",
+  runtimeMode: () => "linux-desktop",
   runtimeArchitecture: ["The TypeScript DOM frontend owns presentation and sends typed Tauri invoke requests; Rust commands own filesystem, network, credential, persistence, and platform operations behind least-privilege capabilities.", "Managed Rust state owns cancellable operations and returns allowlisted serializable results; frontend state never receives secrets, raw provider bodies, or unrestricted paths."],
   integrationBoundary: "Use reqwest::Client inside a dedicated Rust integration owner for HTTPS; expose typed DTOs through Tauri commands and keep credentials and raw responses in Rust memory only.",
   recoveryRules: ["Return one allowlisted error enum through each Tauri command and preserve the last valid frontend state.", "Use cancellation tokens and scoped Rust resources; roll back transactions and remove temporary files before reporting a terminal result."],
@@ -746,12 +746,12 @@ const tauriDesktop: PresetContract = {
     appFilesPlacement: () => "Files in the files/ subdirectory of the Tauri app-data directory, created only by Rust under generated unique file names; stored references hold the file name relative to that folder.",
     documentPlacement: "Local filesystem at the path the user chooses through tauri-plugin-dialog; Rust reads or writes that exact path and nothing else.",
   },
-  credentialPlacement: "Use one Rust SecretStore trait: the macOS login keychain, Linux Secret Service (GNOME Keyring or KWallet), or Windows Credential Manager through the keyring crate; tests use an in-memory store and never the real store; never expose stored values to the frontend after insertion.",
+  credentialPlacement: "Use one Rust SecretStore trait: the Linux Secret Service (GNOME Keyring or KWallet) through the keyring crate; tests use an in-memory store and never the real store; never expose stored values to the frontend after insertion.",
   fileBoundary: "Read and write only paths the user chooses through the dialog; the app never scans a broad folder or keeps a copy of a user document.",
   fileBoundaryDetails: ["Every path comes from tauri-plugin-dialog or a path the app saved to reopen.", "Rust canonicalizes the path, or the parent directory of a save target that does not exist yet, and operates on that exact path.", "The frontend receives no unrestricted filesystem scope."],
   launchCheck: identity => `scripts/package_linux.sh --install, then launch the installed ${identity.projectName} app and complete one acceptance outcome per feature.`,
   permissionPatterns: tauriPermissionPatterns,
-  lifecycleRules: ["Use tauri::Builder as the cross-platform desktop entry.", "Close managed tasks, database handles, temporary files, and platform listeners on exit.", "Keep platform differences behind Rust commands and capability files."],
+  lifecycleRules: ["Use tauri::Builder as the desktop entry.", "Close managed tasks, database handles, temporary files, and platform listeners on exit.", "Keep platform operations behind Rust commands and capability files."],
   accessibilityRules: ["Use semantic HTML, native controls, ARIA only where native semantics are insufficient, visible focus, full keyboard operation, reduced motion, and Vitest DOM accessibility assertions."],
   validationCommands: [
     () => "npm run typecheck",
@@ -760,8 +760,15 @@ const tauriDesktop: PresetContract = {
     () => "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
     () => "cargo test --manifest-path src-tauri/Cargo.toml",
     () => "npm run tauri -- build --no-bundle",
+    () => "./scripts/package_linux.sh",
   ],
-  packagingRules: ["Build the frontend with Vite and the native boundary with Cargo.", "Keep tauri.conf.json productName as the kit sets it: the locked project name without the characters Tauri refuses there (slash, colon, asterisk, question mark, double quote, angle brackets, pipe).", "Local proof builds only the native .app on macOS; on Linux build the AppImage or deb and validate the desktop entry.", "Use least-privilege capabilities for every command and plugin.", "Verify the installer or bundle before the launch smoke."],
+  packagingRules: [
+    "Build the frontend with Vite and the native boundary with Cargo.",
+    "Keep tauri.conf.json productName as the kit sets it: the locked project name without the characters Tauri refuses there (slash, colon, asterisk, question mark, double quote, angle brackets, pipe).",
+    "The packet targets Linux only: scripts/package_linux.sh builds the release binary without a bundle, and the installed desktop entry is validated before the launch smoke.",
+    "Use least-privilege capabilities for every command and plugin.",
+    "Verify the built binary before the launch smoke.",
+  ],
   wiringRules: [
     "src-tauri/src/lib.rs defines a public app_builder function, generic over tauri::Runtime, that takes and returns a tauri::Builder, initializes every tauri-plugin crate listed in src-tauri/Cargo.toml and registers every #[tauri::command] with invoke_handler(tauri::generate_handler![...]), and nothing else. run() calls app_builder(tauri::Builder::default()) and owns the only setup closure.",
     "src/main.ts constructs every feature with the real call() from src/api.ts (the only file that imports invoke) and the initialized plugin APIs; test doubles exist only under tests/.",
@@ -770,11 +777,16 @@ const tauriDesktop: PresetContract = {
     ...SHARED_WIRING_RULES,
   ],
   wiringManifestFiles: ["src-tauri/Cargo.toml"],
-  installationDecision: () => "For local Linux proof, build the AppImage or deb, install it, and launch the installed identity; for macOS, install the verified .app and launch it. Keep the previous app as the rollback copy.",
-  signingDecision: () => "Use Tauri platform signing: macOS codesign/notarization, Windows code signing, and verified Linux package checksums. For local macOS proof without a signing identity, re-sign with codesign --force --deep --sign -.",
-  outputArtifact: "Tauri bundle (AppImage, deb, or native .app)",
-  artifactPath: () => "src-tauri/target/release/bundle/",
-  completionEvidence: ["TypeScript, Vitest, Rust format, Clippy, and Cargo tests pass.", "npm run tauri -- build --no-bundle compiles the release binary with the locked capabilities.", "The packaged app installs and launches.", "Local data and temporary-resource cleanup survive a restart smoke."],
+  installationDecision: () => "For local proof, run ./scripts/package_linux.sh --install: it builds the release binary, installs it under ~/.local/bin with a desktop entry and icon, and keeps the previous binary in dist/rollback/ as the rollback copy; then launch the installed identity.",
+  signingDecision: () => "Local proof is unsigned. Record the SHA-256 checksum of the built binary in the completion report.",
+  outputArtifact: "Linux release binary",
+  artifactPath: identity => `dist/${identity.slug}`,
+  completionEvidence: [
+    "TypeScript, Vitest, Rust format, Clippy, and Cargo tests pass.",
+    "npm run tauri -- build --no-bundle compiles the release binary with the locked capabilities.",
+    "scripts/package_linux.sh builds the release binary, which installs and launches.",
+    "Local data and temporary-resource cleanup survive a restart smoke.",
+  ],
   foundationValidationCommands: ["npm install", "npm run tauri -- icon app-icon.svg", "npm run typecheck", "npm test", "npm run build", "cargo test --manifest-path src-tauri/Cargo.toml"],
   specialize: tauriSpecialize,
   options: [

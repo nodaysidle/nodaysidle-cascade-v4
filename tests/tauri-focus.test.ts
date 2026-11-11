@@ -56,16 +56,15 @@ describe("Tauri packet for an offline time tracker", () => {
     expect(task(packet.documents["TASKS.md"], "TASK-06-SHORTCUT-TOGGLE")).toContain("registerShortcut(onPress, onFailure)")
   })
 
-  it("drops macOS packaging, signing, and bundle text when linuxPackaging is set", async () => {
-    const packet = await compilePacket(focusLedgerBlueprint, PRESET, linux)
-    const all = Object.values(packet.documents).join("\n")
-    expect(all).not.toMatch(/macOS|notarization|codesign|native \.app|Windows code signing/)
-    expect(all).not.toContain("Tauri builds the bundle")
-    expect(packet.kit.map(file => file.name)).not.toContain("kit/scripts/package_app.sh")
-    expect(kitFile(packet, "src-tauri/tauri.conf.json")).not.toContain("macOS")
-    const legacy = await compilePacket(focusLedgerBlueprint, PRESET, {})
-    expect(legacy.kit.map(file => file.name)).toContain("kit/scripts/package_app.sh")
-    expect(legacy.documents["TRD.md"]).not.toContain("Tauri builds the bundle")
+  it("drops macOS packaging, signing, and bundle text with and without the linuxPackaging option", async () => {
+    for (const options of [linux, {}]) {
+      const packet = await compilePacket(focusLedgerBlueprint, PRESET, options)
+      const all = Object.values(packet.documents).join("\n")
+      expect(all).not.toMatch(/macOS|notarization|codesign|native \.app|Windows code signing/)
+      expect(all).not.toContain("Tauri builds the bundle")
+      expect(packet.kit.map(file => file.name)).not.toContain("kit/scripts/package_app.sh")
+      expect(kitFile(packet, "src-tauri/tauri.conf.json")).not.toContain("macOS")
+    }
   })
 
   it("does not hard-code the schema version in the kit test", async () => {

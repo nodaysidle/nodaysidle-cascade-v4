@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { compilePacket } from "../src/compiler"
 import { resolvePresetOptions } from "../src/presets"
+import { tauriEverythingBlueprint } from "./fixtures/blueprints"
 import { expenseLogBlueprint } from "./fixtures/tauriExpense"
 
 const PRESET = "tauri2-rust-typescript-desktop"
@@ -38,9 +39,22 @@ describe("Tauri Linux packet installs the release binary", () => {
     expect(productName(plain)).toBe(plain.graph.identity.projectName)
   })
 
-  it("names the macOS bundle after the productName Tauri builds it from", async () => {
-    const packet = await compilePacket({ ...expenseLogBlueprint, productName: '24h "Hi" \\ Ca$h & Tom\'s 100%' }, PRESET, {})
-    const line = packet.kit.find(file => file.name === "kit/scripts/package_app.sh")?.content.split("\n").find(l => l.startsWith("APP_NAME="))
-    expect(line).toBe(`APP_NAME='24h Hi \\ Ca$h & Tom'\\''s 100%'`)
+  it("carries no macOS, Windows or cross-platform text in either packet and the two packets agree", async () => {
+    const blueprint = tauriEverythingBlueprint()
+    const needs = ["location", "camera"] as const
+    blueprint.platformNeeds = [...blueprint.platformNeeds, ...needs]
+    blueprint.features[0]!.usesPlatformNeeds = [...blueprint.features[0]!.usesPlatformNeeds, ...needs]
+    const forbidden = /macos|mac os|darwin|windows credential|info\.plist|codesign|notariz|\.icns|\.ico"|keychain|-apple-system|sf pro|blinkmacsystemfont|windows_subsystem|cross-platform|package_app\.sh|\/applications|appimage/i
+    // Kept on purpose: the autostart plugin argument, Tauri accelerators, the SwiftUI guard line and the XDG share/applications folder.
+    const clean = (text: string): string => text.replaceAll("MacosLauncher", "").replaceAll("share/applications", "share/desktop-entries").replace(/CommandOrControl|CmdOrCtrl/g, "").split("\n").filter(line => !line.startsWith("Forbidden: SwiftUI")).join("\n")
+    const withOption = await compilePacket(blueprint, PRESET, { linuxPackaging: "binary", wayland: true })
+    const without = await compilePacket(blueprint, PRESET, {})
+    for (const packet of [withOption, without]) {
+      for (const [name, text] of [...Object.entries(packet.documents), ...packet.kit.map(file => [file.name, file.content] as const)]) expect(clean(text).match(forbidden), name).toBeNull()
+    }
+    expect(without.kit.map(file => file.name)).toEqual(withOption.kit.map(file => file.name))
+    // Only the option packet carries the CON-PRESET-OPTIONS contract; take it out of both before comparing.
+    const lines = (text: string): string => text.replace(/### CON-PRESET-OPTIONS[\s\S]*?Correct the option and regenerate\.\n\n/, "").replace(/Contract CON-PRESET-OPTIONS: [^;]*; /, "").replace(/, CON-PRESET-OPTIONS/g, "").split("\n").filter(line => !/preset.options/i.test(line)).join("\n")
+    for (const [name, text] of Object.entries(without.documents)) expect(lines(text), name).toBe(lines(withOption.documents[name as keyof typeof withOption.documents]))
   })
 })

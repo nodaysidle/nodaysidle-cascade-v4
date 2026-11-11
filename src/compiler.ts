@@ -850,7 +850,7 @@ function crateSafeSlug(value: string): string {
 function projectIdentity(projectName: string): ProjectIdentity {
   const projectSlug = crateSafeSlug(slug(projectName))
   // Split camelCase for the bundle identity only, and never fall back to a trailing ".app":
-  // macOS tooling rejects identifiers that end with the bundle extension.
+  // Packaging tools reject identifiers that end with the bundle extension.
   const parts = slug(camelWords(projectName)).split("-")
   const vendor = bundleSegment(parts[0] ?? "", "project")
   const product = bundleSegment(parts.slice(1).join(""), vendor)
@@ -1668,13 +1668,11 @@ function buildOwnersAndContracts(
               ? preset.persistence.recordsDecision
             : /\bSQLite\b/.test(placement)
               ? preset.persistence.enabledDecision
-              : /\bUserDefaults\b/.test(placement)
-                ? "Persistence: lightweight settings in UserDefaults with versioned keys."
-                : /open\/save panels|local filesystem/i.test(placement)
-                  ? "Persistence: local filesystem at user-selected paths via native open and save panels."
-                  : placement === ATOMIC_RENAME_SCRATCH_PLACEMENT
-                    ? "Persistence: temporary same-directory write file for atomic replacement."
-                    : item.temporary ? "Temporary recovery storage is enabled." : preset.persistence.enabledDecision
+              : /open\/save panels|local filesystem/i.test(placement)
+                ? "Persistence: local filesystem at user-selected paths via the file dialog."
+                : placement === ATOMIC_RENAME_SCRATCH_PLACEMENT
+                  ? "Persistence: temporary same-directory write file for atomic replacement."
+                  : item.temporary ? "Temporary recovery storage is enabled." : preset.persistence.enabledDecision
       contracts.push(contract(
         `CON-PERSISTENCE-${slug(item.data).toUpperCase()}`,
         "persistence",

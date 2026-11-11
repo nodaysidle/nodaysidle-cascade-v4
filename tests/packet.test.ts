@@ -90,7 +90,7 @@ describe("packet determinism and verify", () => {
 
   it("cascade verify fails clearly on a malformed manifest", () => {
     const folder = tempRoot()
-    writeFileSync(join(folder, "blueprint.json"), JSON.stringify({ preset: { id: "macos-swiftui", options: {} }, documents: {}, kit: [], validation: {} }))
+    writeFileSync(join(folder, "blueprint.json"), JSON.stringify({ preset: { id: "no-such-preset", options: {} }, documents: {}, kit: [], validation: {} }))
     const result = spawnSync("npx", ["tsx", "src/cli.ts", "verify", "--packet", folder], { encoding: "utf8" })
     expect(result.status).toBe(1)
     expect(result.stderr).toContain("Malformed blueprint.json")
