@@ -6,7 +6,10 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{self, Write as IoWrite},
     path::{Path, PathBuf},
+    process::{Command, ExitStatus, Stdio},
     sync::atomic::{AtomicU64, Ordering},
+    thread,
+    time::{Duration, Instant},
 };
 
 pub const DOCUMENT_NAMES: [&str; 5] = ["PRD.md", "ARD.md", "TRD.md", "TASKS.md", "AGENTS.md"];
@@ -332,12 +335,50 @@ fn kit_commands_for_preset(preset_id: &str) -> Option<&'static [&'static [&'stat
     }
 }
 
+// Kit build commands run generated code: they must not inherit these variables.
+const KIT_BUILD_ENV_SCRUB: [&str; 4] = [
+    "DEEPSEEK_API_KEY",
+    "TYPESAFE_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "CASCADE_API_URL",
+];
+const KIT_BUILD_TIMEOUT: Duration = Duration::from_secs(20 * 60);
+
+// Runs the command with stdout and stderr in files in its working directory (the temporary work
+// directory), kills it when the limit passes, and returns the exit status and both outputs.
+fn run_with_timeout(command: &mut Command, limit: Duration) -> io::Result<(ExitStatus, String)> {
+    let dir = command
+        .get_current_dir()
+        .map_or_else(std::env::temp_dir, Path::to_path_buf);
+    let stdout_path = dir.join(".cascade-build-stdout");
+    let stderr_path = dir.join(".cascade-build-stderr");
+    let mut child = command
+        .stdout(Stdio::from(File::create(&stdout_path)?))
+        .stderr(Stdio::from(File::create(&stderr_path)?))
+        .spawn()?;
+    let start = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if start.elapsed() >= limit {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "build timed out"));
+        }
+        thread::sleep(Duration::from_millis(200));
+    };
+    let read = |path: &Path| fs::read(path).map(|b| String::from_utf8_lossy(&b).into_owned());
+    Ok((
+        status,
+        format!("{}\n{}", read(&stdout_path)?, read(&stderr_path)?),
+    ))
+}
+
 pub fn build_kit_in_temp(
     preset_id: &str,
     files: &[ExportFile],
 ) -> Result<KitBuildWireResult, ExportFailure> {
-    use std::process::Command;
-
     let Some(commands) = kit_commands_for_preset(preset_id) else {
         return Err(ExportFailure::invalid_packet());
     };
@@ -383,21 +424,19 @@ pub fn build_kit_in_temp(
             .unwrap_or_else(|| home.join("Android").join("Sdk"));
         for args in commands {
             let command_text = args.join(" ");
-            let output = Command::new(args[0])
+            let mut command = Command::new(args[0]);
+            command
                 .args(&args[1..])
                 .current_dir(&work_dir)
                 .env("CARGO_TARGET_DIR", &cargo_target_dir)
                 .env("TMPDIR", &cache_tmp_dir)
-                .env("ANDROID_HOME", &android_home)
-                .output();
-            match output {
-                Ok(out) if out.status.success() => continue,
-                Ok(out) => {
-                    let combined = format!(
-                        "{}\n{}",
-                        String::from_utf8_lossy(&out.stdout),
-                        String::from_utf8_lossy(&out.stderr)
-                    );
+                .env("ANDROID_HOME", &android_home);
+            for name in KIT_BUILD_ENV_SCRUB {
+                command.env_remove(name);
+            }
+            match run_with_timeout(&mut command, KIT_BUILD_TIMEOUT) {
+                Ok((status, _)) if status.success() => continue,
+                Ok((_, combined)) => {
                     let tail: Vec<&str> = combined.trim().lines().rev().take(15).collect();
                     let tail_text = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
                     return Ok(KitBuildWireResult {
@@ -407,10 +446,15 @@ pub fn build_kit_in_temp(
                     });
                 }
                 Err(err) => {
+                    let output = if err.kind() == io::ErrorKind::TimedOut {
+                        "timed out after 20 minutes".to_string()
+                    } else {
+                        err.to_string()
+                    };
                     return Ok(KitBuildWireResult {
                         ok: false,
                         command: Some(command_text),
-                        output: Some(err.to_string()),
+                        output: Some(output),
                     });
                 }
             }
@@ -436,6 +480,44 @@ mod tests {
             content: content.to_string(),
             sha256: sha256_hex(content.as_bytes()),
         }
+    }
+
+    #[test]
+    fn kit_build_scrubs_exactly_the_four_names() {
+        assert_eq!(
+            KIT_BUILD_ENV_SCRUB,
+            [
+                "DEEPSEEK_API_KEY",
+                "TYPESAFE_API_KEY",
+                "ANTHROPIC_API_KEY",
+                "CASCADE_API_URL"
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_with_timeout_returns_status_and_output() {
+        let dir = create_staging_directory(&std::env::temp_dir(), "timeout-test").unwrap();
+        let mut command = Command::new("sh");
+        command.args(["-c", "echo hi; exit 3"]).current_dir(&dir);
+        let (status, output) = run_with_timeout(&mut command, Duration::from_secs(10)).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(status.code(), Some(3));
+        assert!(output.contains("hi"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_with_timeout_kills_a_slow_command() {
+        let dir = create_staging_directory(&std::env::temp_dir(), "timeout-test").unwrap();
+        let mut command = Command::new("sh");
+        command.args(["-c", "sleep 5"]).current_dir(&dir);
+        let start = Instant::now();
+        let error = run_with_timeout(&mut command, Duration::from_millis(300)).unwrap_err();
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert!(start.elapsed() < Duration::from_secs(4));
     }
 
     fn packet(extra: &[&str]) -> Vec<ExportFile> {
