@@ -509,41 +509,98 @@ What the QA pass was worth: the lead's test runs and diff reading passed all fou
 005 still let two kinds of bad packet through, and that 008 turned a silent drop into a compile failure (the
 audit key merged what the list no longer merged). Keep the pass.
 
-## RESUME HERE (written 2026-11-11, after plans 004 to 008)
+## Session 2026-11-11, round 13: Alan ran one idea per preset in the app; plans 009 to 012
+
+Goal: Alan runs new ideas live in the installed app (built from `3e2f5c6`) and hands back the export folders;
+the lead audits each packet independently and turns every blocking finding into a compiler fix.
+
+The 25 ideas (five per preset, never used before) are in `scripts/agent-ready/round13-ideas.md`. Alan ran five:
+G1 Room Paint, W3 Deadline Days, T3 Scratch Pad, A1 Peak List, N2 Sleep Log. Twenty are unused.
+
+Results (packets are read-only test input, in `/home/arch/dev/nodaysidle/<slug>/`):
+
+| Idea | In-app review | `cascade verify` | Kit build (own commands) | Independent audit (Opus, audit brief) |
+|---|---|---|---|---|
+| Room Paint (GTK) | 0 blocking, 2 rounds, 20 edits | pass | pass | agent-ready, 0 blocking |
+| Deadline Days (Waybar) | 0 blocking, 2 rounds, 15 edits | pass | pass | agent-ready, 0 blocking |
+| Peak List (Astro) | 0 blocking, 1 round, 11 edits | pass | pass | agent-ready, 0 blocking |
+| Scratch Pad (Tauri) | 0 blocking, 1 round, 15 edits | pass | pass | NOT agent-ready, 1 blocking |
+| Sleep Log (Android) | Not ready, 2 blocking, "1 repair round (0 edits)" | no packet (the app keeps none) | — | — |
+
+- Scratch Pad's blocking finding: no document says what happens to text typed in the last second before the
+  window closes, while the one-second timer is the only writer. The whole editor design in that packet was
+  written by the in-app repair: the Tauri compiler has no shape for one record with autosave (finding O in
+  `plans/README.md`).
+- Sleep Log's two findings were both compiler gaps, reproduced from the round-12 Android blueprints (the same
+  sentences compile there): the status area had no way for a later task to post a message, and the PRD's
+  "time pickers" contradicted the compiler's "text field HH:mm". "1 repair round (0 edits)" was a third defect:
+  a round that applied no edit ended the repair with two rounds unused.
+
+Fixed, all in local `main` at `fb5e054` (nothing pushed, no paid call by the lead):
+- 009: Android "Status rule" (definition in the first main task: `statusMessage`, `showStatus(text, tag)`,
+  `clearStatus()`, passed by `App.kt` as parameters) and "Status use" (later writing tasks with a screen).
+  `ANDROID_STATUS_DEFINITION`, `ANDROID_STATUS_USE` in `src/androidPlan.ts`.
+- 010: Android "Widget rule" (`ANDROID_WIDGET_RULE` in `src/androidForms.ts`): the Field rules decide the
+  widget, whatever the PRD's prose names.
+- 011: `runReviewAndRepairLoop` (`src/review.ts`) retries after a round that applied no edit, with the failure
+  reasons (or "contained no edits") in the next fix prompt, and stops on the second empty answer in a row. The
+  app's verdict line shows failed edits and dropped findings (`repairMetaText` in `src/app.ts`). Cost: a run
+  whose repair answers never apply can make up to three fix calls instead of one; the limit of three rounds is
+  unchanged. Alan was told.
+- 012 (Alan said yes): check 11 in the review brief, in `AUDIT_BRIEF_BODY` (`src/review.ts`) and
+  `scripts/agent-ready/audit-brief.md`, kept equal by a test.
+
+How it was verified: `npm run check` EXIT=0 on `fb5e054` (536 vitest pass, 19 skipped, 14 cargo tests, fmt,
+clippy, build); the 20 non-Android round-12 blueprints compile byte-identically to `b64af70`; QA compiled 24
+Android variants (no list, no create, all scheduled, settings only, item page, delete only, two data objects).
+Three QA passes: the first two each said "do not merge" and were right (no route to `showStatus` without the
+open-form value; identical retry prompt after an empty answer; "App.kt holds" against "in your file"; a
+scheduled delete task told to edit `App.kt`). Not verified: no paid run has used any of these four changes.
+
+## RESUME HERE (written 2026-11-11, after round 13 and plans 009 to 012)
 
 Start by reading this section and `plans/README.md`. Alan's standing direction: **fix the compiler
 (`nodaysidle-cascade-v4`) itself, never the test packets**; the exported packets are only test input.
 
-State: `main` = `3e2f5c6` plus this docs commit, local only. All plans 001 to 008 are DONE. See the line
-"Installed app" below for whether the installed app matches.
+State: `main` = `fb5e054` plus this docs commit, local only, 39 or more commits ahead of `origin/main`. All
+plans 001 to 012 are DONE. See "Installed app" below.
 
 Open, in the order I would take them:
-1. The QA follow-up notes in `plans/README.md` ("From the QA pass on plans 005 to 008"). The two with a user
-   effect: a timed-out kit build leaves grandchild processes running, and Android option testTags collide for
-   options that differ only in a sign or separator. None has a plan yet.
-2. Findings G, H, J, K, L, M, N: each still waits for what `plans/README.md` says (paid runs or Alan's decision).
-3. Nothing was run through the real app with API calls after any of these fixes. The "Not reviewed" notice of
-   plan 006 and the kit build limits of plan 007 have not been seen in a running app or a real kit build.
+1. Alan re-runs N2 Sleep Log and T3 Scratch Pad in the rebuilt app (the two that failed), then more of the 20
+   unused round-13 ideas. For each export: `npm run -s cascade -- verify --packet <dir>`, the kit build
+   (`bash scripts/agent-ready/build-round-kits.sh <folder with <preset>/<slug> links>`), and one independent
+   read-only audit with `scripts/agent-ready/audit-brief.md` and the idea text from `round13-ideas.md`. Tell the
+   auditor not to read the `repair` key of `blueprint.json`. Never call a packet agent-ready without that audit.
+2. Finding O: the Tauri single-record autosave shape. Needs Alan's go.
+3. The QA follow-up notes in `plans/README.md` (two lists: plans 005 to 008 and plans 009 to 012).
+4. Findings G, H, J, K, L, M, N: each still waits for what `plans/README.md` says.
+5. Not seen in a running app yet: the "Not reviewed" notice (plan 006), the kit build limits (plan 007), the
+   new verdict line and the repair retry (plan 011).
 
 How to work (as done in this session):
 - The lead writes or amends the plan and the brief, a `patcher` (Opus 5.5, `isolation: worktree`) implements it,
   a `qa-engine` verifies the combined candidate branch read-only (full `npm run check`, the 24-blueprint
   comparison against `main`, the diff against the plan), the lead reads the final diff, then fast-forwards
-  `main`. A change that narrows a quality check goes to Alan first.
+  `main`. A change that narrows a quality check, or changes what the paid review asks, goes to Alan first.
+- After a fix to a QA finding, send the same QA agent the delta (`SendMessage`) and ask for at most 30 lines:
+  a long report is cut off. Keep going until it passes; two passes in a row found real defects on 2026-11-11.
 - Executor brief: first step `git checkout -B <branch> <commit>` (a new worktree starts from an old commit),
   then `npm ci`. For cargo, `CARGO_TARGET_DIR=<main checkout>/src-tauri/target` avoids a cold Tauri build.
-  `/tmp` is a small RAM disk: no build output there.
-- Harness behaviour seen today: when a worktree worker hands back, the session's directory moves into that
-  worker's worktree, and resuming that worker is then refused. Finish its work with a fresh worker started in
-  that directory, and use absolute paths (`git -C <main checkout>`) for the main checkout.
+  `/tmp` is a small RAM disk with a quota on `/tmp/claude-1000`: no build or compile output there; use
+  `$HOME/.cache/cascade-v4/tmp/`.
+- Do not commit docs on `main` while a candidate branch waits for a fast-forward; keep a new plan file
+  untracked and give the worker its absolute path.
+- Harness behaviour: when a worktree worker hands back, the session's directory moves into that worker's
+  worktree, and resuming that worker is then refused. Finish its work with a fresh worker started without
+  isolation in that directory, and use absolute paths (`git -C <main checkout>`) for the main checkout.
 - Verification without API spend: recompile a saved blueprint with
-  `npm run -s cascade -- compile --preset <id> --blueprint <file> --out <tmp>`.
+  `npm run -s cascade -- compile --preset <id> --blueprint <file> --out <dir>`.
 - Reports to Alan start with `ALAN`, are short, and end with what was not checked.
 
-Leftovers that can be removed (all merged): worktrees under `.claude/worktrees/` and the branches `advisor/*`,
-`integrate/005-007`, `integrate/005-008`, `worktree-agent-*`. `advisor/008-list-dedupe-keeps-numbers-apart`
-(fb89849) is superseded by `advisor/008-audit-key`.
+Leftovers that can be removed when Alan says so (all merged): the worktrees under `.claude/worktrees/` and the
+branches `advisor/*`, `integrate/*`, `worktree-agent-*`.
 
-Installed app: rebuilt and installed from `3e2f5c6` with `bash scripts/install-linux-app.sh` on 2026-11-11
-(`~/.local/bin/nodaysidle-cascade-v4` is byte-identical to the fresh release build; the window opens to the
-start screen). No packet was generated in it.
+Installed app: rebuilt and installed from `fb5e054` with `bash scripts/install-linux-app.sh` on 2026-11-11
+(`~/.local/bin/nodaysidle-cascade-v4` is byte-identical to the fresh release build, and the frontend bundle
+built in the same run contains the four new texts). The window was not opened after this install, and no
+packet was generated in it.

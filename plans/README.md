@@ -16,6 +16,10 @@ update your row when done (unless a reviewer dispatched you and maintains this i
 | 006  | A failed review keeps the compiled packet, and every failure names its service (finding C) | P2 | M | — | DONE (2026-11-11; commits 006c67b 82fd014; in `main`; the app notice was not seen in a running app) |
 | 007  | Kit build commands run without the API keys, with a time limit and a large enough buffer (finding E) | P2 | M | 004 | DONE (2026-11-11; commits 508a67b 3ef1fd3, plus 353e042 after QA: closed stdin for the Rust child; in `main`; no real kit build was run) |
 | 008  | Cleaning a list no longer merges "1.5" with "15" (finding F) | P2 | S | — | DONE (2026-11-11; commits 56fc698 3e2f5c6; in `main`. Amended twice: a leading minus before a digit is no longer stripped by `cleanMeaning`, and with the owner's yes the audit key of `graph.acceptance-ownership` uses the same number rule, `numberAwareKey` in `src/schema.ts`) |
+| 009  | A later Android task can show its message in the shared status area (round 13, Sleep Log) | P1 | M | — | DONE (2026-11-11; commits 7ab73cd fd53d3d fb5e054; in `main`. After QA: one route for every variant, `App.kt` passes `showStatus` and `clearStatus` as parameters; the use sentence only for a writing task with a screen) |
+| 010  | The Android field rules decide each input widget, whatever widget the PRD's prose names (round 13, Sleep Log) | P1 | S | 009 | DONE (2026-11-11; commits ea9dd47 fd53d3d fb5e054; in `main`) |
+| 011  | A repair round whose edits all fail no longer ends the repair, and the app shows the failed edits (round 13, Sleep Log) | P1 | S–M | — | DONE (2026-11-11; commits 76e560c 355da7a 2680dbc ef8b0f3 fb5e054; in `main`. After QA: one retry after an empty answer, stop on the second empty answer in a row; failed paths cut to 200 characters) |
+| 012  | The review asks what happens to a delayed write when the app closes (round 13, Scratch Pad; owner said yes) | P1 | S | 009–011 | DONE (2026-11-11; commits c1af078 fb5e054; in `main`. After QA the check covers only a change the user made that is held before it is written; a refresh timer is not a delayed write. No paid review has run with it) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -40,6 +44,13 @@ Findings A to F and I now have plans 004 to 008. These remain, each with what it
   - A packet whose review failed shows the green "Gate Clean" badge above the "Not reviewed" panel; no test covers the CLI "review failed" line or the app notice.
   - Android: option testTags are built from the option slug, so "Size -5" and "Size 5" (or "1.5" and "1,5") get one tag (`src/androidForms.ts:58`, `slug` in `src/compiler.ts`). Reachable now that such options are kept.
   - List key leftovers: "1-5" merges with "15", "+5" with "5", "-.5" loses its sign. Field and feature names still use `nameKey` on purpose ("Ratio 1.5" and "Ratio 15" are rejected as duplicates).
+- O. (round 13, Scratch Pad) The Tauri compiler has no shape for one record edited in place with autosave: it emits the list shape and the in-app repair rewrites it (15 edits), leaving list boilerplate and, in that run, no rule for typing in the last second before the window closes. Plan 012 only makes the reviewer look. Waits for: the owner's go for a medium-sized compiler feature.
+- From the QA passes on plans 009 to 012 (2026-11-11), none blocking, no plan yet:
+  - A repair round whose edits fail with the same reason three times sends the same prompt in rounds 2 and 3 (`src/review.ts`). Left on purpose: the model still gets a fresh sample; stop early if paid runs show it never helps.
+  - `unverifiedFindings` holds only the last review's drops, so a drop in the first review vanishes from the record, the CLI line and the app's verdict line when the last review drops none (`src/review.ts`, the `unverified` reassignment).
+  - A fix answer that applies some edits and fails others goes to the re-review without telling the model which ones failed.
+  - Open question for the owner: Android enters a date with a Material date picker but a time as typed text (HH:mm); a time picker would match what a provider model naturally writes.
+  - The widget rule and the status route exist only in the Android preset; the other presets have the same class of risk (provider prose names a widget) and were not reported.
 - Minor notes from the five preset audits of 2026-11-11 (see `docs/HANDOFF.md`): candidates for one more compiler-text plan per preset.
 - Small: Waybar "1000.00 kB"; CLI DeepSeek fetch has no timeout; GTK Save label accepts any quoted button; `kitBuildError` writes local paths into `blueprint.json`; `package-lock.json` root range for `@anthropic-ai/sdk`; CI has no cargo cache; `--review-rounds` is undocumented; exported packets do not record the original idea text.
 
