@@ -566,6 +566,14 @@ exported packet `/home/arch/dev/nodaysidle/test/sleep-log/` is the compiler's ra
 brief with check 11) found 0 blocking: agent-ready, and both earlier findings resolved (the widget of the time
 fields, the route into the status area). Its polish notes are in `plans/README.md`.
 
+Second re-run with a working key: `/home/arch/dev/nodaysidle/sleep-log/` (07:03). In-app review
+(`claude-sonnet-5-5`): agent-ready, 0 blocking, 0 repair rounds, 8 polish. `cascade verify` passes, the kit
+builds, and an independent audit (Opus, without the `repair` key) found 0 blocking: agent-ready. Closest to
+blocking, all compiler text: "the 7 most recent recorded nights" does not say by date or by creation, nor what
+happens with fewer than 7; the row tags and the number format of the list are printed only in the Add and Edit
+contracts, not in the list task that builds the rows; "a successful Save or a close calls closeForm()" names no
+close control. The repair retry of plan 011 did not run (nothing to repair).
+
 ## RESUME HERE (written 2026-11-11, after round 13 and plans 009 to 012)
 
 Start by reading this section and `plans/README.md`. Alan's standing direction: **fix the compiler
@@ -575,8 +583,8 @@ State: `main` = `fb5e054` plus this docs commit, local only, 39 or more commits 
 plans 001 to 012 are DONE. See "Installed app" below.
 
 Open, in the order I would take them:
-1. Alan re-runs T3 Scratch Pad in the rebuilt app (Sleep Log is done: agent-ready without a repair, but it has
-   had no in-app review because of the 401), then more of the 20
+1. Alan re-runs T3 Scratch Pad in the rebuilt app (Sleep Log is done: agent-ready in the app with no repair and
+   by independent audit), then more of the 20
    unused round-13 ideas. For each export: `npm run -s cascade -- verify --packet <dir>`, the kit build
    (`bash scripts/agent-ready/build-round-kits.sh <folder with <preset>/<slug> links>`), and one independent
    read-only audit with `scripts/agent-ready/audit-brief.md` and the idea text from `round13-ideas.md`. Tell the
