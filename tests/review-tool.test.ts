@@ -285,6 +285,38 @@ describe("pipeline review, repair, kit build, and manifest replay", () => {
     expect(verifyPacketFolder(folder, freshBase, manifest)).toContain("Kit hash mismatch")
   })
 
+  it("records dropped findings and failed edits, and the packet still verifies", async () => {
+    const base = await compilePacket(fileOrganizerBlueprint, "linux-wayland-gtk4-desktop")
+    const real = { where: "PRD.md", quote: "# Product Requirements Document", why: "Needs marker.", fix: "Add marker." }
+    const fake = { where: "PRD.md", quote: "Not in the packet.", why: "Invented.", fix: "None." }
+    const edits = [
+      { finding: 1, op: "replace" as const, file: "PRD.md", find: "# Product Requirements Document", replace: "# Product Requirements Document (Reviewed)", all: false },
+      { finding: 1, op: "create" as const, file: "NOTES.md", find: "", replace: "x\n", all: false },
+    ]
+    const { packet: repaired, repair } = await runReviewAndRepairLoop({
+      packet: base,
+      idea: "Harbor Sort organizes downloads.",
+      presetId: "linux-wayland-gtk4-desktop",
+      requestId: "req-3",
+      apiKey: "mem-key",
+      reviewProvider: {
+        review: async ({ requestId }) => requestId.endsWith("-0")
+          ? { slug: base.projectSlug, blocking: [real, fake], polish: [fake], verdict: "FAIL" }
+          : { slug: base.projectSlug, blocking: [fake], polish: [], verdict: "FAIL" },
+        fix: async () => ({ edits, notes: "x" }),
+      },
+    })
+    expect(repair.unverifiedFindings).toEqual({ blocking: 1, polish: 0 })
+    expect(repair.failedEdits).toBe(1)
+    expect(repair.agentReady).toBe(true)
+    const root = mkdtempSync(join(tmpdir(), "cascade-dropped-"))
+    roots.push(root)
+    const folder = writePacketAtomic(repaired, fileOrganizerBlueprint, "linux-wayland-gtk4-desktop", {}, root)
+    const manifest = JSON.parse(readFileSync(join(folder, "blueprint.json"), "utf8")) as PacketManifest
+    expect(manifest.repair?.unverifiedFindings).toEqual({ blocking: 1, polish: 0 })
+    expect(verifyPacketFolder(folder, await compilePacket(fileOrganizerBlueprint, "linux-wayland-gtk4-desktop"), manifest)).toBeUndefined()
+  })
+
   it("discards a repair that breaks the kit build and marks the packet not-ready", async () => {
     const base = await compilePacket(fileOrganizerBlueprint, "linux-wayland-gtk4-desktop")
     const result = await runReviewAndRepairLoop({

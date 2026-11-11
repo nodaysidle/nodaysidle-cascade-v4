@@ -87,6 +87,9 @@ async function generate(options: Record<string, string>, optionValues: readonly 
     console.log(result.repair.agentReady
       ? `Verdict: Agent-ready (reviewed, 0 blocking${result.repair.rounds > 0 ? `, ${result.repair.rounds} repair round(s)` : ""})`
       : `Verdict: Not ready (${result.repair.review.blocking.length} blocking${result.repair.kitBuildPassed === false ? ", kit build failed" : ""})`)
+    const { unverifiedFindings, failedEdits } = result.repair
+    if (unverifiedFindings) console.log(`Unverified findings dropped (quote not in the packet): ${unverifiedFindings.blocking} blocking, ${unverifiedFindings.polish} polish`)
+    if (failedEdits) console.log(`Repair edits that did not apply: ${failedEdits}`)
   }
 }
 

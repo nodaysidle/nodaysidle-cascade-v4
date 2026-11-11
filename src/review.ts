@@ -126,6 +126,8 @@ export interface PacketRepairRecord {
   readonly kitBuilt?: boolean
   readonly kitBuildPassed?: boolean
   readonly kitBuildError?: string
+  readonly unverifiedFindings?: { readonly blocking: number; readonly polish: number }
+  readonly failedEdits?: number
   readonly verdict: "agent-ready" | "not-ready"
   readonly agentReady: boolean
 }
@@ -437,6 +439,8 @@ export async function runReviewAndRepairLoop(options: {
   })
   if (options.signal?.aborted) throw { kind: "cancelled", classification: "cancelled" }
   let currentReview = filterVerifiedFindings(rawReview, initialFiles.files)
+  let unverified = { blocking: rawReview.blocking.length - currentReview.blocking.length, polish: rawReview.polish.length - currentReview.polish.length }
+  let failedEdits = 0
 
   const appliedEdits: Edit[] = []
   let rounds = 0
@@ -458,6 +462,7 @@ export async function runReviewAndRepairLoop(options: {
     })
     if (options.signal?.aborted) throw { kind: "cancelled", classification: "cancelled" }
     const edited = await applyEditsToCompiledPacket(currentPacket, fix.edits)
+    failedEdits += edited.failed.length
     if (edited.applied.length === 0) break
 
     if (touchedKit(fix.edits, edited.failed) && options.kitBuilder) {
@@ -489,6 +494,7 @@ export async function runReviewAndRepairLoop(options: {
     })
     if (options.signal?.aborted) throw { kind: "cancelled", classification: "cancelled" }
     currentReview = filterVerifiedFindings(nextRawReview, nextFiles.files)
+    unverified = { blocking: nextRawReview.blocking.length - currentReview.blocking.length, polish: nextRawReview.polish.length - currentReview.polish.length }
   }
 
   const agentReady = currentReview.blocking.length === 0 && kitBuildPassed !== false
@@ -498,6 +504,8 @@ export async function runReviewAndRepairLoop(options: {
     edits: appliedEdits,
     review: currentReview,
     ...(kitBuilt !== undefined ? { kitBuilt, kitBuildPassed, ...(kitBuildError ? { kitBuildError } : {}) } : {}),
+    ...(unverified.blocking + unverified.polish > 0 ? { unverifiedFindings: unverified } : {}),
+    ...(failedEdits > 0 ? { failedEdits } : {}),
     verdict: agentReady ? "agent-ready" : "not-ready",
     agentReady,
   }
