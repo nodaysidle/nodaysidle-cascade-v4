@@ -440,6 +440,18 @@ export function mountApp(
 
   function updateVerdict(): void {
     const repair = state.packet?.repair
+    if (!repair && state.reviewFailure) {
+      // No verdict exists, so this is never styled or worded as agent-ready.
+      verdictPanel.hidden = false
+      verdictPanel.dataset.verdict = "not-ready"
+      verdictHeading.textContent = "Not reviewed"
+      verdictMeta.textContent = `Not reviewed: the Claude review failed (${state.reviewFailure.message}). The packet is the compiler's output and can be exported; no verdict was given.`
+      verdictBlocking.hidden = true
+      verdictBlocking.innerHTML = ""
+      verdictPolishDetails.hidden = true
+      verdictPolish.innerHTML = ""
+      return
+    }
     if (!repair) {
       verdictPanel.hidden = true
       verdictBlocking.hidden = true
@@ -686,7 +698,7 @@ export function mountApp(
       onProgress: stage => dispatch({ type: "progressed", stage }),
     }, provider, undefined, activeJevProvider, activeReviewProvider, activeKitBuilder).then(result => {
       if (result.status === "gate-clean" && result.packet) {
-        dispatch({ type: "generation-succeeded", packet: result.packet, jev: result.jev, repairedIssues: result.repairedIssues, blueprint: result.blueprint })
+        dispatch({ type: "generation-succeeded", packet: result.packet, jev: result.jev, repairedIssues: result.repairedIssues, blueprint: result.blueprint, reviewFailure: result.reviewFailure })
         syncControls()
       } else {
         const status = result.status === "gate-clean" ? "local-compiler-failure" : result.status

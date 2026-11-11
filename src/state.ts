@@ -1,7 +1,7 @@
 import type { AuditEntry } from "./audit"
 import type { CompiledPacket } from "./compiler"
 import type { JevReport } from "./jev"
-import { DEFAULT_API_URL, MAX_IDEA_CHARS, isSafeProviderUrl, type ProgressStage, type ProviderFailure, type ProviderModel } from "./pipeline"
+import { DEFAULT_API_URL, MAX_IDEA_CHARS, isSafeProviderUrl, type ProgressStage, type ProviderFailure, type ProviderModel, type ReviewFailure } from "./pipeline"
 import { PRESET_IDS, type PresetId } from "./presets"
 import type { SemanticBlueprint, SemanticIssue } from "./schema"
 
@@ -33,6 +33,7 @@ export interface AppState {
   readonly jev?: JevReport
   readonly repairedIssues?: readonly SemanticIssue[]
   readonly blueprint?: SemanticBlueprint
+  readonly reviewFailure?: ReviewFailure
   // Exports include blueprint.json unless the user turns it off.
   readonly saveBlueprint: boolean
 }
@@ -44,7 +45,7 @@ export type AppAction =
   | { readonly type: "progressed"; readonly stage: ProgressStage }
   | { readonly type: "cancel-requested" }
   | { readonly type: "generation-failed"; readonly status: Extract<AppStatus, "input-invalid" | "capability-rejected" | "provider-failure" | "blueprint-validation-failed" | "local-normalization-failed" | "local-compiler-failure" | "lint-failure" | "cancelled" | "intake-rejected" | "blueprint-integrity-failed" | "jev-failure">; readonly failure?: ProviderFailure; readonly issues: readonly SemanticIssue[]; readonly jev?: JevReport; readonly repairedIssues?: readonly SemanticIssue[] }
-  | { readonly type: "generation-succeeded"; readonly packet: CompiledPacket; readonly jev?: JevReport; readonly repairedIssues?: readonly SemanticIssue[]; readonly blueprint?: SemanticBlueprint }
+  | { readonly type: "generation-succeeded"; readonly packet: CompiledPacket; readonly jev?: JevReport; readonly repairedIssues?: readonly SemanticIssue[]; readonly blueprint?: SemanticBlueprint; readonly reviewFailure?: ReviewFailure }
   | { readonly type: "save-blueprint-changed"; readonly value: boolean }
   | { readonly type: "export-succeeded"; readonly path: string }
 
@@ -103,11 +104,11 @@ export function reduceAppState(state: AppState, action: AppAction): AppState {
       return { ...state, form: { ...state.form, presetOptions: { ...state.form.presetOptions, [action.id]: action.value } } }
     case "form-changed": {
       const form = { ...state.form, [action.field]: action.value } as FormState
-      const next = { ...state, form, packet: undefined, ledger: [], issues: [], failure: undefined, exportPath: undefined, jev: undefined, repairedIssues: undefined, blueprint: undefined }
+      const next = { ...state, form, packet: undefined, ledger: [], issues: [], failure: undefined, exportPath: undefined, jev: undefined, repairedIssues: undefined, blueprint: undefined, reviewFailure: undefined }
       return { ...next, status: canGenerate(next) ? "ready" : "empty" }
     }
     case "generation-started":
-      return { ...state, status: "generating", progress: "jev-preflight", activeRequestId: action.requestId, packet: undefined, ledger: [], issues: [], failure: undefined, exportPath: undefined, jev: undefined, repairedIssues: undefined, blueprint: undefined }
+      return { ...state, status: "generating", progress: "jev-preflight", activeRequestId: action.requestId, packet: undefined, ledger: [], issues: [], failure: undefined, exportPath: undefined, jev: undefined, repairedIssues: undefined, blueprint: undefined, reviewFailure: undefined }
     case "progressed":
       if (state.status === "cancelling") return { ...state, progress: action.stage }
       if (state.status !== "generating") return state
@@ -117,7 +118,7 @@ export function reduceAppState(state: AppState, action: AppAction): AppState {
     case "generation-failed":
       return { ...state, status: action.status, activeRequestId: undefined, packet: undefined, ledger: [], issues: action.issues, failure: action.failure, jev: action.jev, repairedIssues: action.repairedIssues }
     case "generation-succeeded":
-      return { ...state, form: { ...state.form, apiKey: "", jevApiKey: "", anthropicApiKey: "" }, status: "gate-clean", progress: action.packet.repair ? "review-again" : "export-gate", activeRequestId: undefined, packet: action.packet, ledger: action.packet.ledger, issues: [], failure: undefined, jev: action.jev, repairedIssues: action.repairedIssues, blueprint: action.blueprint }
+      return { ...state, form: { ...state.form, apiKey: "", jevApiKey: "", anthropicApiKey: "" }, status: "gate-clean", progress: action.packet.repair ? "review-again" : "export-gate", activeRequestId: undefined, packet: action.packet, ledger: action.packet.ledger, issues: [], failure: undefined, jev: action.jev, repairedIssues: action.repairedIssues, blueprint: action.blueprint, reviewFailure: action.reviewFailure }
     case "save-blueprint-changed":
       return { ...state, saveBlueprint: action.value }
     case "export-succeeded":

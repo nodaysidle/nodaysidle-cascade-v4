@@ -83,6 +83,7 @@ async function generate(options: Record<string, string>, optionValues: readonly 
   console.log(`Gate Clean: ${destination}`)
   if (result.repairedIssues?.length) console.log(`Repaired once: ${[...new Set(result.repairedIssues.map(issue => issue.rule))].join(", ")}`)
   if (!result.repair && !anthropicKey) console.log("Verdict: none (not reviewed: ANTHROPIC_API_KEY is not set)")
+  if (result.reviewFailure) console.log(`Verdict: none (review failed: ${result.reviewFailure.message})`)
   if (result.repair) {
     console.log(result.repair.agentReady
       ? `Verdict: Agent-ready (reviewed, 0 blocking${result.repair.rounds > 0 ? `, ${result.repair.rounds} repair round(s)` : ""})`

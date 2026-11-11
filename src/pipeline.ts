@@ -115,6 +115,16 @@ export interface GeneratePacketResult {
   readonly blueprint?: SemanticBlueprint
   // Present when the Claude Sonnet 5.5 review-and-repair loop ran on the compiled packet.
   readonly repair?: PacketRepairRecord
+  // Present when the Claude review call failed: the packet is the unreviewed compiler output and has no verdict.
+  readonly reviewFailure?: ReviewFailure
+}
+
+export type FailingService = "deepseek" | "typesafe-jev" | "claude-review"
+
+export interface ReviewFailure {
+  readonly service: "claude-review"
+  readonly failure: ProviderFailure
+  readonly message: string
 }
 
 const failureKinds = new Set<ProviderFailureKind>(["transport", "timeout", "http", "incomplete", "failed-response", "invalid-wrapper", "invalid-json", "invalid-request", "cancelled", "unknown"])
@@ -262,24 +272,28 @@ const HTTP_STATUS_HINTS: Readonly<Record<number, string>> = {
   503: "provider overloaded; retry later",
 }
 
-function providerIssue(failure: ProviderFailure): SemanticIssue {
+const SERVICE_NAMES: Readonly<Record<FailingService, string>> = { deepseek: "DeepSeek", "typesafe-jev": "TypeSafe Jev", "claude-review": "Claude review" }
+
+function providerIssue(failure: ProviderFailure, service: FailingService): SemanticIssue {
   const messages: Readonly<Record<ProviderFailureKind, string>> = {
-    transport: "The provider request could not establish a safe connection.",
-    timeout: "The provider request did not complete before the model-aware timeout.",
-    http: "The provider rejected the request.",
-    incomplete: "The provider stopped before completing the structured response.",
-    "failed-response": "The provider returned a failed completion wrapper.",
-    "invalid-wrapper": "The provider completion wrapper was not safely usable.",
-    "invalid-json": "The completed provider response is not valid JSON.",
-    "invalid-request": "The provider request was rejected before it reached the network.",
-    cancelled: "The provider request was cancelled before compilation.",
-    unknown: "The provider request failed with an unknown safe classification.",
+    transport: "The request could not establish a safe connection.",
+    timeout: "The request did not complete before the model-aware timeout.",
+    http: "The service rejected the request.",
+    incomplete: "The service stopped before completing the structured response.",
+    "failed-response": "The service returned a failed completion wrapper.",
+    "invalid-wrapper": "The completion wrapper was not safely usable.",
+    "invalid-json": "The completed response is not valid JSON.",
+    "invalid-request": "The request was rejected before it reached the network.",
+    cancelled: "The request was cancelled before compilation.",
+    unknown: "The request failed with an unknown safe classification.",
   }
   // Only the status number and an allowlisted code are shown (normalizeProviderFailure keeps nothing else): never a body or a key.
   const status = failure.httpStatus === undefined ? "" : ` HTTP ${failure.httpStatus}${HTTP_STATUS_HINTS[failure.httpStatus] ? ` (${HTTP_STATUS_HINTS[failure.httpStatus]})` : ""}.`
   const code = failure.providerCode === undefined ? "" : ` Provider code: ${failure.providerCode}.`
-  return { path: "$provider", rule: `provider.${failure.classification}`, message: `${messages[failure.kind]}${status}${code}` }
+  return { path: "$provider", rule: `provider.${failure.classification}`, message: `${SERVICE_NAMES[service]}: ${messages[failure.kind]}${status}${code}` }
 }
+
+const jevIssue = (issue: SemanticIssue): SemanticIssue => ({ ...issue, message: `${SERVICE_NAMES["typesafe-jev"]}: ${issue.message}` })
 
 function failureResult(
   status: Exclude<PipelineStatus, "gate-clean">,
@@ -300,7 +314,7 @@ export async function generatePacket(
 ): Promise<GeneratePacketResult> {
   if (cancelled(input)) {
     const failure = { kind: "cancelled", classification: "cancelled" } as const
-    return failureResult("cancelled", [providerIssue(failure)], failure)
+    return failureResult("cancelled", [providerIssue(failure, "deepseek")], failure)
   }
   if (input.idea.length > MAX_IDEA_CHARS) {
     const failure = { kind: "invalid-request", classification: "invalid-request" } as const
@@ -316,7 +330,7 @@ export async function generatePacket(
   }
   if (!isSafeProviderUrl(input.apiUrl)) {
     const failure = { kind: "invalid-request", classification: "invalid-request" } as const
-    return failureResult("input-invalid", [{ path: "$provider.url", rule: "input.invalid-url", message: "The provider URL must be an HTTPS Responses endpoint without embedded data." }], failure)
+    return failureResult("input-invalid", [{ path: "$provider.url", rule: "input.invalid-url", message: "The DeepSeek URL must be an HTTPS Responses endpoint without embedded data." }], failure)
   }
 
   let presetMismatch: JevPresetMismatch | undefined
@@ -324,7 +338,7 @@ export async function generatePacket(
     input.onProgress?.("jev-preflight")
     if (cancelled(input)) {
       const failure = { kind: "cancelled", classification: "cancelled" } as const
-      return failureResult("cancelled", [providerIssue(failure)], failure)
+      return failureResult("cancelled", [providerIssue(failure, "typesafe-jev")], failure)
     }
     const preflight = await runJevPreflight({
       requestId: input.requestId,
@@ -334,9 +348,9 @@ export async function generatePacket(
     }, jevProvider)
     if (cancelled(input)) {
       const failure = { kind: "cancelled", classification: "cancelled" } as const
-      return failureResult("cancelled", [providerIssue(failure)], failure)
+      return failureResult("cancelled", [providerIssue(failure, "typesafe-jev")], failure)
     }
-    if (!preflight.ok) return failureResult("jev-failure", [jevFailureIssue(preflight.failure)])
+    if (!preflight.ok) return failureResult("jev-failure", [jevIssue(jevFailureIssue(preflight.failure))])
     if (!preflight.decision.viable) return failureResult("intake-rejected", [jevIntakeRejectedIssue(preflight.decision)])
     presetMismatch = preflight.decision.presetMismatch
   }
@@ -352,11 +366,11 @@ export async function generatePacket(
       const failure = cancelled(input)
         ? { kind: "cancelled", classification: "cancelled" } as const
         : normalizeProviderFailure(error)
-      return withRepair(failureResult(failure.kind === "cancelled" ? "cancelled" : "provider-failure", [providerIssue(failure)], failure), repairedIssues)
+      return withRepair(failureResult(failure.kind === "cancelled" ? "cancelled" : "provider-failure", [providerIssue(failure, "deepseek")], failure), repairedIssues)
     }
     if (cancelled(input)) {
       const failure = { kind: "cancelled", classification: "cancelled" } as const
-      return withRepair(failureResult("cancelled", [providerIssue(failure)], failure), repairedIssues)
+      return withRepair(failureResult("cancelled", [providerIssue(failure, "deepseek")], failure), repairedIssues)
     }
 
     const result = await compileProviderText(providerText, input, compiler, jevProvider, presetMismatch)
@@ -380,7 +394,10 @@ export async function generatePacket(
           const failure = cancelled(input)
             ? { kind: "cancelled", classification: "cancelled" } as const
             : normalizeProviderFailure(error)
-          return withRepair(failureResult(failure.kind === "cancelled" ? "cancelled" : "provider-failure", [providerIssue(failure)], failure, result.jev), repairedIssues)
+          const issue = providerIssue(failure, "claude-review")
+          if (failure.kind === "cancelled") return withRepair(failureResult("cancelled", [issue], failure, result.jev), repairedIssues)
+          // The compiled packet is kept unreviewed: no repair record, no verdict, never shown as agent-ready.
+          return withRepair({ ...result, issues: [issue], reviewFailure: { service: "claude-review", failure, message: issue.message } }, repairedIssues)
         }
       }
       return withRepair(result, repairedIssues)
@@ -427,7 +444,7 @@ async function compileProviderText(
     input.onProgress?.("jev-integrity")
     if (cancelled(input)) {
       const failure = { kind: "cancelled", classification: "cancelled" } as const
-      return failureResult("cancelled", [providerIssue(failure)], failure)
+      return failureResult("cancelled", [providerIssue(failure, "typesafe-jev")], failure)
     }
     const postflight = await runJevPostflight({
       requestId: input.requestId,
@@ -439,9 +456,9 @@ async function compileProviderText(
     }, jevProvider)
     if (cancelled(input)) {
       const failure = { kind: "cancelled", classification: "cancelled" } as const
-      return failureResult("cancelled", [providerIssue(failure)], failure)
+      return failureResult("cancelled", [providerIssue(failure, "typesafe-jev")], failure)
     }
-    if (!postflight.ok) return failureResult("jev-failure", [jevFailureIssue(postflight.failure)])
+    if (!postflight.ok) return failureResult("jev-failure", [jevIssue(jevFailureIssue(postflight.failure))])
     if (postflight.decision.foreignStackLeakage) return failureResult("blueprint-integrity-failed", [jevForeignStackIssue()])
     if (postflight.decision.atomicAudits) {
       if (postflight.decision.atomicAudits.featureIssues.length > 0) {
@@ -473,7 +490,7 @@ async function compileProviderText(
   }
   if (cancelled(input)) {
     const failure = { kind: "cancelled", classification: "cancelled" } as const
-    return failureResult("cancelled", [providerIssue(failure)], failure)
+    return failureResult("cancelled", [providerIssue(failure, "deepseek")], failure)
   }
 
   let packet: CompiledPacket
@@ -485,7 +502,7 @@ async function compileProviderText(
   } catch (error) {
     if (cancelled(input) || (error instanceof Error && error.message === "generation-cancelled")) {
       const failure = { kind: "cancelled", classification: "cancelled" } as const
-      return failureResult("cancelled", [providerIssue(failure)], failure)
+      return failureResult("cancelled", [providerIssue(failure, "deepseek")], failure)
     }
     const issues = error instanceof GraphConstructionError
       ? [error.failure]
@@ -494,7 +511,7 @@ async function compileProviderText(
   }
   if (cancelled(input)) {
     const failure = { kind: "cancelled", classification: "cancelled" } as const
-    return failureResult("cancelled", [providerIssue(failure)], failure)
+    return failureResult("cancelled", [providerIssue(failure, "deepseek")], failure)
   }
   if (!packet.exportable) {
     const issues = packet.failures?.map(item => ({ path: item.path, rule: item.rule, message: item.message }))
