@@ -2,7 +2,7 @@
   color-scheme: dark;
   color: var(--text);
   background: var(--bg);
-  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-family: Inter, ui-sans-serif, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   --bg: #0b0e14;

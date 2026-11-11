@@ -34,15 +34,10 @@
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/icon.icns",
       "icons/icon.png"
     ],
     "category": "DeveloperTool",
     "shortDescription": "Deterministic five-document software contract compiler",
-    "longDescription": "Compiles one validated semantic blueprint into an agent-ready five-document execution contract.",
-    "macOS": {
-      "minimumSystemVersion": "13.0",
-      "signingIdentity": "-"
-    }
+    "longDescription": "Compiles one validated semantic blueprint into an agent-ready five-document execution contract."
   }
 }

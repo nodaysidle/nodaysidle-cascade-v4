@@ -21,8 +21,6 @@ const MAX_KIT_FILES: usize = 64;
 const MAX_KIT_PATH_DEPTH: usize = 16;
 // The validated provider blueprint, exported next to the documents for audits.
 const BLUEPRINT_FILE_NAME: &str = "blueprint.json";
-#[cfg(target_os = "macos")]
-const RENAME_EXCL: u32 = 0x0000_0004;
 static STAGING_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -164,26 +162,6 @@ pub fn write_packet_atomic(
 }
 
 fn rename_exclusive(from: &Path, to: &Path) -> io::Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        use std::ffi::CString;
-        use std::os::raw::c_char;
-        use std::os::unix::ffi::OsStrExt;
-        extern "C" {
-            fn renamex_np(from: *const c_char, to: *const c_char, flags: u32) -> i32;
-        }
-        let from_c = CString::new(from.as_os_str().as_bytes())
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "export path"))?;
-        let to_c = CString::new(to.as_os_str().as_bytes())
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "export path"))?;
-        let rc = unsafe { renamex_np(from_c.as_ptr(), to_c.as_ptr(), RENAME_EXCL) };
-        if rc == 0 {
-            Ok(())
-        } else {
-            Err(io::Error::last_os_error())
-        }
-    }
-    #[cfg(target_os = "linux")]
     {
         use std::ffi::CString;
         use std::os::raw::{c_char, c_int, c_uint};
@@ -218,10 +196,6 @@ fn rename_exclusive(from: &Path, to: &Path) -> io::Result<()> {
         } else {
             Err(io::Error::last_os_error())
         }
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-    {
-        fs::rename(from, to)
     }
 }
 
