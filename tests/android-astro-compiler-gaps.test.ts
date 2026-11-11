@@ -33,6 +33,8 @@ describe("Android packets share one open-form value", () => {
     expect(del).toHaveLength(1)
     expect(del[0]).toContain("When the shared openForm is OpenForm.Edit for the removed record's id, the delete calls closeForm() after the record is removed")
     expect(trd).toContain("When the shared openForm is OpenForm.Edit for the removed record's id")
+    expect(trd).toContain("where D is the count the PRD states for this field")
+    expect(trd).not.toContain("at most 2 decimal places: a number field accepts")
     for (const part of ["field-station-name", "field-total-cost-eur", "stationName", "totalCostEur"]) expect(trd).toContain(part)
   })
 
