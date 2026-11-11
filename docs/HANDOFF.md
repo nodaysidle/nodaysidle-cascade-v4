@@ -477,3 +477,39 @@ record type and the DOM test environment.
 Alan said go: `main` was fast-forwarded to `9cbe16b` (local only, not pushed), typecheck and 497 tests pass on
 `main`, and the desktop app was rebuilt and installed (the embedded bundle contains the new GTK, Android and
 Astro text; the app launches). `docs/HANDOFF.md` and `plans/` are still uncommitted.
+
+## RESUME HERE (written 2026-11-11, end of the session)
+
+Start by reading this section and `plans/README.md`. Alan's standing direction: **fix the compiler
+(`nodaysidle-cascade-v4`) itself, never the test packets**; the exported packets are only test input.
+
+State of `main` (local only, nothing pushed): compiler fixes for all five presets are merged (`cff338d` ->
+`9cbe16b`), plans and this handoff are committed, 497 tests pass, and the desktop app is rebuilt and installed
+from `9cbe16b`. Each preset's test blueprint has an independent Sonnet audit at 0 blocking (GTK, Astro and
+Android measured without their recorded paid repairs).
+
+Waiting for Alan's decision right now:
+1. **Merge plan 004.** Branch `advisor/004-one-repair-implementation` (commits `343b2af`, `94845be`, worktree
+   `.claude/worktrees/agent-a1acf7904adf88d61`) is executed and reviewed: 3 files, `src/review.ts` untouched,
+   497 tests pass, frontend build passes. It is a fast-forward of `main`. No app rebuild is needed. Not merged.
+2. After the merge: execute plan 005 (needs 004), then 008, 006, 007. One Sonnet executor at a time.
+3. Optional small addition to plan 005: a test that the audit brief in `scripts/agent-ready/audit-brief.md`
+   and the constant `AUDIT_BRIEF_BODY` in `src/review.ts` stay identical (they match today, nothing checks it).
+
+How this session worked (keep doing it this way):
+- `/improve` advisor mode: the lead session writes only `plans/` and this handoff, never source. A plan goes to
+  a Sonnet executor (Agent tool, `isolation: worktree`); the lead re-runs the done criteria, reads the diff,
+  and only then recommends a merge. Alan decides every merge; merges are fast-forward and local.
+- Verification without API spend: recompile a saved blueprint with
+  `npm run -s cascade -- compile --preset <id> --blueprint <file> --option k=v --out <tmp>` and let a fresh
+  Sonnet subagent audit the result with `scripts/agent-ready/audit-brief.md` (tell it nothing about what changed).
+- Two harness traps: a new executor worktree is created from an old commit, so the executor's first step must
+  be `git merge --ff-only <main commit>` and a stop if that fails; and a **resumed** executor lands in the lead
+  session's current directory, so never resume two executors at once.
+- Reports to Alan start with `ALAN`, are short, and end with what was not checked.
+
+Not done: nothing was run through the real app with API calls after the fixes; findings G, H, J, K, L, M, N
+have no plan (see `plans/README.md` for what each waits for); the vault has a session page for 2026-11-11
+(`nodaysidle-vault/wiki/sessions/2026-11-11-cascade-v4-compiler-gaps-five-presets.md`), uncommitted there.
+The old worktree `.claude/worktrees/agent-a3ffb0c89491559bf` and the branches `advisor/001-...`,
+`advisor/002-...` are fully merged and can be removed.
