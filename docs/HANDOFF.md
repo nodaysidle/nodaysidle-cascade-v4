@@ -412,3 +412,68 @@ Keep HANDOFF.md current as you go and commit it with your changes. Report to me 
 broken, what you changed, what you verified, and what you did not check. Do not tell me something is
 agent-ready unless an independent audit of that exact packet says so.
 ```
+
+## Session 2026-11-11: /improve audit, check of the five exports, plan 001
+
+Goal: Alan ran `/improve` (advisor mode: the session writes only `plans/`, never source) and then asked for a
+check of the five exported packets, and then for Swap Meter and Snippet Vault to become agent-ready by fixing
+the app (Waybar and Tauri presets), not by editing the packets.
+
+Done:
+- Audit of the repo at `cff338d`. Baseline green: typecheck, 486 tests, build, cargo fmt/clippy, 10 Rust tests.
+  The findings without a plan are listed in `plans/README.md` (A to N). Alan has not chosen which to plan.
+- The five exports (fuel-log, cinema-club, snippet-vault, swap-meter, tea-cellar): untouched since export,
+  `cascade verify` passes for all, and every kit command passes in throwaway copies, including the two the
+  gate skips (Tauri `cargo clippy`, Android `lintDebug`).
+- Independent audits by Sonnet subagents (subscription, no API spend): Swap Meter 1 blocking, Snippet Vault 2
+  blocking. So neither is agent-ready by audit. The other three have no independent audit.
+  - Swap Meter: acceptance numbers named meminfo lines with byte-sized values; the kit multiplies kB by 1024.
+  - Snippet Vault: the success message "Snippets saved." has no place; no task may edit `src/style.css` and
+    the kit has no form, detail or multi-line text helper.
+  - The app's own reviewer saw all three and graded them polish. The review brief and the audit brief define
+    blocking identically, so this is reviewer judgment, not wording.
+- `plans/001-waybar-tauri-audit-gaps.md`: fixes the three gaps in the compiler (`src/waybarContracts.ts`,
+  `src/tauriContracts.ts`, `src/tauriKit.ts`), no product name, no API call. Handed to a Sonnet executor in an
+  isolated git worktree, branch `advisor/001-waybar-tauri-audit-gaps`. Nothing is merged; merging is Alan's call.
+
+Left:
+- Review the executor's diff against the plan, then recompile both packets from their `blueprint.json`
+  (free: `npm run -s cascade -- compile --preset <id> --blueprint <packet>/blueprint.json --option ... --out <tmp>`;
+  the output is byte-identical to the export at `cff338d`) and run a fresh independent audit on each.
+  Only that audit can say agent-ready.
+- Alan decides: audit the other three packets or not; which of findings A to N become plans.
+
+Open questions:
+- The exported packets do not record the original idea text, so idea coverage was judged against
+  `blueprint.summary` only.
+- The app cannot open a saved `blueprint.json`; a recompile of an exported packet needs the CLI.
+
+Update, same session: plan 001 was executed and reviewed (branch `advisor/001-waybar-tauri-audit-gaps`, commits
+854f295 fb9f648 3087d77, 489 tests pass, not merged). Both packets were recompiled from their `blueprint.json`
+with the fixed compiler and audited again by fresh Sonnet subagents: Swap Meter 0 blocking, Snippet Vault
+0 blocking (minor notes only). The exported folders themselves are unchanged and still hold the old text.
+Alan then asked for the merge: `main` was fast-forwarded to `3087d77` (local only, not pushed), typecheck and
+489 tests pass on `main`, and the desktop app was rebuilt and installed with `bash scripts/install-linux-app.sh`
+(the embedded bundle contains the new text; the app launches). `docs/HANDOFF.md` and `plans/` are uncommitted.
+Next: the other three presets (GTK, Astro, Android) the same way: independent audit of the export, fix the
+compiler for what is blocking, recompile, audit again.
+
+Later, same session (GTK, Astro, Android): Alan's direction is to fix the compiler, never the test packets.
+Plans 002 and 003 were executed by Sonnet executors and reviewed. Branch `advisor/002-gtk-compiler-gaps`
+(worktree `.claude/worktrees/agent-a3ffb0c89491559bf`) holds 6 commits on top of `main` 3087d77:
+297dd8b, 118b8d2, 82fc2ab, 7062fd5, 31254de, 9cbe16b. 497 tests pass; Waybar and Tauri output is unchanged.
+Each of the three blueprints was recompiled WITHOUT its recorded paid repairs and audited by a fresh Sonnet
+subagent: Tea Cellar (GTK) 0 blocking, Cinema Club (Astro) 0 blocking, Fuel Log (Android) 1 blocking (a literal
+"2 decimal places" rule contradicting the PRD), fixed in 9cbe16b, then 0 blocking. Not merged: Alan decides.
+After a merge, rebuild the app with `bash scripts/install-linux-app.sh`. Saved packets from before these
+commits no longer replay their recorded repair edits (the compiler now writes that text itself); recompile
+from the inner `blueprint` object instead.
+Open minor notes from the audits (candidates for a next plan): GTK number fields without a stated range, the
+shared view state versus the kit's AppState derives, add dialog title, Edit/Delete button order, `Choices:`
+line on features without that input; Android sort key for "newest first", a seam for write-failure tests,
+the slot for the edit form, how a later task shows its write error; Astro empty home list, link text of a
+list entry; Waybar store trait signatures and `click` without a store parameter; Tauri owner file of the
+record type and the DOM test environment.
+Alan said go: `main` was fast-forwarded to `9cbe16b` (local only, not pushed), typecheck and 497 tests pass on
+`main`, and the desktop app was rebuilt and installed (the embedded bundle contains the new GTK, Android and
+Astro text; the app launches). `docs/HANDOFF.md` and `plans/` are still uncommitted.
