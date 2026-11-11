@@ -589,6 +589,20 @@ describe("pipeline review, repair, kit build, and manifest replay", () => {
       expect(repair.rounds).toBe(3)
       expect(repair.failedEdits).toBeUndefined()
       expect(repair.verdict).toBe("not-ready")
+      // An empty answer must not be retried with a byte-identical prompt.
+      for (const later of [prompts[1]!, prompts[2]!]) {
+        expect(later).toContain("contained no edits")
+        expect(later).not.toBe(prompts[0])
+      }
+      expect(prompts[0]).not.toContain("contained no edits")
+    })
+
+    it("prints a model-supplied failure path on one short line", () => {
+      const file = `a/${"x".repeat(1500)}\n${"y".repeat(1500)}`
+      const plain = buildFixPrompt("idea", "linux-wayland-gtk4-desktop", [], [blocking], [{ file: "f.md", reason: "r" }])
+      const long = buildFixPrompt("idea", "linux-wayland-gtk4-desktop", [], [blocking], [{ file, reason: "r" }])
+      expect(long.split("\n")).toHaveLength(plain.split("\n").length)
+      expect(long.length - plain.length).toBeLessThanOrEqual(260)
     })
 
     it("keeps buildFixPrompt byte-identical without failures", async () => {
@@ -612,6 +626,9 @@ describe("verdict meta line", () => {
   it("keeps the old text when no failures are recorded", () => {
     expect(repairMetaText(repair({ rounds: 0 }))).toBe("m · 0 repair rounds")
     expect(repairMetaText(repair({ unverifiedFindings: { blocking: 0, polish: 0 } }))).toBe("m · 1 repair round (0 edits)")
+  })
+  it("says 1 finding for exactly one", () => {
+    expect(repairMetaText(repair({ unverifiedFindings: { blocking: 1, polish: 0 } }))).toBe("m · 1 repair round (0 edits) · 1 finding dropped (quote not in the packet)")
   })
   it("shows failed edits and dropped findings", () => {
     expect(repairMetaText(repair({ failedEdits: 4 }))).toBe("m · 1 repair round (0 edits, 4 could not be applied)")

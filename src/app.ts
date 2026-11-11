@@ -89,7 +89,7 @@ export function repairMetaText(repair: PacketRepairRecord): string {
     ? "0 repair rounds"
     : `${repair.rounds} repair ${repair.rounds === 1 ? "round" : "rounds"} (${edits}${failed})`
   const dropped = (repair.unverifiedFindings?.blocking ?? 0) + (repair.unverifiedFindings?.polish ?? 0)
-  return `${repair.model} · ${roundsLabel}${dropped > 0 ? ` · ${dropped} findings dropped (quote not in the packet)` : ""}`
+  return `${repair.model} · ${roundsLabel}${dropped > 0 ? ` · ${dropped} ${dropped === 1 ? "finding" : "findings"} dropped (quote not in the packet)` : ""}`
 }
 
 function escapeHtml(value: string): string {
